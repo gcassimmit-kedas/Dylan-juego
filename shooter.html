@@ -18,6 +18,7 @@
       <div id="wave" class="chip">Oleada 1</div>
       <div id="coins" class="chip">🪙 0</div>
       <div id="score" class="chip">0</div>
+      <button id="pauseBtn" class="btn" aria-label="Pausar" title="Pausar (P)" hidden>⏸</button>
       <button id="mute" class="btn" aria-label="Sonido">🔊</button>
     </div>
   </div>
@@ -35,6 +36,15 @@
       <div class="wallet">🪙 <span id="shopCoins">0</span></div>
       <div id="shopBody"></div>
       <button id="nextWave" class="primary">Siguiente oleada ▶</button>
+    </div>
+  </div>
+
+  <div id="pause" hidden>
+    <div class="panel">
+      <h2>⏸ Pausa</h2>
+      <button id="resume" class="primary">▶ Continuar</button>
+      <button id="quit" class="primary alt">Salir al menú</button>
+      <p class="help" id="pauseHelp"></p>
     </div>
   </div>
 

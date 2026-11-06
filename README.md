@@ -23,6 +23,7 @@ npm run build    # genera dist/ para publicar en cualquier hosting estático
 - Móvil: el pulgar izquierdo mueve y el derecho apunta y dispara. Abajo está la barra de armas y a la derecha el equipo.
 - PC: WASD para moverte, el ratón para apuntar, clic para disparar, 1-7 o Q/E para cambiar de arma.
   Equipo: T (torreta), G (mina), F (escudo), B (barricada).
+- Pausa: botón ⏸ arriba a la derecha (o P / Esc en PC). El juego también se pausa solo si cambias de app o de pestaña.
 
 **Personajes:** tu soldado (casco, chaleco, mochila, piernas animadas; el arma cambia en la mano) contra tres robots:
 araña (roja, rápida), artillero (naranja, bípedo con cañón; dispara si te ve y te busca si te escondes) y tanque

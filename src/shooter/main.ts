@@ -309,6 +309,8 @@ function makePickup(k: Pickup): THREE.Object3D {
 // ---------- Entrada ----------
 const keys = new Set<string>();
 addEventListener('keydown', (e) => {
+  if ((e.code === 'KeyP' || e.code === 'Escape') && playing && shopEl.hidden) { setPaused(!paused); return; }
+  if (paused) return;
   keys.add(e.code);
   if (e.code === 'Space') e.preventDefault();
   if (!playing || world.phase !== 'fight') return;
@@ -495,11 +497,14 @@ function start() {
   hudKey = ''; prevCoins = 0;
   overlay.hidden = true; shopEl.hidden = true;
   playing = true;
+  setPaused(false);
+  pauseBtn.hidden = false;
   last = performance.now();
   hud();
 }
 function gameOver() {
   playing = false;
+  pauseBtn.hidden = true;
   const record = world.score > best;
   if (record) { best = world.score; try { localStorage.setItem('shooter.best', String(best)); } catch { /* sin storage */ } }
   overlayMsg.textContent = `${record ? '¡Nuevo récord! ' : ''}Puntos: ${world.score} · Oleada ${world.wave} · Récord: ${best}`;
@@ -508,7 +513,37 @@ function gameOver() {
 }
 overlayMsg.textContent = best ? `Récord: ${best}` : 'Sobrevive a las oleadas de robots. Gana monedas y compra armas y equipo entre una y otra.';
 playBtn.addEventListener('click', start);
-document.addEventListener('visibilitychange', () => { last = performance.now(); });
+// ---------- Pausa ----------
+const pauseEl = $('pause'), pauseBtn = $('pauseBtn');
+let paused = false;
+$('pauseHelp').textContent = isTouch ? 'El juego se pausa solo si cambias de app.' : 'P o Esc para pausar y continuar.';
+function setPaused(v: boolean) {
+  if (v && !playing) return;
+  paused = v;
+  pauseEl.hidden = !v;
+  pauseBtn.textContent = v ? '▶' : '⏸';
+  pauseBtn.setAttribute('aria-label', v ? 'Continuar' : 'Pausar');
+  // Soltar todo lo que estuviera pulsado para no volver disparando o caminando solo
+  releaseStick('L'); releaseStick('R'); mouse.down = false; keys.clear();
+  last = performance.now();
+}
+pauseBtn.addEventListener('click', () => setPaused(!paused));
+$('resume').addEventListener('click', () => setPaused(false));
+$('quit').addEventListener('click', () => {
+  setPaused(false);
+  playing = false;
+  pauseBtn.hidden = true;
+  shopEl.hidden = true;
+  clearScene();
+  overlayMsg.textContent = best ? `Récord: ${best}` : 'Sobrevive a las oleadas de robots. Gana monedas y compra armas y equipo entre una y otra.';
+  playBtn.textContent = 'Jugar';
+  overlay.hidden = false;
+});
+
+document.addEventListener('visibilitychange', () => {
+  last = performance.now();
+  if (document.hidden && playing && world.phase === 'fight') setPaused(true); // pausa automática al salir de la app
+});
 
 const muzzlePos = new THREE.Vector3();
 const MUZZLE_COLOR: Partial<Record<WeaponId, number>> = { lanzallamas: 0xff6a1a, francotirador: 0xc8f6ff, cohetes: 0xffa040 };
@@ -599,11 +634,11 @@ const ZOOM = Number(new URLSearchParams(location.search).get('zoom')) || 1;
 let last = performance.now(), prevPX = 0, prevPZ = 0, dustT = 0;
 function frame(now: number) {
   const rawDt = (now - last) / 1000;
-  const dt = Math.min(0.05, rawDt);
+  const dt = paused ? 0 : Math.min(0.05, rawDt); // en pausa todo se congela (también los efectos)
   last = now;
   const t = now / 1000;
   if (playing && !document.hidden && rawDt < 1) adaptQuality(rawDt);
-  if (playing && !document.hidden && world.phase === 'fight') {
+  if (playing && !paused && !document.hidden && world.phase === 'fight') {
     step(world, readInput(), dt);
     flushEvents();
   }
