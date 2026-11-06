@@ -1,13 +1,11 @@
 import * as THREE from 'three';
 import {
-  newWorld, step, buy, cannotBuy, owns, nextWave, useTool, selectWeapon, dronePos, getPlayer,
+  newWorld, step, buy, cannotBuy, owns, nextWave, useTool, selectWeapon, dronePos,
   SHOP, WEAPONS, WEAPON_ORDER, TOOL_ORDER,
-  type World, type Input, type Player, type Bullet, type Pickup, type EnemyType, type WeaponId, type ToolId, type ShopItem, type ShopKind, type ItemId,
+  type World, type Input, type Bullet, type Pickup, type EnemyType, type WeaponId, type ToolId, type ShopItem, type ShopKind, type ItemId,
 } from './sim.ts';
 import { sfx, unlock, isMuted, setMuted } from './audio.ts';
-import { MAT, makeSoldier, animateSoldier, showWeapon, makeRobot, animateRobot, makeTurret, makeDrone, makeMine, makeObstacle, makeLabel, type Robot, type Soldier } from './models.ts';
-import { NetSession } from './net.ts';
-import type { RoomInfo } from './protocol.ts';
+import { MAT, makeSoldier, animateSoldier, showWeapon, makeRobot, animateRobot, makeTurret, makeDrone, makeMine, makeObstacle, type Robot } from './models.ts';
 import { Effects, SOFT } from './fx.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -68,11 +66,6 @@ const SUN_OFFSET = SUN_DIR.clone().multiplyScalar(70);
 
 let world: World = newWorld();
 const A = world.arena;
-let mode: 'solo' | 'multi' = 'solo';
-let myId = 'p1';
-const net = new NetSession();
-const me = (): Player => getPlayer(world, myId);
-const names = new Map<string, string>(); // para avisar de quién se va aunque ya no esté en el mundo
 const fx = new Effects(scene);
 
 // ---------- Terreno ----------
@@ -215,26 +208,9 @@ const crateTex = (() => {
 })();
 const crateMat = new THREE.MeshStandardMaterial({ map: crateTex, roughness: 0.85 });
 
-const soldiers = new Map<string, Soldier>();
-function soldierFor(p: Player): Soldier {
-  let s = soldiers.get(p.id);
-  if (!s) {
-    s = makeSoldier(p.color);
-    s.px = p.x; s.pz = p.z;
-    if (mode === 'multi' && p.id !== myId) { s.label = makeLabel(p.name, p.color); scene.add(s.label); }
-    setBlobs(s.root);
-    soldiers.set(p.id, s);
-    scene.add(s.root);
-  }
-  return s;
-}
-function removeSoldier(id: string) {
-  const s = soldiers.get(id);
-  if (!s) return;
-  scene.remove(s.root);
-  if (s.label) scene.remove(s.label);
-  soldiers.delete(id);
-}
+const soldier = makeSoldier();
+scene.add(soldier.root);
+showWeapon(soldier, 'pistola');
 
 const ENEMY_COLOR: Record<EnemyType, number> = { chaser: 0xc8342f, tank: 0x5b4f7a, gunner: 0xe39a26 };
 
@@ -254,7 +230,7 @@ function makeBar(): Bar {
 const robots = new Map<number, Robot & { bar: Bar }>();
 const objs = { bullets: new Map<number, THREE.Object3D>(), pickups: new Map<number, THREE.Object3D>(), obstacles: new Map<number, THREE.Object3D>(),
   turrets: new Map<number, THREE.Object3D>(), mines: new Map<number, THREE.Object3D>() };
-const drones = new Map<string, THREE.Group[]>();
+const drones: THREE.Group[] = [];
 
 function sync<T extends { id: number }>(map: Map<number, THREE.Object3D>, list: T[], make: (t: T) => THREE.Object3D, place: (m: THREE.Object3D, t: T) => void) {
   const alive = new Set<number>();
@@ -335,12 +311,12 @@ const keys = new Set<string>();
 addEventListener('keydown', (e) => {
   keys.add(e.code);
   if (e.code === 'Space') e.preventDefault();
-  if (!playing || world.phase !== 'fight' || !me() || document.activeElement instanceof HTMLInputElement) return;
+  if (!playing || world.phase !== 'fight') return;
   const n = Number(e.key);
   if (n >= 1 && n <= 7) pickWeapon(WEAPON_ORDER[n - 1]);
   if (e.code === 'KeyQ' || e.code === 'KeyE') {
-    const own = WEAPON_ORDER.filter((w) => me().owned.includes(w));
-    const i = own.indexOf(me().weapon);
+    const own = WEAPON_ORDER.filter((w) => world.player.owned.includes(w));
+    const i = own.indexOf(world.player.weapon);
     pickWeapon(own[(i + (e.code === 'KeyE' ? 1 : own.length - 1)) % own.length]);
   }
   for (const t of TOOL_ORDER) if (e.code === `Key${TOOL_KEY[t]}`) tool(t);
@@ -405,7 +381,7 @@ function readInput(): Input {
   } else if (mouse.active) {
     ndc.set((mouse.x / innerWidth) * 2 - 1, -(mouse.y / innerHeight) * 2 + 1);
     ray.setFromCamera(ndc, camera);
-    if (ray.ray.intersectPlane(groundPlane, hitPt)) { inp.aimX = hitPt.x - me().x; inp.aimZ = hitPt.z - me().z; }
+    if (ray.ray.intersectPlane(groundPlane, hitPt)) { inp.aimX = hitPt.x - world.player.x; inp.aimZ = hitPt.z - world.player.z; }
     inp.fire = mouse.down || keys.has('Space');
   } else inp.fire = keys.has('Space');
   return inp;
@@ -416,21 +392,17 @@ let best = 0;
 try { best = Number(localStorage.getItem('shooter.best')) || 0; } catch { /* sin storage */ }
 let hudKey = '', prevCoins = 0;
 function hud() {
-  const p = me();
-  if (!p) return;
+  const p = world.player;
   rapidEl.hidden = p.rapid <= 0;
-  const key = [p.hp, p.maxHp, p.score, world.wave, p.coins, p.weapon, p.owned.join(), ...TOOL_ORDER.map((t) => p.tools[t]), p.shield > 0,
-    p.speedLvl, p.armorLvl, p.dmgLvl, p.magnet, p.regen, p.drones].join('|');
-  if (mode === 'multi') renderPlayers();
+  const key = [p.hp, p.maxHp, world.score, world.wave, world.coins, p.weapon, p.owned.length, ...TOOL_ORDER.map((t) => p.tools[t]), p.shield > 0].join('|');
   if (key === hudKey) return;
   hudKey = key;
-  if (!shopEl.hidden) renderShop();
   hpEl.innerHTML = Array.from({ length: p.maxHp }, (_, i) => `<span class="${i < p.hp ? '' : 'off'}"></span>`).join('');
-  scoreEl.textContent = String(p.score);
+  scoreEl.textContent = String(world.score);
   waveEl.textContent = `Oleada ${Math.max(1, world.wave)}`;
-  coinsEl.textContent = `🪙 ${p.coins}`;
-  if (p.coins > prevCoins) { coinsEl.classList.add('pulse'); setTimeout(() => coinsEl.classList.remove('pulse'), 150); }
-  prevCoins = p.coins;
+  coinsEl.textContent = `🪙 ${world.coins}`;
+  if (world.coins > prevCoins) { coinsEl.classList.add('pulse'); setTimeout(() => coinsEl.classList.remove('pulse'), 150); }
+  prevCoins = world.coins;
 
   weaponsEl.innerHTML = '';
   WEAPON_ORDER.forEach((id, i) => {
@@ -455,35 +427,10 @@ function hud() {
     b.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); tool(t); });
     toolsEl.appendChild(b);
   }
+  showWeapon(soldier, p.weapon);
 }
-function pickWeapon(id: WeaponId) {
-  selectWeapon(world, id, myId); // en multijugador también se aplica ya (el servidor lo confirma)
-  if (mode === 'multi') net.send({ t: 'weapon', id });
-  hud();
-}
-function tool(id: ToolId) {
-  if (mode === 'multi') { net.send({ t: 'tool', id }); return; }
-  if (useTool(world, id)) { flushEvents(); hud(); }
-}
-
-// Lista de jugadores de la sala
-let playersKey = '';
-function renderPlayers() {
-  const el = $('players');
-  const key = world.players.map((q) => [q.id, q.name, q.hp, q.alive, q.kills, q.color].join(':')).join('|');
-  if (key === playersKey) return;
-  playersKey = key;
-  el.innerHTML = '';
-  for (const q of [...world.players].sort((a, b) => b.score - a.score)) {
-    const row = document.createElement('div');
-    row.className = `pl${q.alive ? '' : ' down'}${q.id === myId ? ' me' : ''}`;
-    const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = '#' + new THREE.Color(q.color).getHexString();
-    const name = document.createElement('span'); name.className = 'nm'; name.textContent = q.name; // textContent: nunca HTML ajeno
-    const st = document.createElement('span'); st.className = 'st'; st.textContent = q.alive ? `❤️${q.hp} · 🤖${q.kills}` : '💀';
-    row.append(dot, name, st);
-    el.appendChild(row);
-  }
-}
+function pickWeapon(id: WeaponId) { selectWeapon(world, id); hud(); }
+function tool(id: ToolId) { if (useTool(world, id)) { flushEvents(); hud(); } }
 
 let bannerTimer = 0;
 function banner(text: string) {
@@ -500,8 +447,8 @@ const SECTIONS: { kind: ShopKind; title: string }[] = [
   { kind: 'arma', title: 'Armas' }, { kind: 'mejora', title: 'Mejoras' }, { kind: 'equipo', title: 'Equipo (se usa con un botón)' },
 ];
 function card(item: ShopItem) {
-  const reason = cannotBuy(world, item.id, myId);
-  const n = owns(world, item.id, myId);
+  const reason = cannotBuy(world, item.id);
+  const n = owns(world, item.id);
   const lvl = item.max ? `<div class="lvl">${item.kind === 'equipo' ? `Tienes ${n}/${item.max}` : `Nivel ${n}/${item.max}`}</div>` : '';
   const el = document.createElement('div');
   el.className = `card${n && item.kind !== 'equipo' ? ' owned' : ''}`;
@@ -509,15 +456,12 @@ function card(item: ShopItem) {
   const b = document.createElement('button');
   b.textContent = reason && reason !== 'Faltan monedas' ? reason : `🪙 ${item.price}`;
   b.disabled = !!reason;
-  b.addEventListener('click', () => {
-    if (mode === 'multi') { net.send({ t: 'buy', id: item.id }); sfx.pickup(); b.disabled = true; return; } // se actualiza con la próxima instantánea
-    if (buy(world, item.id)) { sfx.pickup(); renderShop(); hud(); }
-  });
+  b.addEventListener('click', () => { if (buy(world, item.id)) { sfx.pickup(); renderShop(); hud(); } });
   el.appendChild(b);
   return el;
 }
 function renderShop() {
-  $('shopCoins').textContent = String(me().coins);
+  $('shopCoins').textContent = String(world.coins);
   const body = $('shopBody');
   body.innerHTML = '';
   for (const sec of SECTIONS) {
@@ -532,56 +476,29 @@ function openShop(bonus: number) {
   $('shopTitle').textContent = `¡Oleada ${world.wave} superada!`;
   $('shopSub').textContent = `+${bonus} monedas de bonificación`;
   renderShop();
-  const nb = $<HTMLButtonElement>('nextWave');
-  nb.disabled = false;
-  nb.textContent = mode === 'multi' ? 'Estoy listo ✓' : 'Siguiente oleada ▶';
-  $('shopTimer').hidden = mode !== 'multi';
-  setTimeout(() => { if (world.phase === 'shop') { shopEl.hidden = false; ($('shopBody').parentElement as HTMLElement).scrollTop = 0; } }, 700);
+  setTimeout(() => { shopEl.hidden = false; ($('shopBody').parentElement as HTMLElement).scrollTop = 0; }, 700);
 }
-$('nextWave').addEventListener('click', () => {
-  if (mode === 'multi') {
-    net.send({ t: 'ready' });
-    const nb = $<HTMLButtonElement>('nextWave');
-    nb.disabled = true; nb.textContent = 'Esperando a los demás…';
-    return;
-  }
-  shopEl.hidden = true; nextWave(world); flushEvents();
-});
+$('nextWave').addEventListener('click', () => { shopEl.hidden = true; nextWave(world); flushEvents(); });
 
 // ---------- Partida ----------
-let playing = false, shake = 0;
+let playing = false, shake = 0, recoil = 0;
 function clearScene() {
   for (const map of Object.values(objs)) sync(map, [], () => new THREE.Object3D(), () => {});
   for (const r of robots.values()) { scene.remove(r.root); scene.remove(r.bar.g); }
   robots.clear();
-  for (const id of [...soldiers.keys()]) removeSoldier(id);
-  for (const list of drones.values()) for (const d of list) scene.remove(d);
-  drones.clear();
   fx.clear();
 }
 function start() {
   unlock();
-  leaveMulti(false);
   clearScene();
-  mode = 'solo'; myId = 'p1';
   world = newWorld();
   hudKey = ''; prevCoins = 0;
   overlay.hidden = true; shopEl.hidden = true;
-  document.body.classList.remove('multi');
   playing = true;
   last = performance.now();
   hud();
 }
 function gameOver() {
-  if (mode === 'multi') {
-    // En multijugador la sala empieza otra partida sola; aquí solo mostramos el resultado.
-    const rows = [...world.players].sort((a, b) => b.score - a.score).map((q) => `${q.name}: ${q.score} pts (${q.kills} robots)`);
-    overlayTitle.textContent = '¡Os han derrotado!';
-    overlayMsg.textContent = `Oleada ${world.wave} · Equipo: ${world.score} puntos\n${rows.join('\n')}`;
-    setMenu('over');
-    setTimeout(() => (overlay.hidden = false), 900);
-    return;
-  }
   playing = false;
   const record = world.score > best;
   if (record) { best = world.score; try { localStorage.setItem('shooter.best', String(best)); } catch { /* sin storage */ } }
@@ -591,125 +508,22 @@ function gameOver() {
 }
 overlayMsg.textContent = best ? `Récord: ${best}` : 'Sobrevive a las oleadas de robots. Gana monedas y compra armas y equipo entre una y otra.';
 playBtn.addEventListener('click', start);
-
-// ---------- Multijugador: vestíbulo ----------
-const overlayTitle = $('overlayTitle'), lobby = $('lobby'), lobbyStatus = $('lobbyStatus');
-const nickEl = $<HTMLInputElement>('nick'), codeEl = $<HTMLInputElement>('code'), roomNameEl = $<HTMLInputElement>('roomName');
-try { nickEl.value = localStorage.getItem('shooter.nick') ?? ''; } catch { /* sin storage */ }
-const nick = () => { const n = nickEl.value.trim().slice(0, 16) || 'Soldado'; try { localStorage.setItem('shooter.nick', n); } catch { /* */ } return n; };
-
-/** Qué botones enseña la pantalla principal. */
-function setMenu(state: 'start' | 'over') {
-  playBtn.hidden = state === 'over' && mode === 'multi';
-  $('multiBtn').hidden = state === 'over' && mode === 'multi';
-  $('leaveBtn').hidden = !(state === 'over' && mode === 'multi');
-}
-
-function lobbyMsg(text: string, error = false) { lobbyStatus.textContent = text; lobbyStatus.classList.toggle('error', error); }
-
-async function openLobby() {
-  unlock();
-  overlay.hidden = true;
-  lobby.hidden = false;
-  if (!net.connected) {
-    lobbyMsg('Conectando con el servidor…');
-    try { await net.connect(); } catch {
-      lobbyMsg('No se pudo conectar con el servidor. ¿Está arrancado? (npm run server)', true);
-      return;
-    }
-  }
-  lobbyMsg('Conectado. Elige una sala.');
-  net.send({ t: 'list' });
-}
-
-function renderRooms(rooms: RoomInfo[]) {
-  const list = $('roomList');
-  list.innerHTML = '';
-  if (!rooms.length) { list.textContent = 'No hay salas públicas todavía.'; return; }
-  for (const r of rooms) {
-    const row = document.createElement('div'); row.className = 'room';
-    const info = document.createElement('div');
-    const nm = document.createElement('strong'); nm.textContent = (r.main ? '🌍 ' : '') + r.name;
-    const sub = document.createElement('small'); sub.textContent = `${r.players}/${r.max} jugadores · oleada ${Math.max(1, r.wave)}`;
-    info.append(nm, sub);
-    const b = document.createElement('button'); b.textContent = r.players >= r.max ? 'Llena' : 'Entrar'; b.disabled = r.players >= r.max;
-    b.addEventListener('click', () => net.send({ t: 'join', room: r.id, name: nick() }));
-    row.append(info, b);
-    list.appendChild(row);
-  }
-}
-
-net.onRooms = renderRooms;
-net.onError = (msg) => lobbyMsg(msg, true);
-net.onJoined = (room) => {
-  clearScene();
-  mode = 'multi'; myId = net.you;
-  world = newWorld(Math.random, false, []); // se rellena con la primera instantánea
-  hudKey = ''; prevCoins = 0; playersKey = '';
-  lobby.hidden = true; overlay.hidden = true; shopEl.hidden = true;
-  document.body.classList.add('multi');
-  const narrow = innerWidth < 520;
-  $('roomChip').textContent = room.code ? (narrow ? `🔒 ${room.code}` : `🔒 ${room.name} · código ${room.code}`) : (narrow ? '🌍' : `🌍 ${room.name}`);
-  playing = true;
-  banner(room.code ? `CÓDIGO: ${room.code}` : 'CONECTADO');
-};
-net.onClose = () => {
-  if (mode !== 'multi') { lobbyMsg('Se perdió la conexión.', true); return; }
-  leaveMulti(true);
-  overlayTitle.textContent = 'Conexión perdida';
-  overlayMsg.textContent = 'Se cortó la conexión con el servidor.';
-};
-
-function leaveMulti(showMenu: boolean) {
-  if (mode !== 'multi') return;
-  net.send({ t: 'leave' });
-  mode = 'solo'; myId = 'p1';
-  playing = false;
-  clearScene();
-  world = newWorld();
-  document.body.classList.remove('multi');
-  shopEl.hidden = true;
-  if (showMenu) { overlayTitle.textContent = 'Frente de Batalla'; overlayMsg.textContent = ''; setMenu('start'); overlay.hidden = false; }
-}
-
-$('multiBtn').addEventListener('click', () => void openLobby());
-$('lobbyBack').addEventListener('click', () => { lobby.hidden = true; overlay.hidden = false; });
-$('refreshRooms').addEventListener('click', () => net.send({ t: 'list' }));
-$('joinMain').addEventListener('click', () => net.send({ t: 'join', main: true, name: nick() }));
-$('joinCode').addEventListener('click', () => {
-  const code = codeEl.value.trim().toUpperCase();
-  if (code.length < 5) return lobbyMsg('El código tiene 5 letras o números.', true);
-  net.send({ t: 'join', code, name: nick() });
-});
-$('createRoom').addEventListener('click', () => {
-  net.send({ t: 'create', roomName: roomNameEl.value, public: !$<HTMLInputElement>('privateRoom').checked, name: nick() });
-});
-$('leaveBtn').addEventListener('click', () => leaveMulti(true));
-$('roomChip').addEventListener('click', () => { if (net.room?.code) void navigator.clipboard?.writeText(net.room.code).then(() => banner('CÓDIGO COPIADO')); });
-document.addEventListener('visibilitychange', () => {
-  last = performance.now();
-  // Al ocultar la pestaña, avisar al servidor de que paramos (si no, seguiríamos disparando con la última orden)
-  if (document.hidden && mode === 'multi') net.send({ t: 'in', i: [0, 0, 0, 0, 0] });
-});
+document.addEventListener('visibilitychange', () => { last = performance.now(); });
 
 const muzzlePos = new THREE.Vector3();
 const MUZZLE_COLOR: Partial<Record<WeaponId, number>> = { lanzallamas: 0xff6a1a, francotirador: 0xc8f6ff, cohetes: 0xffa040 };
 function flushEvents() {
-  const mine = (pid: string | null | undefined) => pid === myId;
-  const at = (pid: string) => world.players.find((q) => q.id === pid) ?? me();
+  const p = world.player;
   for (const ev of world.events) {
     switch (ev.kind) {
-      case 'shoot': {
-        const sd = soldiers.get(ev.pid);
+      case 'shoot':
         if (ev.weapon !== 'lanzallamas') sfx.shoot();
-        if (!sd) break;
-        sd.recoil = ev.weapon === 'cohetes' || ev.weapon === 'francotirador' ? 1 : ev.weapon === 'escopeta' || ev.weapon === 'granadas' ? 0.7 : 0.35;
-        sd.muzzle.getWorldPosition(muzzlePos);
+        recoil = ev.weapon === 'cohetes' || ev.weapon === 'francotirador' ? 1 : ev.weapon === 'escopeta' || ev.weapon === 'granadas' ? 0.7 : 0.35;
+        soldier.muzzle.getWorldPosition(muzzlePos);
         fx.muzzle(muzzlePos, MUZZLE_COLOR[ev.weapon], ev.weapon === 'escopeta' || ev.weapon === 'cohetes' ? 1 : 0.6);
         if (ev.weapon === 'cohetes') fx.smoke(muzzlePos.x, muzzlePos.y, muzzlePos.z, 3, 0x8a8a8a, 0.6, 0.8);
-        if (ev.weapon === 'francotirador' && mine(ev.pid)) shake = Math.max(shake, 0.2);
+        if (ev.weapon === 'francotirador') shake = Math.max(shake, 0.2);
         break;
-      }
       case 'enemyShoot': sfx.enemyShoot(); break;
       case 'hit': sfx.hit(); fx.sparks(ev.x, 0.8, ev.z, 0xffe7a0, 3, 4); break;
       case 'kill': {
@@ -719,53 +533,28 @@ function flushEvents() {
         fx.debris(ev.x, 0.7, ev.z, 0x34383c, big ? 8 : 4, 6, 0.16);
         fx.sparks(ev.x, 0.8, ev.z, 0xffc56a, 10, 8);
         fx.smoke(ev.x, 0.5, ev.z, big ? 6 : 3, 0x4a4a4a, big ? 1.4 : 0.8, 1.8);
-        if (mine(ev.pid)) fx.text(ev.x, 1.8, ev.z, `+${ev.coins} 🪙`);
+        fx.text(ev.x, 1.8, ev.z, `+${ev.coins} 🪙`);
         shake = Math.max(shake, big ? 0.45 : 0.2);
         break;
       }
-      case 'hurt': {
-        const q = at(ev.pid);
-        fx.sparks(q.x, 1, q.z, 0xff5a5a, 10, 5);
-        if (mine(ev.pid)) { sfx.hurt(); shake = 0.6; }
-        break;
-      }
-      case 'pickup': {
-        const q = at(ev.pid);
-        if (!mine(ev.pid)) break;
+      case 'hurt': sfx.hurt(); shake = 0.6; fx.sparks(p.x, 1, p.z, 0xff5a5a, 10, 5); break;
+      case 'pickup':
         sfx.pickup();
-        fx.text(q.x, 2.2, q.z, ev.type === 'health' ? '+1 ❤️' : ev.type === 'coins' ? '+15 🪙' : '⚡', ev.type === 'health' ? '#ff8a8a' : '#ffd54a');
+        fx.text(p.x, 2.2, p.z, ev.type === 'health' ? '+1 ❤️' : ev.type === 'coins' ? '+15 🪙' : '⚡', ev.type === 'health' ? '#ff8a8a' : '#ffd54a');
         if (ev.type === 'rapid') banner('¡DISPARO RÁPIDO!');
         break;
-      }
-      case 'wave': sfx.wave(); banner(`OLEADA ${ev.wave}`); shopEl.hidden = true; break;
+      case 'wave': sfx.wave(); banner(`OLEADA ${ev.wave}`); break;
       case 'explosion': sfx.kill(); fx.explosion(ev.x, ev.z, ev.r); shake = Math.max(shake, 0.25 + ev.r * 0.08); break;
       case 'crate': sfx.hit(); fx.debris(ev.x, 0.6, ev.z, 0xa7783f, 14, 6, 0.25); fx.smoke(ev.x, 0.4, ev.z, 3, 0xb79f78, 1, 1); break;
       case 'blocked': fx.sparks(ev.x, 0.9, ev.z, 0xffd0a0, 3, 3); break;
-      case 'tool': {
-        const q = at(ev.pid);
-        if (ev.tool === 'barricada') fx.smoke(q.x + Math.sin(q.angle) * 2.4, 0.3, q.z + Math.cos(q.angle) * 2.4, 4, 0xb79f78, 1.5, 0.6);
-        if (!mine(ev.pid)) break;
+      case 'tool':
         sfx.pickup();
         banner({ torreta: 'TORRETA', mina: 'MINA COLOCADA', escudo: '¡ESCUDO!', barricada: 'BARRICADA' }[ev.tool]);
+        if (ev.tool === 'barricada') fx.smoke(p.x + Math.sin(p.angle) * 2.4, 0.3, p.z + Math.cos(p.angle) * 2.4, 4, 0xb79f78, 1.5, 0.6);
         break;
-      }
-      case 'regen': { const q = at(ev.pid); if (mine(ev.pid)) fx.text(q.x, 2.2, q.z, '+1 ❤️', '#8aff9a'); break; }
-      case 'down': {
-        const q = at(ev.pid);
-        fx.debris(q.x, 1, q.z, q.color, 10, 5); fx.smoke(q.x, 0.5, q.z, 4);
-        if (mine(ev.pid)) { sfx.gameover(); banner('HAS CAÍDO · vuelves en la próxima oleada'); }
-        else if (mode === 'multi') banner(`${names.get(ev.pid) ?? 'Alguien'} ha caído`);
-        break;
-      }
-      case 'join': if (mode === 'multi' && !mine(ev.pid)) banner(`${names.get(ev.pid) ?? 'Alguien'} se une`); break;
-      case 'leave': if (mode === 'multi') { banner(`${names.get(ev.pid) ?? 'Alguien'} se ha ido`); removeSoldier(ev.pid); } break;
+      case 'regen': fx.text(p.x, 2.2, p.z, '+1 ❤️', '#8aff9a'); break;
       case 'waveCleared': sfx.wave(); banner('¡OLEADA SUPERADA!'); openShop(ev.bonus); break;
-      case 'gameover': {
-        const q = me();
-        if (mode === 'solo') { sfx.gameover(); fx.debris(q.x, 1, q.z, 0x5d7a3e, 14, 6); fx.smoke(q.x, 0.5, q.z, 6); }
-        gameOver();
-        break;
-      }
+      case 'gameover': sfx.gameover(); fx.debris(p.x, 1, p.z, 0x5d7a3e, 14, 6); fx.smoke(p.x, 0.5, p.z, 6); gameOver(); break;
     }
   }
   world.events.length = 0;
@@ -807,52 +596,30 @@ resize();
 const camGoal = new THREE.Vector3(), jitter = new THREE.Vector3();
 // ?zoom=0.4 acerca la cámara (útil para ver los modelos de cerca)
 const ZOOM = Number(new URLSearchParams(location.search).get('zoom')) || 1;
-let last = performance.now();
+let last = performance.now(), prevPX = 0, prevPZ = 0, dustT = 0;
 function frame(now: number) {
   const rawDt = (now - last) / 1000;
   const dt = Math.min(0.05, rawDt);
   last = now;
   const t = now / 1000;
   if (playing && !document.hidden && rawDt < 1) adaptQuality(rawDt);
-  if (mode === 'solo' && playing && !document.hidden && world.phase === 'fight') {
+  if (playing && !document.hidden && world.phase === 'fight') {
     step(world, readInput(), dt);
     flushEvents();
-  } else if (mode === 'multi' && net.world) {
-    world = net.world;
-    const mine = world.players.find((q) => q.id === myId);
-    net.update(dt, mine?.alive && world.phase === 'fight' && !world.over ? readInput() : null);
-    for (const q of world.players) names.set(q.id, q.name);
-    world.events = net.events.splice(0);
-    flushEvents();
-    if (!world.over && !overlay.hidden && $('leaveBtn').hidden === false) overlay.hidden = true; // empezó otra partida
-    if (world.phase === 'fight') shopEl.hidden = true;
-    if (!shopEl.hidden && net.snap) {
-      const ready = net.snap.P.filter((q) => q.ready).length;
-      $('shopTimer').textContent = `La oleada empieza en ${net.snap.shopLeft} s · ${ready}/${net.snap.P.length} listos`;
-    }
   }
-  if (!world.players.length) { renderer.render(scene, camera); requestAnimationFrame(frame); return; }
   hud();
 
-  // Soldados (uno por jugador)
-  const p = me();
-  const present = new Set<string>();
-  for (const q of world.players) {
-    present.add(q.id);
-    const sd = soldierFor(q);
-    const speed = dt > 0 ? Math.hypot(q.x - sd.px, q.z - sd.pz) / dt : 0;
-    sd.px = q.x; sd.pz = q.z;
-    sd.recoil = Math.max(0, sd.recoil - dt * 6);
-    sd.root.position.set(q.x, 0, q.z);
-    sd.root.rotation.y = q.angle;
-    sd.root.visible = q.alive && !(mode === 'solo' && world.over) && (q.invuln <= 0 || q.shield > 0 || Math.floor(now / 80) % 2 === 0);
-    sd.shield.visible = q.shield > 0 && (q.shield > 1 || Math.floor(now / 100) % 2 === 0);
-    showWeapon(sd, q.weapon);
-    animateSoldier(sd, speed, dt, t, sd.recoil);
-    if (sd.label) { sd.label.position.set(q.x, 2.55, q.z); sd.label.visible = q.alive; }
-    if (q.alive && speed > 2 && Math.random() < dt * 8) fx.dust(q.x, q.z);
-  }
-  for (const id of [...soldiers.keys()]) if (!present.has(id)) removeSoldier(id);
+  // Soldado
+  const p = world.player;
+  const pSpeed = dt > 0 ? Math.hypot(p.x - prevPX, p.z - prevPZ) / dt : 0;
+  prevPX = p.x; prevPZ = p.z;
+  recoil = Math.max(0, recoil - dt * 6);
+  soldier.root.position.set(p.x, 0, p.z);
+  soldier.root.rotation.y = p.angle;
+  soldier.root.visible = !world.over && (p.invuln <= 0 || p.shield > 0 || Math.floor(now / 80) % 2 === 0);
+  soldier.shield.visible = p.shield > 0 && (p.shield > 1 || Math.floor(now / 100) % 2 === 0);
+  animateSoldier(soldier, pSpeed, dt, t, recoil);
+  if (pSpeed > 2 && (dustT -= dt) <= 0) { dustT = 0.12; fx.dust(p.x, p.z); }
 
   // Robots
   const alive = new Set<number>();
@@ -866,10 +633,7 @@ function frame(now: number) {
       robots.set(e.id, r);
       scene.add(r.root, r.bar.g);
     }
-    // Los robots miran al jugador vivo más cercano
-    let tgt = p;
-    for (const q of world.players) if (q.alive && (!tgt.alive || Math.hypot(q.x - e.x, q.z - e.z) < Math.hypot(tgt.x - e.x, tgt.z - e.z))) tgt = q;
-    animateRobot(r, e.x, e.z, tgt.x, tgt.z, dt, t, e.flash > 0);
+    animateRobot(r, e.x, e.z, p.x, p.z, dt, t, e.flash > 0);
     const hurtK = e.hp / e.maxHp;
     r.bar.g.visible = hurtK < 1;
     if (hurtK < 1) {
@@ -915,29 +679,22 @@ function frame(now: number) {
     m.position.set(mi.x, 0, mi.z);
     m.getObjectByName('light')!.visible = mi.arm > 0 ? Math.floor(now / 300) % 2 === 0 : Math.floor(now / 120) % 2 === 0;
   });
-  for (const q of world.players) {
-    let list = drones.get(q.id);
-    if (!list) drones.set(q.id, (list = []));
-    const want = q.alive ? q.drones : 0;
-    while (list.length < want) { const d = makeDrone(); list.push(d); scene.add(d); }
-    while (list.length > want) scene.remove(list.pop()!);
-    list.forEach((d, i) => {
-      const [x, z] = dronePos(world, i, q);
-      d.position.set(x, 2.2 + Math.sin(t * 3 + i) * 0.15, z);
-      d.rotation.y = q.angle;
-      for (const r of d.userData.rotors as THREE.Mesh[]) r.rotation.y += dt * 40;
-    });
-  }
-  for (const [id, list] of drones) if (!present.has(id)) { for (const d of list) scene.remove(d); drones.delete(id); }
+  while (drones.length < p.drones) { const d = makeDrone(); drones.push(d); scene.add(d); }
+  while (drones.length > p.drones) scene.remove(drones.pop()!);
+  drones.forEach((d, i) => {
+    const [x, z] = dronePos(world, i);
+    d.position.set(x, 2.2 + Math.sin(t * 3 + i) * 0.15, z);
+    d.rotation.y = p.angle;
+    for (const r of d.userData.rotors as THREE.Mesh[]) r.rotation.y += dt * 40;
+  });
 
   fx.update(dt);
   for (const c of clouds.children) { c.position.x += dt * 2.2; if (c.position.x > 70) c.position.x = -70; }
 
-  // Cámara y sol siguen al jugador (si has caído, a un compañero vivo)
-  const follow = p.alive ? p : world.players.find((q) => q.alive) ?? p;
+  // Cámara y sol siguen al jugador
   const portrait = camera.aspect < 1;
   const h = (portrait ? 26 : 17) * ZOOM, back = (portrait ? 11 : 11.5) * ZOOM;
-  camGoal.set(follow.x, h, follow.z + back);
+  camGoal.set(p.x, h, p.z + back);
   camera.position.lerp(camGoal, 1 - Math.exp(-dt * 6));
   shake = Math.max(0, shake - dt * 2);
   jitter.set((Math.random() - 0.5) * shake, 0, (Math.random() - 0.5) * shake);
@@ -953,4 +710,4 @@ function frame(now: number) {
 requestAnimationFrame(frame);
 
 // Para pruebas automatizadas
-Object.assign(window, { __world: () => world, __lowQuality: () => lowQuality, __flush: flushEvents, __me: () => me(), __net: net });
+Object.assign(window, { __world: () => world, __lowQuality: () => lowQuality, __flush: flushEvents });

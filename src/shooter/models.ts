@@ -83,7 +83,6 @@ function weaponModel(id: WeaponId): THREE.Group {
 export interface Soldier {
   root: THREE.Group; body: THREE.Group; legL: THREE.Group; legR: THREE.Group; armL: THREE.Group; armR: THREE.Group;
   weapons: Record<WeaponId, THREE.Group>; shield: THREE.Mesh; muzzle: THREE.Object3D; walk: number;
-  recoil: number; weapon: WeaponId | null; px: number; pz: number; label: THREE.Sprite | null;
 }
 
 function limb(upper: THREE.Material, lower: THREE.Material, len: number, thick: number) {
@@ -92,47 +91,33 @@ function limb(upper: THREE.Material, lower: THREE.Material, len: number, thick: 
   return g;
 }
 
-/** Materiales del uniforme de un color (cada jugador tiene el suyo). */
-const uniformCache = new Map<number, { main: THREE.Material; dark: THREE.Material; helmet: THREE.Material }>();
-function uniformMats(color: number) {
-  let u = uniformCache.get(color);
-  if (!u) {
-    const c = new THREE.Color(color);
-    u = color === 0x5d7a3e ? { main: MAT.uniform, dark: MAT.uniformDark, helmet: MAT.helmet }
-      : { main: std(color), dark: std(c.clone().multiplyScalar(0.72).getHex()), helmet: std(c.clone().multiplyScalar(0.85).getHex(), { roughness: 0.6 }) };
-    uniformCache.set(color, u);
-  }
-  return u;
-}
-
-export function makeSoldier(color = 0x5d7a3e): Soldier {
-  const U = uniformMats(color);
+export function makeSoldier(): Soldier {
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body, blobShadow(0.7));
 
-  const legL = limb(U.main, U.dark, 0.7, 0.2), legR = limb(U.main, U.dark, 0.7, 0.2);
+  const legL = limb(MAT.uniform, MAT.uniformDark, 0.7, 0.2), legR = limb(MAT.uniform, MAT.uniformDark, 0.7, 0.2);
   legL.position.set(-0.15, 0.72, 0); legR.position.set(0.15, 0.72, 0);
   legL.add(at(box(0.22, 0.12, 0.32, MAT.boot), 0, -0.7, 0.05)); legR.add(at(box(0.22, 0.12, 0.32, MAT.boot), 0, -0.7, 0.05));
   root.add(legL, legR);
 
   body.position.y = 0.72;
   body.add(
-    at(box(0.5, 0.18, 0.3, U.dark), 0, 0.05, 0), // cadera
-    at(box(0.56, 0.5, 0.34, U.main), 0, 0.38, 0), // torso
+    at(box(0.5, 0.18, 0.3, MAT.uniformDark), 0, 0.05, 0), // cadera
+    at(box(0.56, 0.5, 0.34, MAT.uniform), 0, 0.38, 0), // torso
     at(box(0.6, 0.42, 0.38, MAT.vest), 0, 0.4, 0), // chaleco
     at(box(0.12, 0.12, 0.06, MAT.strap), -0.15, 0.48, 0.2), at(box(0.12, 0.12, 0.06, MAT.strap), 0.15, 0.32, 0.2), // bolsillos
-    at(box(0.44, 0.48, 0.24, U.dark), 0, 0.42, -0.3), // mochila
-    at(box(0.36, 0.12, 0.2, U.helmet), 0, 0.68, -0.32), // saco de dormir
+    at(box(0.44, 0.48, 0.24, MAT.uniformDark), 0, 0.42, -0.3), // mochila
+    at(box(0.36, 0.12, 0.2, MAT.helmet), 0, 0.68, -0.32), // saco de dormir
     at(sph(0.2, MAT.skin), 0, 0.82, 0), // cabeza
     at(box(0.26, 0.06, 0.02, MAT.visor), 0, 0.86, 0.19), // gafas
   );
-  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), U.helmet);
+  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), MAT.helmet);
   helmet.position.y = 0.86; helmet.scale.set(1, 0.85, 1.08);
-  const brim = cyl(0.29, 0.29, 0.04, U.helmet, 14); brim.position.y = 0.86;
+  const brim = cyl(0.29, 0.29, 0.04, MAT.helmet, 14); brim.position.y = 0.86;
   body.add(helmet, brim);
 
-  const armL = limb(U.main, MAT.skin, 0.62, 0.15), armR = limb(U.main, MAT.skin, 0.62, 0.15);
+  const armL = limb(MAT.uniform, MAT.skin, 0.62, 0.15), armR = limb(MAT.uniform, MAT.skin, 0.62, 0.15);
   armL.position.set(-0.36, 0.6, 0.02); armR.position.set(0.36, 0.6, 0.02);
   armL.rotation.set(-1.25, 0, 0.35); armR.rotation.set(-1.35, 0, -0.1); // sujetando el arma
   body.add(armL, armR);
@@ -158,7 +143,7 @@ export function makeSoldier(color = 0x5d7a3e): Soldier {
 
   castShadows(root);
   shield.castShadow = false;
-  return { root, body, legL, legR, armL, armR, weapons, shield, muzzle, walk: 0, recoil: 0, weapon: null, px: 0, pz: 0, label: null };
+  return { root, body, legL, legR, armL, armR, weapons, shield, muzzle, walk: 0 };
 }
 
 export function animateSoldier(s: Soldier, speed: number, dt: number, t: number, recoil: number) {
@@ -173,8 +158,6 @@ export function animateSoldier(s: Soldier, speed: number, dt: number, t: number,
 }
 
 export function showWeapon(s: Soldier, id: WeaponId) {
-  if (s.weapon === id) return;
-  s.weapon = id;
   for (const [k, g] of Object.entries(s.weapons)) g.visible = k === id;
   // Con el lanzacohetes al hombro el brazo izquierdo sube
   s.armL.rotation.set(id === 'cohetes' ? -1.75 : -1.25, 0, id === 'cohetes' ? -0.25 : 0.35);
@@ -354,24 +337,4 @@ export function makeObstacle(kind: ObstacleKind, r: number, rot: number, crateMa
     g.rotation.y = -rot;
   }
   return castShadows(g);
-}
-
-/** Cartel con el nombre que flota sobre un jugador. */
-export function makeLabel(text: string, color: number): THREE.Sprite {
-  const c = document.createElement('canvas');
-  c.width = 256; c.height = 64;
-  const g = c.getContext('2d')!;
-  g.font = '800 34px system-ui, sans-serif';
-  const w = Math.min(248, g.measureText(text).width + 28);
-  g.fillStyle = 'rgba(20, 24, 14, 0.72)';
-  g.beginPath(); g.roundRect((256 - w) / 2, 8, w, 48, 14); g.fill();
-  g.fillStyle = '#' + new THREE.Color(color).offsetHSL(0, 0, 0.25).getHexString();
-  g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText(text, 128, 33);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }));
-  sp.scale.set(3.2, 0.8, 1);
-  sp.renderOrder = 8;
-  return sp;
 }

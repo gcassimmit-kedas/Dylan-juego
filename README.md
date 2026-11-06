@@ -48,41 +48,6 @@ El mapa cambia en cada partida.
 reales (pone sombras simples bajo los personajes) y baja la resolución. Se puede forzar con `shooter.html?calidad=alta`
 o `?calidad=baja`.
 
-## Multijugador (Frente de Batalla)
-
-Cooperativo de hasta **8 jugadores por sala** contra las oleadas de robots. Cada uno tiene sus monedas, su tienda,
-sus armas y su equipo; los robots van a por el jugador vivo más cercano. Quien cae vuelve en la siguiente oleada;
-si caen todos, la sala empieza otra partida sola a los 8 segundos. La tienda dura 30 s o hasta que todos pulsan "Listo".
-
-**Salas**
-- 🌍 **Servidor público principal**: siempre existe; si se llena (8), se abre automáticamente "Servidor principal 2".
-- **Salas públicas**: cualquiera las crea y salen en la lista.
-- 🔒 **Salas privadas**: no salen en la lista; se entra con un código de 5 caracteres (sin 0/O ni 1/I).
-
-**Arrancar el servidor** (sirve también la web):
-
-```bash
-npm install
-npm start            # compila y arranca en http://localhost:8080  (PORT=xxxx para otro puerto)
-```
-
-- **En casa (misma Wi-Fi):** abre `http://IP-DEL-ORDENADOR:8080/shooter.html` en cada dispositivo → "Multijugador".
-- **Desarrollo:** `npm run server` en una terminal y `npm run dev` en otra (Vite reenvía `/ws` al puerto 8080).
-- **En internet:** hay que desplegar el servidor en un hosting que admita WebSockets y procesos Node siempre encendidos
-  (Fly.io, Railway, Render, un VPS…). Hay un `Dockerfile` listo: `docker build -t frente-de-batalla . && docker run -p 8080:8080 frente-de-batalla`.
-  Ponlo detrás de HTTPS: los navegadores (y las apps de iOS) exigen `wss://` cuando la página va por `https://`.
-- **Apps (Capacitor):** la app no se sirve desde el servidor, así que hay que decirle dónde está al compilar:
-  `VITE_SERVER_URL=wss://tu-servidor.com/ws npm run cap:sync`. También se puede probar con `shooter.html?servidor=wss://…`.
-
-**Cómo funciona por dentro**
-- El servidor (`server/index.ts`) ejecuta la **misma simulación** que el modo un jugador, a 60 pasos por segundo,
-  y manda 20 instantáneas por segundo (~22 KB/s por jugador). Los clientes solo envían su entrada: no se puede hacer
-  trampa cambiando el código del navegador.
-- El cliente (`src/shooter/net.ts`) suaviza el movimiento entre instantáneas y **predice tu propio movimiento**
-  para que no notes el retardo al andar. Disparar sí tiene el retardo de la conexión (ida y vuelta al servidor).
-- El servidor valida todo lo que llega (nombres, entradas, compras), limita mensajes por segundo y, si un jugador
-  deja de mandar datos más de 1 s (pestaña oculta, red caída), lo deja quieto.
-
 ## Tres en Raya 3D
 
 **Controles:** arrastra para girar el cubo, pellizca o usa la rueda para hacer zoom, toca una esfera para jugar.
@@ -118,9 +83,6 @@ El juego va empaquetado dentro de la app (no carga una URL remota). Eso es neces
 - `src/shooter/main.ts`: escena de día, terreno, joysticks táctiles, ratón y teclado, HUD y tienda.
 - `src/shooter/models.ts`: modelos 3D low-poly (soldado, robots, armas, torreta, dron, mina, obstáculos) y sus animaciones.
 - `src/shooter/fx.ts`: efectos (fuego, humo, explosiones, escombros, polvo, fogonazos, textos flotantes).
-- `src/shooter/protocol.ts`: mensajes de red y codificación compacta de las instantáneas (compartido con el servidor).
-- `src/shooter/net.ts`: cliente multijugador (conexión, suavizado, predicción).
-- `server/index.ts`: servidor de salas (HTTP + WebSocket).
 - `src/shooter/audio.ts`: efectos de sonido sintetizados con WebAudio (no usa archivos de audio).
 - `src/tres/game.ts`: lógica del tres en raya (tablero, líneas, victoria, IA).
 - `src/tres/main.ts`: escena 3D del tres en raya.
