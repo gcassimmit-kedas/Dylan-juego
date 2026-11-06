@@ -20,25 +20,33 @@ npm run build    # genera dist/ para publicar en cualquier hosting estático
 ## Frente de Batalla
 
 **Controles**
-- Móvil: el pulgar izquierdo mueve y el derecho apunta y dispara. La barra inferior cambia de arma y coloca torretas.
-- PC: WASD para moverte, el ratón para apuntar, clic para disparar, 1-4 o Q/E para cambiar de arma, T para colocar una torreta.
+- Móvil: el pulgar izquierdo mueve y el derecho apunta y dispara. Abajo está la barra de armas y a la derecha el equipo.
+- PC: WASD para moverte, el ratón para apuntar, clic para disparar, 1-7 o Q/E para cambiar de arma.
+  Equipo: T (torreta), G (mina), F (escudo), B (barricada).
 
-**Campo de batalla:** rocas, árboles y muros de sacos terreros que paran las balas (tuyas y enemigas), y cajas
-que se rompen y sueltan monedas, vida o disparo rápido. El mapa cambia en cada partida.
+**Personajes:** tu soldado (casco, chaleco, mochila, piernas animadas; el arma cambia en la mano) contra tres robots:
+araña (roja, rápida), artillero (naranja, bípedo con cañón; dispara si te ve y te busca si te escondes) y tanque
+(morado, con orugas y torreta que te apunta). Los robots muestran su barra de vida al recibir daño.
 
-**Enemigos:** rojos (rápidos), morados (tanques) y naranjas (artilleros: disparan si te ven y te buscan si te escondes).
+**Campo de batalla:** de día, con cielo, sombras de nubes en movimiento, caminos de tierra, hierba y flores.
+Rocas, árboles y sacos terreros paran las balas; las cajas se rompen y sueltan monedas, vida o disparo rápido.
+El mapa cambia en cada partida.
 
-**Tienda** (se abre al terminar cada oleada; cada enemigo da monedas y además hay un bonus por oleada):
+**Tienda** (al terminar cada oleada; cada robot da monedas y hay un bonus por oleada):
 
-| Armas | Precio | | Herramientas | Precio |
-|---|---|---|---|---|
-| Subfusil | 60 | | Botiquín (+2 vida) | 20 |
-| Escopeta | 90 | | Armadura (+1 vida máx., hasta 3) | 50 |
-| Lanzagranadas | 160 | | Botas (+12% velocidad, hasta 2) | 40 |
-| | | | Munición pesada (+30% daño, hasta 2) | 70 |
-| | | | Torreta (dispara sola 30 s, hasta 3) | 50 |
+| Armas | 🪙 | Mejoras | 🪙 | Equipo (botón) | 🪙 |
+|---|---|---|---|---|---|
+| Subfusil | 60 | Botiquín (+2 vida) | 20 | Torreta (dispara sola 30 s) | 50 |
+| Escopeta | 90 | Armadura (+1 vida máx., ×3) | 50 | Mina (explota al pasar un robot) | 25 |
+| Lanzallamas | 120 | Botas (+12% velocidad, ×2) | 40 | Escudo (5 s invulnerable) | 45 |
+| Francotirador (atraviesa) | 140 | Munición pesada (+30% daño, ×2) | 70 | Barricada (muro que para balas enemigas) | 30 |
+| Lanzagranadas | 160 | Imán (atrae monedas) | 40 | | |
+| Lanzacohetes | 220 | Regeneración (+1 vida/15 s) | 80 | | |
+| | | Dron escolta (×2) | 90 | | |
 
-**Rendimiento:** si el dispositivo no llega a 40 FPS en los primeros segundos, el juego quita las sombras y baja la resolución automáticamente.
+**Gráficos y rendimiento:** si el dispositivo no llega a 40 FPS en los primeros segundos, el juego quita las sombras
+reales (pone sombras simples bajo los personajes) y baja la resolución. Se puede forzar con `shooter.html?calidad=alta`
+o `?calidad=baja`.
 
 ## Tres en Raya 3D
 
@@ -72,7 +80,9 @@ El juego va empaquetado dentro de la app (no carga una URL remota). Eso es neces
 ## Estructura
 
 - `src/shooter/sim.ts`: simulación pura del shooter (campo, IA, armas, oleadas, tienda). Testeable sin navegador.
-- `src/shooter/main.ts`: escena de día, modelos, joysticks táctiles, ratón y teclado, HUD, tienda y efectos.
+- `src/shooter/main.ts`: escena de día, terreno, joysticks táctiles, ratón y teclado, HUD y tienda.
+- `src/shooter/models.ts`: modelos 3D low-poly (soldado, robots, armas, torreta, dron, mina, obstáculos) y sus animaciones.
+- `src/shooter/fx.ts`: efectos (fuego, humo, explosiones, escombros, polvo, fogonazos, textos flotantes).
 - `src/shooter/audio.ts`: efectos de sonido sintetizados con WebAudio (no usa archivos de audio).
 - `src/tres/game.ts`: lógica del tres en raya (tablero, líneas, victoria, IA).
 - `src/tres/main.ts`: escena 3D del tres en raya.

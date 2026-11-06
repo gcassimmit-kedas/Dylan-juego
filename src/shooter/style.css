@@ -25,15 +25,19 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #7ec3ec; col
   color: #fff; text-shadow: 0 3px 0 rgba(0,0,0,0.45), 0 0 20px rgba(0,0,0,0.35); opacity: 0; transition: opacity 0.3s; pointer-events: none; }
 #banner.show { opacity: 1; }
 
-#toolbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 12px);
-  display: flex; gap: 8px; align-items: center; }
-#weapons { display: flex; gap: 6px; background: var(--panel); padding: 6px; border-radius: 14px; }
-.wbtn, .tool { font: inherit; color: var(--text); background: transparent; border: 2px solid transparent; border-radius: 10px;
-  min-width: 46px; height: 46px; padding: 0 6px; cursor: pointer; font-size: 1.3rem; position: relative; }
-.wbtn.on { border-color: var(--accent); background: rgba(255, 200, 61, 0.15); }
-.wbtn small { position: absolute; top: 1px; left: 4px; font-size: 0.6rem; color: var(--muted); }
-.tool { background: var(--panel); border-color: var(--line); height: 58px; min-width: 58px; border-radius: 14px; }
-.tool span { position: absolute; right: 4px; bottom: 2px; font-size: 0.75rem; font-weight: 800; color: var(--accent); }
+#toolbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 12px); display: flex; }
+#weapons { display: flex; gap: 4px; background: var(--panel); padding: 5px; border-radius: 14px; }
+.wbtn { font: inherit; color: var(--text); background: transparent; border: 2px solid transparent; border-radius: 10px;
+  min-width: 44px; height: 44px; padding: 0 4px; cursor: pointer; font-size: 1.25rem; position: relative; }
+.wbtn.on { border-color: var(--accent); background: rgba(255, 200, 61, 0.18); }
+.wbtn small, .tool small { position: absolute; top: 1px; left: 4px; font-size: 0.6rem; color: var(--muted); font-weight: 700; }
+#tools { position: fixed; right: calc(env(safe-area-inset-right) + 10px); top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 8px; touch-action: none; }
+.tool { font: inherit; color: var(--text); background: var(--panel); border: 2px solid var(--line); border-radius: 14px;
+  width: 54px; height: 54px; cursor: pointer; font-size: 1.45rem; position: relative; }
+.tool span { position: absolute; right: 4px; bottom: 1px; font-size: 0.75rem; font-weight: 800; color: var(--accent); }
+.tool.active { border-color: #6fd3ff; box-shadow: 0 0 14px rgba(111, 211, 255, 0.8); }
+.tool:active, .wbtn:active { transform: scale(0.94); }
 
 .stick { position: fixed; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%;
   border: 2px solid rgba(255,255,255,0.55); background: rgba(0,0,0,0.12); display: none; pointer-events: none; }
@@ -59,10 +63,13 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #7ec3ec; col
 #shop h3 { margin: 8px 0 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
 #shopSub { margin: 0; color: var(--ok); font-weight: 600; }
 .wallet { font-size: 1.4rem; font-weight: 800; color: var(--accent); }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
-.card { background: rgba(255,255,255,0.05); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 4px; }
-.card .t { font-weight: 700; display: flex; gap: 6px; align-items: center; }
-.card .d { color: var(--muted); font-size: 0.85rem; flex: 1; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.card { background: rgba(255,255,255,0.05); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 3px; }
+.card.owned { border-color: rgba(123, 211, 107, 0.55); }
+.card .ic { font-size: 1.8rem; line-height: 1.1; }
+.card .t { font-weight: 800; }
+.card .info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.card .d { color: var(--muted); font-size: 0.82rem; flex: 1; }
 .card .lvl { color: var(--muted); font-size: 0.75rem; }
 .card button { font: inherit; font-weight: 700; border: 0; border-radius: 9px; padding: 9px; cursor: pointer; margin-top: 4px;
   background: var(--accent); color: #2a1f00; }
@@ -75,7 +82,14 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #7ec3ec; col
   .chip { padding: 6px 8px; font-size: 0.85rem; }
   #hp { padding: 8px 7px; gap: 3px; } #hp span { width: 10px; height: 10px; }
   #score { min-width: 0; }
-  .grid { grid-template-columns: 1fr 1fr; }
-  .wbtn { min-width: 40px; height: 42px; font-size: 1.15rem; }
+  .grid { grid-template-columns: 1fr; gap: 6px; }
+  .card { flex-direction: row; align-items: center; gap: 10px; padding: 8px 10px; }
+  .card .ic { font-size: 1.6rem; width: 2rem; text-align: center; }
+  .card .t { font-size: 0.95rem; }
+  .card .d { font-size: 0.78rem; }
+  .card button { margin: 0; min-width: 92px; padding: 10px 8px; }
+  #shop .panel { padding: 14px; }
+  .wbtn { min-width: 38px; height: 40px; font-size: 1.1rem; }
+  .tool { width: 48px; height: 48px; font-size: 1.25rem; }
 }
-#weapons[hidden], .tool[hidden] { display: none; }
+#weapons[hidden] { display: none; }

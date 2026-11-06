@@ -1,0 +1,340 @@
+// Modelos 3D low-poly hechos con primitivas de Three.js (sin archivos externos) y sus animaciones.
+import * as THREE from 'three';
+import type { EnemyType, WeaponId, ObstacleKind } from './sim.ts';
+
+const std = (color: number, o: THREE.MeshStandardMaterialParameters = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.75, ...o });
+
+/** Materiales compartidos (menos cambios de estado en la GPU). */
+export const MAT = {
+  uniform: std(0x5d7a3e), uniformDark: std(0x46602d), vest: std(0x3b4a2a), skin: std(0xe2b48c), helmet: std(0x5a6e33, { roughness: 0.6 }),
+  boot: std(0x2e2a24), strap: std(0x2a2a22), metal: std(0x34383c, { metalness: 0.6, roughness: 0.4 }), metalLight: std(0x8c949b, { metalness: 0.6, roughness: 0.35 }),
+  wood: std(0x7a5532), orange: std(0xe8761e), visor: std(0x101418, { metalness: 0.9, roughness: 0.15 }),
+  red: std(0xc8342f, { roughness: 0.5, metalness: 0.3 }), redDark: std(0x7a1f1c, { roughness: 0.5, metalness: 0.3 }),
+  purple: std(0x5b4f7a, { roughness: 0.55, metalness: 0.45 }), purpleDark: std(0x3a3250, { roughness: 0.6, metalness: 0.4 }),
+  amber: std(0xe39a26, { roughness: 0.5, metalness: 0.35 }), amberDark: std(0x8f5a12, { roughness: 0.55, metalness: 0.35 }),
+  tread: std(0x26262a, { roughness: 0.9 }),
+  eyeRed: new THREE.MeshBasicMaterial({ color: 0xff3020 }), eyeYellow: new THREE.MeshBasicMaterial({ color: 0xffe14a }),
+  eyeCyan: new THREE.MeshBasicMaterial({ color: 0x5ff2ff }),
+  flash: new THREE.MeshBasicMaterial({ color: 0xffffff }),
+  blob: new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false }),
+  rock: std(0x8d9093, { flatShading: true, roughness: 0.95 }), rockDark: std(0x6f7276, { flatShading: true, roughness: 0.95 }),
+  bark: std(0x6b4a2b), leaves: std(0x4f8a2f, { flatShading: true }), leavesDark: std(0x3d7026, { flatShading: true }),
+  bag: std(0xcdb88c, { roughness: 1 }), bagDark: std(0xb39c6e, { roughness: 1 }),
+  shield: new THREE.MeshStandardMaterial({ color: 0x6fd3ff, emissive: 0x2a8cff, emissiveIntensity: 0.6, transparent: true, opacity: 0.28, depthWrite: false }),
+};
+
+const box = (w: number, h: number, d: number, m: THREE.Material) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+const cyl = (rt: number, rb: number, h: number, m: THREE.Material, seg = 10) => new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), m);
+const sph = (r: number, m: THREE.Material, w = 12, h = 10) => new THREE.Mesh(new THREE.SphereGeometry(r, w, h), m);
+const at = <T extends THREE.Object3D>(o: T, x: number, y: number, z: number) => { o.position.set(x, y, z); return o; };
+const blobGeo = new THREE.CircleGeometry(1, 20);
+
+export function blobShadow(r: number) {
+  const m = new THREE.Mesh(blobGeo, MAT.blob);
+  m.rotation.x = -Math.PI / 2; m.position.y = 0.02; m.scale.setScalar(r);
+  m.name = 'blob'; m.visible = false; m.castShadow = false;
+  return m;
+}
+
+export function castShadows<T extends THREE.Object3D>(o: T): T {
+  o.traverse((c) => { if (c.name !== 'blob') { c.castShadow = true; c.receiveShadow = true; } });
+  return o;
+}
+
+// ---------------- Armas (en las manos del soldado) ----------------
+
+function weaponModel(id: WeaponId): THREE.Group {
+  const g = new THREE.Group();
+  const M = MAT.metal, L = MAT.metalLight;
+  switch (id) {
+    case 'pistola':
+      g.add(at(box(0.1, 0.12, 0.38, M), 0, 0, 0.12), at(box(0.09, 0.2, 0.1, MAT.strap), 0, -0.12, -0.02));
+      break;
+    case 'subfusil':
+      g.add(at(box(0.12, 0.15, 0.6, M), 0, 0, 0.2), at(box(0.08, 0.28, 0.1, M), 0, -0.2, 0.2),
+        at(cyl(0.035, 0.035, 0.3, L), 0, 0.02, 0.6).rotateX(Math.PI / 2), at(box(0.1, 0.1, 0.25, MAT.strap), 0, -0.02, -0.15));
+      break;
+    case 'escopeta':
+      g.add(at(cyl(0.045, 0.045, 0.95, M), 0.035, 0.02, 0.45).rotateX(Math.PI / 2), at(cyl(0.045, 0.045, 0.95, M), -0.035, 0.02, 0.45).rotateX(Math.PI / 2),
+        at(box(0.13, 0.13, 0.35, MAT.wood), 0, -0.02, -0.12), at(box(0.12, 0.08, 0.25, MAT.wood), 0, -0.06, 0.4));
+      break;
+    case 'lanzallamas':
+      g.add(at(box(0.14, 0.16, 0.55, M), 0, 0, 0.15), at(cyl(0.06, 0.09, 0.4, L), 0, 0.02, 0.6).rotateX(Math.PI / 2),
+        at(cyl(0.025, 0.025, 0.12, MAT.orange), 0, -0.05, 0.82).rotateX(Math.PI / 2));
+      break;
+    case 'francotirador':
+      g.add(at(cyl(0.035, 0.035, 1.3, M), 0, 0.03, 0.6).rotateX(Math.PI / 2), at(box(0.12, 0.15, 0.6, MAT.uniformDark), 0, -0.02, 0),
+        at(cyl(0.05, 0.05, 0.35, MAT.visor), 0, 0.15, 0.15).rotateX(Math.PI / 2), at(box(0.04, 0.2, 0.04, M), 0.08, -0.15, 0.85));
+      break;
+    case 'granadas':
+      g.add(at(cyl(0.11, 0.11, 0.55, M), 0, 0.02, 0.3).rotateX(Math.PI / 2), at(cyl(0.16, 0.16, 0.18, MAT.uniformDark, 8), 0, 0, 0.05).rotateZ(Math.PI / 2),
+        at(box(0.09, 0.22, 0.1, MAT.strap), 0, -0.18, -0.05));
+      break;
+    case 'cohetes':
+      g.add(at(cyl(0.13, 0.13, 1.25, MAT.uniformDark), 0, 0.12, 0.25).rotateX(Math.PI / 2), at(cyl(0.16, 0.13, 0.15, M), 0, 0.12, 0.88).rotateX(Math.PI / 2),
+        at(box(0.08, 0.2, 0.1, MAT.strap), 0, -0.08, 0.2), at(box(0.06, 0.08, 0.15, MAT.visor), 0.15, 0.2, 0.25));
+      break;
+  }
+  return g;
+}
+
+// ---------------- Soldado (jugador) ----------------
+
+export interface Soldier {
+  root: THREE.Group; body: THREE.Group; legL: THREE.Group; legR: THREE.Group; armL: THREE.Group; armR: THREE.Group;
+  weapons: Record<WeaponId, THREE.Group>; shield: THREE.Mesh; muzzle: THREE.Object3D; walk: number;
+}
+
+function limb(upper: THREE.Material, lower: THREE.Material, len: number, thick: number) {
+  const g = new THREE.Group();
+  g.add(at(box(thick, len * 0.55, thick, upper), 0, -len * 0.27, 0), at(box(thick * 0.95, len * 0.5, thick * 0.95, lower), 0, -len * 0.75, 0));
+  return g;
+}
+
+export function makeSoldier(): Soldier {
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body, blobShadow(0.7));
+
+  const legL = limb(MAT.uniform, MAT.uniformDark, 0.7, 0.2), legR = limb(MAT.uniform, MAT.uniformDark, 0.7, 0.2);
+  legL.position.set(-0.15, 0.72, 0); legR.position.set(0.15, 0.72, 0);
+  legL.add(at(box(0.22, 0.12, 0.32, MAT.boot), 0, -0.7, 0.05)); legR.add(at(box(0.22, 0.12, 0.32, MAT.boot), 0, -0.7, 0.05));
+  root.add(legL, legR);
+
+  body.position.y = 0.72;
+  body.add(
+    at(box(0.5, 0.18, 0.3, MAT.uniformDark), 0, 0.05, 0), // cadera
+    at(box(0.56, 0.5, 0.34, MAT.uniform), 0, 0.38, 0), // torso
+    at(box(0.6, 0.42, 0.38, MAT.vest), 0, 0.4, 0), // chaleco
+    at(box(0.12, 0.12, 0.06, MAT.strap), -0.15, 0.48, 0.2), at(box(0.12, 0.12, 0.06, MAT.strap), 0.15, 0.32, 0.2), // bolsillos
+    at(box(0.44, 0.48, 0.24, MAT.uniformDark), 0, 0.42, -0.3), // mochila
+    at(box(0.36, 0.12, 0.2, MAT.helmet), 0, 0.68, -0.32), // saco de dormir
+    at(sph(0.2, MAT.skin), 0, 0.82, 0), // cabeza
+    at(box(0.26, 0.06, 0.02, MAT.visor), 0, 0.86, 0.19), // gafas
+  );
+  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), MAT.helmet);
+  helmet.position.y = 0.86; helmet.scale.set(1, 0.85, 1.08);
+  const brim = cyl(0.29, 0.29, 0.04, MAT.helmet, 14); brim.position.y = 0.86;
+  body.add(helmet, brim);
+
+  const armL = limb(MAT.uniform, MAT.skin, 0.62, 0.15), armR = limb(MAT.uniform, MAT.skin, 0.62, 0.15);
+  armL.position.set(-0.36, 0.6, 0.02); armR.position.set(0.36, 0.6, 0.02);
+  armL.rotation.set(-1.25, 0, 0.35); armR.rotation.set(-1.35, 0, -0.1); // sujetando el arma
+  body.add(armL, armR);
+
+  const weapons = {} as Record<WeaponId, THREE.Group>;
+  const holder = new THREE.Group();
+  holder.position.set(0.08, 0.42, 0.42);
+  for (const id of ['pistola', 'subfusil', 'escopeta', 'lanzallamas', 'francotirador', 'granadas', 'cohetes'] as WeaponId[]) {
+    const w = weaponModel(id);
+    w.visible = false;
+    if (id === 'cohetes') w.position.set(0.12, 0.3, -0.35); // al hombro
+    weapons[id] = w;
+    holder.add(w);
+  }
+  body.add(holder);
+  const muzzle = new THREE.Object3D();
+  muzzle.position.set(0.08, 0.45, 1.25);
+  body.add(muzzle);
+
+  const shield = new THREE.Mesh(new THREE.SphereGeometry(1.15, 24, 16), MAT.shield);
+  shield.position.y = 0.9; shield.visible = false;
+  root.add(shield);
+
+  castShadows(root);
+  shield.castShadow = false;
+  return { root, body, legL, legR, armL, armR, weapons, shield, muzzle, walk: 0 };
+}
+
+export function animateSoldier(s: Soldier, speed: number, dt: number, t: number, recoil: number) {
+  s.walk += speed * dt * 1.6;
+  const swing = Math.min(1, speed / 6) * 0.75;
+  s.legL.rotation.x = Math.sin(s.walk) * swing;
+  s.legR.rotation.x = -Math.sin(s.walk) * swing;
+  s.body.position.y = 0.72 + Math.abs(Math.cos(s.walk)) * 0.06 * Math.min(1, speed / 6) + Math.sin(t * 2) * 0.01;
+  s.body.position.z = -recoil * 0.12;
+  s.armR.rotation.x = -1.35 - recoil * 0.25;
+  if (s.shield.visible) { s.shield.rotation.y = t; s.shield.scale.setScalar(1 + Math.sin(t * 8) * 0.03); }
+}
+
+export function showWeapon(s: Soldier, id: WeaponId) {
+  for (const [k, g] of Object.entries(s.weapons)) g.visible = k === id;
+  // Con el lanzacohetes al hombro el brazo izquierdo sube
+  s.armL.rotation.set(id === 'cohetes' ? -1.75 : -1.25, 0, id === 'cohetes' ? -0.25 : 0.35);
+  s.muzzle.position.set(0.08, id === 'cohetes' ? 0.75 : 0.45, id === 'francotirador' ? 1.5 : id === 'pistola' ? 0.85 : 1.25);
+}
+
+// ---------------- Robots enemigos ----------------
+
+export interface Robot { root: THREE.Group; type: EnemyType; parts: THREE.Mesh[]; legs: THREE.Object3D[]; head?: THREE.Object3D; walk: number; px: number; pz: number }
+
+function robotParts(g: THREE.Object3D) {
+  const parts: THREE.Mesh[] = [];
+  g.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh && m.name !== 'blob' && m.material !== MAT.eyeRed && m.material !== MAT.eyeYellow) { m.userData.base = m.material; parts.push(m); } });
+  return parts;
+}
+
+/** Araña: robot pequeño y rápido con 4 patas. */
+function makeSpider(): Robot {
+  const root = new THREE.Group(), legs: THREE.Object3D[] = [];
+  const body = new THREE.Group(); body.position.y = 0.6; root.add(body, blobShadow(0.75));
+  const shell = sph(0.42, MAT.red, 14, 10); shell.scale.set(1, 0.65, 1.15);
+  body.add(shell, at(box(0.5, 0.12, 0.6, MAT.redDark), 0, -0.12, 0), at(sph(0.09, MAT.eyeRed, 8, 6), -0.13, 0.08, 0.42), at(sph(0.09, MAT.eyeRed, 8, 6), 0.13, 0.08, 0.42),
+    at(box(0.06, 0.3, 0.06, MAT.metal), 0, 0.35, -0.15));
+  for (const [x, z] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) {
+    const leg = new THREE.Group(); leg.position.set(x * 0.32, 0, z * 0.25);
+    const upper = at(box(0.42, 0.07, 0.07, MAT.metal), x * 0.2, 0.12, 0); upper.rotation.z = x * -0.6;
+    const lower = at(box(0.07, 0.55, 0.07, MAT.metalLight), x * 0.42, -0.15, 0);
+    leg.add(upper, lower); leg.userData.side = x * z;
+    body.add(leg); legs.push(leg);
+  }
+  return { root, type: 'chaser', parts: robotParts(root), legs, walk: Math.random() * 6, px: 0, pz: 0 };
+}
+
+/** Tanque: orugas, casco y torreta que apunta al jugador. */
+function makeTank(): Robot {
+  const root = new THREE.Group(), legs: THREE.Object3D[] = [];
+  root.add(blobShadow(1.3));
+  for (const x of [-0.72, 0.72]) {
+    root.add(at(box(0.38, 0.45, 1.9, MAT.tread), x, 0.25, 0));
+    for (let k = -2; k <= 2; k++) {
+      const wheel = at(cyl(0.17, 0.17, 0.42, MAT.metal, 10), x, 0.2, k * 0.38); wheel.rotation.z = Math.PI / 2;
+      root.add(wheel); legs.push(wheel);
+    }
+  }
+  root.add(at(box(1.15, 0.45, 1.7, MAT.purple), 0, 0.62, 0), at(box(1.0, 0.12, 0.5, MAT.purpleDark), 0, 0.9, -0.55));
+  const turret = new THREE.Group(); turret.position.y = 0.95;
+  turret.add(at(cyl(0.48, 0.55, 0.38, MAT.purple, 8), 0, 0.15, 0), at(cyl(0.08, 0.08, 1.1, MAT.metal), 0, 0.2, 0.75).rotateX(Math.PI / 2),
+    at(box(0.3, 0.12, 0.12, MAT.eyeYellow), 0, 0.25, 0.42), at(box(0.06, 0.4, 0.06, MAT.metal), -0.3, 0.45, -0.2));
+  root.add(turret);
+  return { root, type: 'tank', parts: robotParts(root), legs, head: turret, walk: 0, px: 0, pz: 0 };
+}
+
+/** Artillero: robot bípedo con un cañón en el brazo. */
+function makeWalker(): Robot {
+  const root = new THREE.Group(), legs: THREE.Object3D[] = [];
+  root.add(blobShadow(0.8));
+  for (const x of [-0.25, 0.25]) {
+    const leg = new THREE.Group(); leg.position.set(x, 0.8, 0);
+    leg.add(at(box(0.18, 0.45, 0.2, MAT.amberDark), 0, -0.22, 0), at(box(0.14, 0.4, 0.14, MAT.metal), 0, -0.58, 0.02), at(box(0.26, 0.1, 0.38, MAT.metal), 0, -0.78, 0.06));
+    root.add(leg); legs.push(leg);
+  }
+  const torso = new THREE.Group(); torso.position.y = 0.85;
+  torso.add(at(box(0.7, 0.55, 0.5, MAT.amber), 0, 0.3, 0), at(box(0.5, 0.2, 0.42, MAT.amberDark), 0, 0.02, 0),
+    at(box(0.4, 0.18, 0.08, MAT.visor), 0, 0.42, 0.26), at(box(0.3, 0.06, 0.02, MAT.eyeYellow), 0, 0.42, 0.31),
+    at(cyl(0.03, 0.03, 0.4, MAT.metal), 0.22, 0.75, -0.1),
+    at(box(0.22, 0.22, 0.3, MAT.amberDark), -0.47, 0.32, 0), // hombro izquierdo
+    at(cyl(0.11, 0.13, 0.8, MAT.metal), 0.5, 0.28, 0.3).rotateX(Math.PI / 2), at(box(0.25, 0.25, 0.3, MAT.amberDark), 0.5, 0.32, -0.02)); // cañón
+  root.add(torso);
+  return { root, type: 'gunner', parts: robotParts(root), legs, head: torso, walk: 0, px: 0, pz: 0 };
+}
+
+export function makeRobot(type: EnemyType): Robot {
+  const r = type === 'chaser' ? makeSpider() : type === 'tank' ? makeTank() : makeWalker();
+  castShadows(r.root);
+  return r;
+}
+
+export function animateRobot(r: Robot, x: number, z: number, faceX: number, faceZ: number, dt: number, t: number, flash: boolean) {
+  const moved = Math.hypot(x - r.px, z - r.pz);
+  const speed = dt > 0 ? moved / dt : 0;
+  const heading = moved > 0.001 ? Math.atan2(x - r.px, z - r.pz) : r.root.rotation.y;
+  r.px = x; r.pz = z;
+  r.root.position.set(x, 0, z);
+  r.walk += speed * dt * (r.type === 'chaser' ? 4 : 2.2);
+  const aim = Math.atan2(faceX - x, faceZ - z);
+  if (r.type === 'chaser') {
+    r.root.rotation.y = aim;
+    r.legs.forEach((leg, i) => { leg.rotation.x = Math.sin(r.walk + i * Math.PI * 0.5) * 0.5; leg.position.y = Math.max(0, Math.sin(r.walk + i * Math.PI * 0.5)) * 0.08; });
+    r.root.children[0].position.y = 0.6 + Math.sin(r.walk * 2) * 0.04;
+  } else if (r.type === 'tank') {
+    // El casco gira hacia donde avanza; la torreta apunta al jugador.
+    const diff = Math.atan2(Math.sin(heading - r.root.rotation.y), Math.cos(heading - r.root.rotation.y));
+    r.root.rotation.y += diff * Math.min(1, dt * 3);
+    r.head!.rotation.y = aim - r.root.rotation.y;
+    r.legs.forEach((wheel) => (wheel.rotation.x = r.walk));
+  } else {
+    r.root.rotation.y = aim;
+    const k = Math.min(1, speed / 3);
+    r.legs[0].rotation.x = Math.sin(r.walk) * 0.6 * k; r.legs[1].rotation.x = -Math.sin(r.walk) * 0.6 * k;
+    r.head!.position.y = 0.85 + Math.abs(Math.cos(r.walk)) * 0.05 * k + Math.sin(t * 3) * 0.01;
+  }
+  for (const p of r.parts) p.material = flash ? MAT.flash : (p.userData.base as THREE.Material);
+}
+
+// ---------------- Equipo ----------------
+
+export function makeTurret() {
+  const g = new THREE.Group();
+  g.add(blobShadow(0.7));
+  for (let k = 0; k < 3; k++) {
+    const leg = at(box(0.08, 0.7, 0.08, MAT.metal), Math.sin((k * Math.PI * 2) / 3) * 0.3, 0.3, Math.cos((k * Math.PI * 2) / 3) * 0.3);
+    leg.rotation.set(Math.cos((k * Math.PI * 2) / 3) * 0.4, 0, -Math.sin((k * Math.PI * 2) / 3) * 0.4);
+    g.add(leg);
+  }
+  const head = new THREE.Group(); head.name = 'head'; head.position.y = 0.75;
+  head.add(at(box(0.45, 0.3, 0.55, MAT.uniformDark), 0, 0, 0), at(cyl(0.05, 0.05, 0.7, MAT.metal), -0.08, 0.02, 0.55).rotateX(Math.PI / 2),
+    at(cyl(0.05, 0.05, 0.7, MAT.metal), 0.08, 0.02, 0.55).rotateX(Math.PI / 2), at(box(0.2, 0.08, 0.05, MAT.eyeCyan), 0, 0.1, 0.28),
+    at(box(0.12, 0.25, 0.3, MAT.metal), 0.3, -0.05, 0));
+  g.add(head);
+  return castShadows(g);
+}
+
+export function makeDrone() {
+  const g = new THREE.Group();
+  g.add(at(box(0.36, 0.12, 0.36, MAT.uniformDark), 0, 0, 0), at(sph(0.08, MAT.eyeCyan, 8, 6), 0, -0.06, 0.18));
+  const rotors: THREE.Mesh[] = [];
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    g.add(at(box(0.3, 0.04, 0.04, MAT.metal), x * 0.2, 0, z * 0.2).rotateY(Math.PI / 4 * x * z));
+    const rotor = at(cyl(0.16, 0.16, 0.015, MAT.metalLight, 12), x * 0.3, 0.07, z * 0.3);
+    g.add(rotor); rotors.push(rotor);
+  }
+  g.userData.rotors = rotors;
+  return castShadows(g);
+}
+
+export function makeMine() {
+  const g = new THREE.Group();
+  g.add(at(cyl(0.38, 0.42, 0.12, MAT.uniformDark, 14), 0, 0.06, 0), at(cyl(0.12, 0.12, 0.08, MAT.metal, 10), 0, 0.15, 0));
+  const light = at(sph(0.05, MAT.eyeRed, 6, 4), 0, 0.2, 0); light.name = 'light';
+  g.add(light);
+  return castShadows(g);
+}
+
+// ---------------- Obstáculos ----------------
+
+const G = {
+  rock: new THREE.DodecahedronGeometry(1, 0), rockSmall: new THREE.IcosahedronGeometry(1, 0),
+  trunk: new THREE.CylinderGeometry(0.18, 0.28, 1.6, 7), crown: new THREE.IcosahedronGeometry(1, 0),
+  bag: new THREE.CapsuleGeometry(0.28, 0.75, 4, 8), crate: new THREE.BoxGeometry(1.2, 1.2, 1.2),
+  pine: new THREE.ConeGeometry(1, 1.6, 8),
+};
+
+export function makeObstacle(kind: ObstacleKind, r: number, rot: number, crateMat: THREE.Material): THREE.Group {
+  const g = new THREE.Group();
+  const seed = Math.abs(Math.sin(rot * 999));
+  if (kind === 'rock') {
+    const a = new THREE.Mesh(G.rock, MAT.rock); a.scale.set(r * 1.05, r * 0.72, r); a.position.y = r * 0.3; a.rotation.set(rot, rot * 2, 0);
+    const b = new THREE.Mesh(G.rockSmall, MAT.rockDark); b.scale.setScalar(r * 0.45); b.position.set(r * 0.75, r * 0.15, r * 0.3); b.rotation.y = rot;
+    g.add(a, b);
+  } else if (kind === 'tree') {
+    g.add(at(new THREE.Mesh(G.trunk, MAT.bark), 0, 0.8, 0));
+    if (seed > 0.5) { // pino
+      for (let k = 0; k < 3; k++) { const c = new THREE.Mesh(G.pine, k % 2 ? MAT.leaves : MAT.leavesDark); c.scale.set(1.25 - k * 0.3, 1, 1.25 - k * 0.3); c.position.y = 1.6 + k * 0.7; g.add(c); }
+    } else { // frondoso
+      for (const [x, y, z, s] of [[0, 2.1, 0, 1.15], [0.55, 1.85, 0.2, 0.75], [-0.45, 1.9, -0.3, 0.8], [0.1, 2.65, -0.15, 0.7]]) {
+        const c = new THREE.Mesh(G.crown, s < 0.8 ? MAT.leavesDark : MAT.leaves); c.position.set(x, y, z); c.scale.setScalar(s); c.rotation.y = rot + x; g.add(c);
+      }
+    }
+  } else if (kind === 'crate') {
+    const c = new THREE.Mesh(G.crate, crateMat); c.position.y = 0.6; c.rotation.y = rot; g.add(c);
+  } else {
+    // sacos terreros (los de barricada son algo más oscuros)
+    const mats = kind === 'barricade' ? [MAT.bagDark, MAT.bag] : [MAT.bag, MAT.bagDark];
+    for (const [y, off, i] of [[0.28, -0.24, 0], [0.28, 0.24, 1], [0.75, 0, 0]]) {
+      const b = new THREE.Mesh(G.bag, mats[i]); b.rotation.z = Math.PI / 2; b.rotation.x = (seed - 0.5) * 0.2; b.position.set(0, y, off); g.add(b);
+    }
+    g.rotation.y = -rot;
+  }
+  return castShadows(g);
+}

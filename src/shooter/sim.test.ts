@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { newWorld, step, spawnEnemy, waveSize, waveBonus, buy, cannotBuy, nextWave, deployTurret, selectWeapon, type Input, type World } from './sim.ts';
+import { newWorld, step, spawnEnemy, waveSize, waveBonus, buy, cannotBuy, nextWave, useTool, selectWeapon, dronePos, type Input, type World } from './sim.ts';
 
 const idle: Input = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false };
 const seq = (vals: number[]) => { let i = 0; return () => vals[i++ % vals.length]; };
@@ -8,7 +8,7 @@ const run = (w: World, inp: Input, frames: number) => { for (let i = 0; i < fram
 /** Mundo vacío en plena oleada (sin spawns automáticos ni obstáculos). */
 function arena(rand = seq([0.99])) {
   const w = newWorld(rand, false);
-  w.wave = 1; w.toSpawn = 0; w.spawnTimer = 999;
+  w.wave = 1; w.toSpawn = 1; w.spawnTimer = 999; // queda 1 por salir: la oleada no termina sola
   return w;
 }
 
@@ -46,6 +46,7 @@ test('las balas se detienen en la cobertura y rompen cajas', () => {
 
 test('matar da puntos y monedas; limpiar la oleada abre la tienda con bonus', () => {
   const w = arena();
+  w.toSpawn = 0;
   const e = spawnEnemy(w, 'chaser', 0, 6); e.speed = 0;
   run(w, { ...idle, aimZ: 1, fire: true }, 90);
   assert.equal(w.enemies.length, 0);
@@ -97,9 +98,9 @@ test('la granada daña en área a varios enemigos', () => {
 
 test('la torreta dispara sola a enemigos cercanos', () => {
   const w = arena();
-  w.player.turrets = 1;
-  assert.ok(deployTurret(w));
-  assert.equal(w.player.turrets, 0);
+  w.player.tools.torreta = 1;
+  assert.ok(useTool(w, 'torreta'));
+  assert.equal(w.player.tools.torreta, 0);
   const e = spawnEnemy(w, 'tank', 6, 0); e.speed = 0;
   run(w, idle, 60);
   assert.ok(e.hp < e.maxHp);
@@ -145,4 +146,102 @@ test('un bot completa 6 oleadas en campos aleatorios (ningún enemigo queda atas
     }
     assert.ok(w.wave >= 7, `semilla ${seed}: se quedó en oleada ${w.wave} con ${w.enemies.length} enemigos`);
   }
+});
+
+test('el francotirador atraviesa varios enemigos en fila', () => {
+  const w = arena();
+  w.player.owned.push('francotirador'); selectWeapon(w, 'francotirador');
+  const es = [5, 7, 9].map((z) => { const e = spawnEnemy(w, 'tank', 0, z); e.speed = 0; return e; });
+  run(w, { ...idle, aimZ: 1, fire: true }, 12);
+  assert.ok(es.every((e) => e.hp < e.maxHp), 'los tres reciben daño');
+});
+
+test('el lanzallamas tiene corto alcance', () => {
+  const w = arena();
+  w.player.owned.push('lanzallamas'); selectWeapon(w, 'lanzallamas');
+  const near = spawnEnemy(w, 'tank', 0, 3), far = spawnEnemy(w, 'tank', 0, 12);
+  near.speed = far.speed = 0;
+  run(w, { ...idle, aimZ: 1, fire: true }, 60);
+  assert.ok(near.hp < near.maxHp);
+  assert.equal(far.hp, far.maxHp);
+});
+
+test('la mina explota cuando pasa un robot', () => {
+  const w = arena();
+  w.player.tools.mina = 1;
+  w.player.x = -10;
+  assert.ok(useTool(w, 'mina'));
+  w.player.z = 12; // el jugador se aleja; la mina queda en (-10, 0)
+  run(w, idle, 70); // se arma tras 1 s
+  const e = spawnEnemy(w, 'chaser', -10, -4); // viene hacia el jugador pasando por la mina
+  run(w, idle, 60);
+  assert.equal(w.mines.length, 0, 'la mina se gasta');
+  assert.ok(!w.enemies.includes(e), 'el robot muere');
+});
+
+test('el escudo evita el daño', () => {
+  const w = arena();
+  w.player.tools.escudo = 1;
+  useTool(w, 'escudo');
+  spawnEnemy(w, 'tank', 0.5, 0);
+  run(w, idle, 60);
+  assert.equal(w.player.hp, 5);
+});
+
+test('la barricada para balas enemigas, deja pasar las tuyas y se rompe', () => {
+  const w = arena();
+  w.player.tools.barricada = 1;
+  w.player.angle = 0; // mirando a +z
+  useTool(w, 'barricada');
+  const bars = w.obstacles.filter((o) => o.kind === 'barricade');
+  assert.equal(bars.length, 3);
+  // Balas enemigas que vienen de frente
+  const volley = (n: number) => {
+    for (let i = 0; i < n; i++) {
+      w.bullets.push({ id: w.nextId++, kind: 'enemiga', x: 0, z: 10, vx: 0, vz: -13, life: 2, maxLife: 2, enemy: true, dmg: 1, blast: 0, pierce: 0, hits: [] });
+      run(w, idle, 4);
+    }
+    run(w, idle, 60);
+  };
+  volley(10);
+  assert.equal(w.player.hp, 5, 'la barricada te cubre');
+  const t = spawnEnemy(w, 'tank', 0, 6); t.speed = 0;
+  run(w, { ...idle, aimZ: 1, fire: true }, 20);
+  assert.ok(t.hp < t.maxHp, 'tus balas pasan');
+  t.hp = 0; w.enemies = [];
+  volley(12); // 22 impactos > 18 de aguante
+  assert.equal(w.obstacles.filter((o) => o.kind === 'barricade').length, 2, 'el saco del centro se rompe');
+});
+
+test('el imán atrae los recogibles', () => {
+  const w = arena();
+  w.player.magnet = 1;
+  w.pickups.push({ id: 500, type: 'coins', x: 7, z: 0, life: 10 });
+  run(w, idle, 60);
+  assert.equal(w.coins, 15);
+});
+
+test('el dron dispara a enemigos cercanos', () => {
+  const w = arena();
+  w.player.drones = 1;
+  const [x, z] = dronePos(w, 0);
+  assert.ok(Math.hypot(x, z) > 1.5);
+  const e = spawnEnemy(w, 'tank', 6, 6); e.speed = 0;
+  run(w, idle, 90);
+  assert.ok(e.hp < e.maxHp);
+});
+
+test('la regeneración cura con el tiempo', () => {
+  const w = arena();
+  w.player.regen = 1; w.player.hp = 3;
+  run(w, idle, 60 * 16);
+  assert.equal(w.player.hp, 4);
+});
+
+test('todos los objetos de la tienda se pueden comprar', () => {
+  const w = arena();
+  w.coins = 99999; w.player.hp = 1;
+  for (const id of ['subfusil', 'escopeta', 'lanzallamas', 'francotirador', 'granadas', 'cohetes', 'botiquin', 'armadura', 'botas',
+    'municion', 'iman', 'regeneracion', 'dron', 'torreta', 'mina', 'escudo', 'barricada'] as const) assert.ok(buy(w, id), id);
+  assert.equal(w.player.owned.length, 7);
 });
