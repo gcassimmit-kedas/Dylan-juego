@@ -8,15 +8,20 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "test": "node --experimental-strip-types --test \"src/**/*.test.ts\"",
-    "cap:sync": "npm run build && cap sync"
+    "cap:sync": "npm run build && cap sync",
+    "server": "node --experimental-strip-types server/index.ts",
+    "start": "npm run build && npm run server"
   },
   "dependencies": {
     "@capacitor/core": "^8.6.0",
-    "three": "^0.187.0"
+    "three": "^0.187.0",
+    "ws": "^8.22.1"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.6.0",
+    "@types/node": "^26.6.6",
     "@types/three": "^0.187.0",
+    "@types/ws": "^8.18.2",
     "typescript": "^7.0.2",
     "vite": "^8.3.6"
   }

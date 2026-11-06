@@ -13,6 +13,7 @@
     <div class="left">
       <a href="./index.html" class="btn" aria-label="Menú">☰</a>
       <div id="hp" class="chip" aria-label="Vida"></div>
+      <button id="roomChip" class="chip mp-only" title="Toca para copiar el código"></button>
     </div>
     <div class="right">
       <div id="wave" class="chip">Oleada 1</div>
@@ -21,6 +22,7 @@
       <button id="mute" class="btn" aria-label="Sonido">🔊</button>
     </div>
   </div>
+  <div id="players" class="mp-only" aria-label="Jugadores"></div>
   <div id="rapid" hidden>⚡ DISPARO RÁPIDO</div>
   <div id="banner"></div>
   <div id="toolbar"><div id="weapons"></div></div>
@@ -33,16 +35,49 @@
       <h2 id="shopTitle">Tienda</h2>
       <p id="shopSub"></p>
       <div class="wallet">🪙 <span id="shopCoins">0</span></div>
+      <p id="shopTimer" hidden></p>
       <div id="shopBody"></div>
       <button id="nextWave" class="primary">Siguiente oleada ▶</button>
     </div>
   </div>
 
   <div id="overlay">
-    <h1>Frente de Batalla</h1>
+    <h1 id="overlayTitle">Frente de Batalla</h1>
     <p id="overlayMsg"></p>
-    <button id="play" class="primary">Jugar</button>
+    <div class="menu">
+      <button id="play" class="primary">Un jugador</button>
+      <button id="multiBtn" class="primary alt">Multijugador</button>
+      <button id="leaveBtn" class="primary alt" hidden>Salir al menú</button>
+    </div>
     <p class="help" id="help"></p>
+  </div>
+
+  <div id="lobby" hidden>
+    <div class="panel">
+      <h2>Multijugador</h2>
+      <p id="lobbyStatus"></p>
+      <label class="field">Tu nombre <input id="nick" maxlength="16" placeholder="Soldado" autocomplete="nickname" /></label>
+      <button id="joinMain" class="primary">🌍 Entrar al servidor público</button>
+
+      <h3>Salas públicas <button id="refreshRooms" class="mini" aria-label="Actualizar">↻</button></h3>
+      <div id="roomList"></div>
+
+      <h3>Crear sala</h3>
+      <div class="row">
+        <input id="roomName" maxlength="16" placeholder="Nombre de la sala" />
+        <label class="check"><input type="checkbox" id="privateRoom" /> Privada</label>
+        <button id="createRoom">Crear</button>
+      </div>
+      <small class="hint">Las salas privadas no salen en la lista: se entra con un código de 5 letras.</small>
+
+      <h3>Unirse con código</h3>
+      <div class="row">
+        <input id="code" maxlength="5" placeholder="ABCDE" autocapitalize="characters" autocomplete="off" />
+        <button id="joinCode">Unirse</button>
+      </div>
+
+      <button id="lobbyBack" class="back">← Volver</button>
+    </div>
   </div>
   <script type="module" src="/src/shooter/main.ts"></script>
 </body>
