@@ -2,15 +2,17 @@ import * as THREE from 'three';
 import {
   newWorld, step, buy, cannotBuy, owns, nextWave, useTool, selectWeapon, dronePos,
   SHOP, WEAPONS, WEAPON_ORDER, TOOL_ORDER,
-  type World, type Input, type Bullet, type Pickup, type EnemyType, type WeaponId, type ToolId, type ShopItem, type ShopKind, type ItemId,
+  type World, type Input, type Bullet, type Pickup, type EnemyType, type WeaponId, type ToolId, type ShopItem, type ShopKind,
 } from './sim.ts';
 import { sfx, unlock, isMuted, setMuted } from './audio.ts';
 import { MAT, makeSoldier, animateSoldier, showWeapon, makeRobot, animateRobot, makeTurret, makeDrone, makeMine, makeObstacle, type Robot } from './models.ts';
 import { Effects, SOFT } from './fx.ts';
+import { icon, ITEM_ICON, hydrateIcons } from '../ui/icons.ts';
+import { settings, type Quality } from './settings.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>('scene');
-const hpEl = $('hp'), waveEl = $('wave'), coinsEl = $('coins'), scoreEl = $('score'), bannerEl = $('banner'), rapidEl = $('rapid');
+const hpEl = $('hp'), waveEl = $('wave'), coinsEl = $('coins'), coinsN = $('coinsN'), scoreEl = $('score'), bannerEl = $('banner'), rapidEl = $('rapid');
 const overlay = $('overlay'), overlayMsg = $('overlayMsg'), playBtn = $<HTMLButtonElement>('play'), muteBtn = $('mute');
 const weaponsEl = $('weapons'), toolsEl = $('tools'), shopEl = $('shop');
 const isTouch = matchMedia('(pointer: coarse)').matches;
@@ -18,11 +20,7 @@ $('help').textContent = isTouch
   ? 'Pulgar izquierdo: moverte · Pulgar derecho: apuntar y disparar. Escóndete detrás de rocas y sacos.'
   : 'WASD: moverte · Ratón: apuntar · Clic: disparar · 1-7: armas · T G F B: equipo. Escóndete detrás de rocas y sacos.';
 
-const ICON: Record<ItemId, string> = {
-  pistola: '🔫', subfusil: '💨', escopeta: '💥', lanzallamas: '🔥', francotirador: '🎯', granadas: '💣', cohetes: '🚀',
-  botiquin: '🩹', armadura: '🛡️', botas: '🥾', municion: '🔶', iman: '🧲', regeneracion: '💚', dron: '🛸',
-  torreta: '🗼', mina: '🧨', escudo: '🔰', barricada: '🧱',
-};
+hydrateIcons();
 const TOOL_KEY: Record<ToolId, string> = { torreta: 'T', mina: 'G', escudo: 'F', barricada: 'B' };
 
 // ---------- Render ----------
@@ -402,7 +400,7 @@ function hud() {
   hpEl.innerHTML = Array.from({ length: p.maxHp }, (_, i) => `<span class="${i < p.hp ? '' : 'off'}"></span>`).join('');
   scoreEl.textContent = String(world.score);
   waveEl.textContent = `Oleada ${Math.max(1, world.wave)}`;
-  coinsEl.textContent = `🪙 ${world.coins}`;
+  coinsN.textContent = String(world.coins);
   if (world.coins > prevCoins) { coinsEl.classList.add('pulse'); setTimeout(() => coinsEl.classList.remove('pulse'), 150); }
   prevCoins = world.coins;
 
@@ -411,7 +409,7 @@ function hud() {
     if (!p.owned.includes(id)) return;
     const b = document.createElement('button');
     b.className = `wbtn${p.weapon === id ? ' on' : ''}`;
-    b.innerHTML = `${isTouch ? '' : `<small>${i + 1}</small>`}${ICON[id]}`;
+    b.innerHTML = `${isTouch ? '' : `<small>${i + 1}</small>`}${icon(ITEM_ICON[id])}`;
     b.title = WEAPONS[id].name;
     b.setAttribute('aria-label', WEAPONS[id].name);
     b.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); pickWeapon(id); });
@@ -424,7 +422,7 @@ function hud() {
     if (p.tools[t] <= 0 && !(t === 'escudo' && p.shield > 0)) continue;
     const b = document.createElement('button');
     b.className = `tool${t === 'escudo' && p.shield > 0 ? ' active' : ''}`;
-    b.innerHTML = `${ICON[t]}<span>${p.tools[t]}</span>${isTouch ? '' : `<small>${TOOL_KEY[t]}</small>`}`;
+    b.innerHTML = `${icon(ITEM_ICON[t])}<span>${p.tools[t]}</span>${isTouch ? '' : `<small>${TOOL_KEY[t]}</small>`}`;
     b.setAttribute('aria-label', SHOP.find((s) => s.id === t)!.name);
     b.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); tool(t); });
     toolsEl.appendChild(b);
@@ -441,8 +439,13 @@ function banner(text: string) {
   clearTimeout(bannerTimer);
   bannerTimer = window.setTimeout(() => bannerEl.classList.remove('show'), 1400);
 }
-muteBtn.textContent = isMuted() ? '🔇' : '🔊';
-muteBtn.addEventListener('click', () => { setMuted(!isMuted()); muteBtn.textContent = isMuted() ? '🔇' : '🔊'; });
+function renderMute() {
+  muteBtn.innerHTML = icon(isMuted() ? 'volumeOff' : 'volumeOn');
+  muteBtn.setAttribute('aria-label', isMuted() ? 'Activar sonido' : 'Silenciar');
+  muteBtn.setAttribute('aria-pressed', String(isMuted()));
+}
+renderMute();
+muteBtn.addEventListener('click', () => { setMuted(!isMuted()); renderMute(); renderSettings(); });
 
 // ---------- Tienda ----------
 const SECTIONS: { kind: ShopKind; title: string }[] = [
@@ -454,9 +457,10 @@ function card(item: ShopItem) {
   const lvl = item.max ? `<div class="lvl">${item.kind === 'equipo' ? `Tienes ${n}/${item.max}` : `Nivel ${n}/${item.max}`}</div>` : '';
   const el = document.createElement('div');
   el.className = `card${n && item.kind !== 'equipo' ? ' owned' : ''}`;
-  el.innerHTML = `<div class="ic">${ICON[item.id]}</div><div class="info"><div class="t">${item.name}</div><div class="d">${item.desc}</div>${lvl}</div>`;
+  el.innerHTML = `<div class="art">${icon(ITEM_ICON[item.id])}</div><div class="info"><div class="t">${item.name}</div><div class="d">${item.desc}</div>${lvl}</div>`;
   const b = document.createElement('button');
-  b.textContent = reason && reason !== 'Faltan monedas' ? reason : `🪙 ${item.price}`;
+  if (reason && reason !== 'Faltan monedas') b.textContent = reason;
+  else { b.innerHTML = `${icon('coins')}<span>${item.price}</span>`; b.setAttribute('aria-label', `Comprar por ${item.price} monedas`); }
   b.disabled = !!reason;
   b.addEventListener('click', () => { if (buy(world, item.id)) { sfx.pickup(); renderShop(); hud(); } });
   el.appendChild(b);
@@ -521,7 +525,7 @@ function setPaused(v: boolean) {
   if (v && !playing) return;
   paused = v;
   pauseEl.hidden = !v;
-  pauseBtn.textContent = v ? '▶' : '⏸';
+  pauseBtn.innerHTML = icon(v ? 'play' : 'pause');
   pauseBtn.setAttribute('aria-label', v ? 'Continuar' : 'Pausar');
   // Soltar todo lo que estuviera pulsado para no volver disparando o caminando solo
   releaseStick('L'); releaseStick('R'); mouse.down = false; keys.clear();
@@ -568,14 +572,16 @@ function flushEvents() {
         fx.debris(ev.x, 0.7, ev.z, 0x34383c, big ? 8 : 4, 6, 0.16);
         fx.sparks(ev.x, 0.8, ev.z, 0xffc56a, 10, 8);
         fx.smoke(ev.x, 0.5, ev.z, big ? 6 : 3, 0x4a4a4a, big ? 1.4 : 0.8, 1.8);
-        fx.text(ev.x, 1.8, ev.z, `+${ev.coins} 🪙`);
+        fx.text(ev.x, 1.8, ev.z, `+${ev.coins}`, '#ffd54a', 'coin');
         shake = Math.max(shake, big ? 0.45 : 0.2);
         break;
       }
       case 'hurt': sfx.hurt(); shake = 0.6; fx.sparks(p.x, 1, p.z, 0xff5a5a, 10, 5); break;
       case 'pickup':
         sfx.pickup();
-        fx.text(p.x, 2.2, p.z, ev.type === 'health' ? '+1 ❤️' : ev.type === 'coins' ? '+15 🪙' : '⚡', ev.type === 'health' ? '#ff8a8a' : '#ffd54a');
+        if (ev.type === 'health') fx.text(p.x, 2.2, p.z, '+1', '#ff8a8a', 'heart');
+        else if (ev.type === 'coins') fx.text(p.x, 2.2, p.z, '+15', '#ffd54a', 'coin');
+        else fx.text(p.x, 2.2, p.z, 'x2', '#ffd54a', 'zap');
         if (ev.type === 'rapid') banner('¡DISPARO RÁPIDO!');
         break;
       case 'wave': sfx.wave(); banner(`OLEADA ${ev.wave}`); break;
@@ -587,7 +593,7 @@ function flushEvents() {
         banner({ torreta: 'TORRETA', mina: 'MINA COLOCADA', escudo: '¡ESCUDO!', barricada: 'BARRICADA' }[ev.tool]);
         if (ev.tool === 'barricada') fx.smoke(p.x + Math.sin(p.angle) * 2.4, 0.3, p.z + Math.cos(p.angle) * 2.4, 4, 0xb79f78, 1.5, 0.6);
         break;
-      case 'regen': fx.text(p.x, 2.2, p.z, '+1 ❤️', '#8aff9a'); break;
+      case 'regen': fx.text(p.x, 2.2, p.z, '+1', '#8aff9a', 'heart'); break;
       case 'waveCleared': sfx.wave(); banner('¡OLEADA SUPERADA!'); openShop(ev.bonus); break;
       case 'gameover': sfx.gameover(); fx.debris(p.x, 1, p.z, 0x5d7a3e, 14, 6); fx.smoke(p.x, 0.5, p.z, 6); gameOver(); break;
     }
@@ -595,27 +601,56 @@ function flushEvents() {
   world.events.length = 0;
 }
 
-// ---------- Calidad adaptativa ----------
-// ?calidad=alta o ?calidad=baja fuerza el modo; si no, se decide midiendo los FPS.
-const QUALITY = new URLSearchParams(location.search).get('calidad');
-let perfFrames = 0, perfTime = 0, perfDone = QUALITY === 'alta', lowQuality = false;
+// ---------- Calidad gráfica ----------
+// Automática: mide los FPS de los primeros segundos y baja la calidad si no llega a 40.
+// Alta / Baja: elegidas por el jugador en Ajustes.
+let perfFrames = 0, perfTime = 0, perfDone = settings.quality !== 'auto', lowQuality = false;
 function adaptQuality(dt: number) {
   if (perfDone) return;
   perfFrames++; perfTime += dt;
-  if (QUALITY !== 'baja' && perfFrames < 150 && perfTime < 2.5) return;
+  if (perfFrames < 150 && perfTime < 2.5) return;
   perfDone = true;
-  if (QUALITY !== 'baja' && perfFrames / perfTime >= 40) return;
-  lowQuality = true;
-  renderer.shadowMap.enabled = false;
-  sun.castShadow = false;
-  renderer.setPixelRatio(1);
+  if (perfFrames / perfTime < 40) applyQuality(true);
+}
+function applyQuality(low: boolean) {
+  if (low === lowQuality) return;
+  lowQuality = low;
+  renderer.shadowMap.enabled = !low;
+  sun.castShadow = !low;
+  renderer.setPixelRatio(low ? 1 : Math.min(window.devicePixelRatio, isTouch ? 1.75 : 2));
   scene.traverse((o) => {
-    if (o.name === 'blob') o.visible = true; // sombras falsas bajo los personajes
+    if (o.name === 'blob') o.visible = low; // sombras simples bajo los personajes cuando no hay sombras reales
     const m = (o as THREE.Mesh).material as THREE.Material | undefined;
     if (m) m.needsUpdate = true;
   });
   resize();
 }
+function setQuality(q: Quality) {
+  settings.quality = q;
+  if (q === 'auto') { perfDone = false; perfFrames = 0; perfTime = 0; applyQuality(false); }
+  else { perfDone = true; applyQuality(q === 'baja'); }
+}
+
+if (settings.quality === 'baja') applyQuality(true);
+
+// ---------- Ajustes ----------
+const settingsEl = $('settings');
+function renderSettings() {
+  const sound = $<HTMLButtonElement>('setSound'), shakeBtn = $<HTMLButtonElement>('setShake');
+  sound.setAttribute('aria-checked', String(!isMuted()));
+  shakeBtn.setAttribute('aria-checked', String(settings.shake));
+  for (const b of settingsEl.querySelectorAll<HTMLButtonElement>('[data-quality]'))
+    b.setAttribute('aria-checked', String(b.dataset.quality === settings.quality));
+}
+function openSettings() { renderSettings(); settingsEl.hidden = false; $('settingsClose').focus(); }
+$('setSound').addEventListener('click', () => { setMuted(!isMuted()); renderMute(); renderSettings(); });
+$('setShake').addEventListener('click', () => { settings.shake = !settings.shake; renderSettings(); });
+for (const b of settingsEl.querySelectorAll<HTMLButtonElement>('[data-quality]'))
+  b.addEventListener('click', () => { setQuality(b.dataset.quality as Quality); renderSettings(); });
+$('settingsClose').addEventListener('click', () => { settingsEl.hidden = true; });
+$('menuSettings').addEventListener('click', openSettings);
+$('pauseSettings').addEventListener('click', openSettings);
+
 const setBlobs = (o: THREE.Object3D) => { if (lowQuality) o.traverse((c) => { if (c.name === 'blob') c.visible = true; }); return o; };
 
 // ---------- Bucle ----------
@@ -691,7 +726,7 @@ function frame(now: number) {
     if (b.kind === 'enemiga') y = 1;
     m.position.set(b.x, y, b.z);
     if (b.kind === 'fuego') {
-      const k = 1 - b.life / b.maxLife; // 0 → 1 con la edad: amarillo, naranja, rojo
+      const k = 1 - b.life / b.maxLife; // de 0 a 1 con la edad: amarillo, naranja, rojo
       const sp = m as THREE.Sprite;
       sp.material = k < 0.3 ? PM.fireHot : k < 0.7 ? PM.fire : PM.fireOld;
       sp.scale.setScalar(0.45 + k * 1.5);
@@ -732,7 +767,8 @@ function frame(now: number) {
   camGoal.set(p.x, h, p.z + back);
   camera.position.lerp(camGoal, 1 - Math.exp(-dt * 6));
   shake = Math.max(0, shake - dt * 2);
-  jitter.set((Math.random() - 0.5) * shake, 0, (Math.random() - 0.5) * shake);
+  const sk = settings.shake ? shake : 0; // accesibilidad: el temblor se puede desactivar en Ajustes
+  jitter.set((Math.random() - 0.5) * sk, 0, (Math.random() - 0.5) * sk);
   camera.position.add(jitter);
   camera.lookAt(camera.position.x, 0, camera.position.z - back);
   sun.target.position.set(camera.position.x, 0, camera.position.z - back);

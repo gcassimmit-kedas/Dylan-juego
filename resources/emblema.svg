@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Emblema de Frente de Batalla: casco militar dentro de una mira. Sin texto. -->
+  <defs>
+    <linearGradient id="casco" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8aa356"/>
+      <stop offset="1" stop-color="#4f6530"/>
+    </linearGradient>
+    <linearGradient id="ala" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5d7638"/>
+      <stop offset="1" stop-color="#3a4b22"/>
+    </linearGradient>
+  </defs>
+  <!-- Mira -->
+  <circle cx="512" cy="512" r="330" fill="none" stroke="#ffc83d" stroke-width="40"/>
+  <path d="M512 120v130M512 774v130M120 512h130M774 512h130" stroke="#ffc83d" stroke-width="40" stroke-linecap="round"/>
+  <!-- Casco -->
+  <path d="M322 590c0-140 85-236 190-236s190 96 190 236z" fill="url(#casco)"/>
+  <path d="M380 470c22-56 70-92 132-92" fill="none" stroke="#b9cf86" stroke-width="18" stroke-linecap="round" opacity=".75"/>
+  <rect x="282" y="578" width="460" height="58" rx="29" fill="url(#ala)"/>
+  <!-- Correa -->
+  <path d="M352 636c20 70 80 110 160 110s140-40 160-110" fill="none" stroke="#2f3a1c" stroke-width="20" stroke-linecap="round"/>
+  <circle cx="512" cy="512" r="9" fill="#ffc83d"/>
+</svg>

@@ -1,5 +1,33 @@
 // Efectos visuales: chispas, humo, fogonazos, polvo, escombros, marcas de explosión y textos flotantes.
 import * as THREE from 'three';
+import heartSvg from 'lucide-static/icons/heart.svg?raw';
+import zapSvg from 'lucide-static/icons/zap.svg?raw';
+
+/** Trazados SVG de Lucide para dibujarlos en un canvas con Path2D. */
+const pathsOf = (svg: string) => [...svg.matchAll(/ d="([^"]+)"/g)].map((m) => new Path2D(m[1]));
+const GLYPH = { heart: pathsOf(heartSvg), zap: pathsOf(zapSvg) };
+export type TextIcon = 'coin' | 'heart' | 'zap';
+
+function drawIcon(g: CanvasRenderingContext2D, kind: TextIcon, x: number, y: number, size: number, color: string) {
+  g.save();
+  g.translate(x, y);
+  if (kind === 'coin') {
+    const r = size / 2;
+    g.beginPath(); g.arc(r, r, r - 3, 0, Math.PI * 2);
+    g.fillStyle = '#ffc83d'; g.fill();
+    g.lineWidth = 5; g.strokeStyle = 'rgba(0,0,0,0.75)'; g.stroke();
+    g.beginPath(); g.arc(r, r, r * 0.55, 0, Math.PI * 2);
+    g.lineWidth = 4; g.strokeStyle = '#b8860b'; g.stroke();
+  } else {
+    g.scale(size / 24, size / 24);
+    g.lineJoin = 'round'; g.lineCap = 'round';
+    for (const p of GLYPH[kind]) {
+      g.lineWidth = 5; g.strokeStyle = 'rgba(0,0,0,0.75)'; g.stroke(p);
+      g.fillStyle = color; g.fill(p);
+    }
+  }
+  g.restore();
+}
 
 function softTexture() {
   const c = document.createElement('canvas');
@@ -113,9 +141,9 @@ export class Effects {
     this.add({ o: sc, mat: sm, vx: 0, vy: 0, vz: 0, life: 14, max: 14, gravity: 0, grow: 0, size: r * 1.05, fade: 0.25, spin: 0, floor: -99 });
   }
 
-  /** Texto flotante (p. ej. "+3 🪙"). */
-  text(x: number, y: number, z: number, str: string, color = '#ffd54a') {
-    const key = str + color;
+  /** Texto flotante con icono opcional (p. ej. "+3" y una moneda). */
+  text(x: number, y: number, z: number, str: string, color = '#ffd54a', iconKind?: TextIcon) {
+    const key = str + color + (iconKind ?? '');
     let tex = this.textTex.get(key);
     if (!tex) {
       const c = document.createElement('canvas');
@@ -123,8 +151,12 @@ export class Effects {
       const g = c.getContext('2d')!;
       g.font = '900 64px system-ui, sans-serif';
       g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.lineWidth = 10; g.strokeStyle = 'rgba(0,0,0,0.75)'; g.strokeText(str, 128, 50);
-      g.fillStyle = color; g.fillText(str, 128, 50);
+      const iconSize = iconKind ? 56 : 0, gap = iconKind ? 8 : 0;
+      const tw = g.measureText(str).width, total = tw + iconSize + gap;
+      const tx = 128 - total / 2 + tw / 2;
+      g.lineWidth = 10; g.strokeStyle = 'rgba(0,0,0,0.75)'; g.strokeText(str, tx, 50);
+      g.fillStyle = color; g.fillText(str, tx, 50);
+      if (iconKind) drawIcon(g, iconKind, tx + tw / 2 + gap, 22, iconSize, color);
       tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
       this.textTex.set(key, tex);
@@ -146,7 +178,7 @@ export class Effects {
         this.ps.splice(i, 1);
         continue;
       }
-      const k = p.life / p.max; // 1 → 0
+      const k = p.life / p.max; // de 1 a 0
       p.vy -= p.gravity * dt;
       p.o.position.x += p.vx * dt; p.o.position.y += p.vy * dt; p.o.position.z += p.vz * dt;
       if (p.o.position.y < p.floor) { p.o.position.y = p.floor; p.vy *= -0.35; p.vx *= 0.6; p.vz *= 0.6; }

@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#7ec3ec" />
+  <link rel="icon" type="image/svg+xml" href="./icons/emblema.svg" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+  <link rel="manifest" href="./manifest.webmanifest" />
   <title>Frente de Batalla</title>
   <link rel="stylesheet" href="/src/shooter/style.css" />
 </head>
@@ -11,18 +14,18 @@
   <canvas id="scene"></canvas>
   <div id="hud">
     <div class="left">
-      <a href="./index.html" class="btn" aria-label="Menú">☰</a>
+      <a href="./index.html" class="btn" aria-label="Volver al menú de juegos" data-icon="house"></a>
       <div id="hp" class="chip" aria-label="Vida"></div>
     </div>
     <div class="right">
       <div id="wave" class="chip">Oleada 1</div>
-      <div id="coins" class="chip">🪙 0</div>
+      <div id="coins" class="chip" aria-label="Monedas"><span data-icon="coins"></span><span id="coinsN">0</span></div>
       <div id="score" class="chip">0</div>
-      <button id="pauseBtn" class="btn" aria-label="Pausar" title="Pausar (P)" hidden>⏸</button>
-      <button id="mute" class="btn" aria-label="Sonido">🔊</button>
+      <button id="pauseBtn" class="btn" aria-label="Pausar" title="Pausar (P)" hidden data-icon="pause"></button>
+      <button id="mute" class="btn" aria-label="Silenciar"></button>
     </div>
   </div>
-  <div id="rapid" hidden>⚡ DISPARO RÁPIDO</div>
+  <div id="rapid" hidden><span data-icon="zap"></span> DISPARO RÁPIDO</div>
   <div id="banner"></div>
   <div id="toolbar"><div id="weapons"></div></div>
   <div id="tools" aria-label="Equipo"></div>
@@ -33,17 +36,18 @@
     <div class="panel">
       <h2 id="shopTitle">Tienda</h2>
       <p id="shopSub"></p>
-      <div class="wallet">🪙 <span id="shopCoins">0</span></div>
+      <div class="wallet"><span data-icon="coins"></span> <span id="shopCoins">0</span></div>
       <div id="shopBody"></div>
-      <button id="nextWave" class="primary">Siguiente oleada ▶</button>
+      <button id="nextWave" class="primary">Siguiente oleada <span data-icon="chevronRight"></span></button>
     </div>
   </div>
 
   <div id="pause" hidden>
     <div class="panel">
-      <h2>⏸ Pausa</h2>
-      <button id="resume" class="primary">▶ Continuar</button>
-      <button id="quit" class="primary alt">Salir al menú</button>
+      <h2>Pausa</h2>
+      <button id="resume" class="primary"><span data-icon="play"></span> Continuar</button>
+      <button id="pauseSettings" class="primary alt"><span data-icon="settings"></span> Ajustes</button>
+      <button id="quit" class="primary alt"><span data-icon="house"></span> Salir al menú</button>
       <p class="help" id="pauseHelp"></p>
     </div>
   </div>
@@ -52,7 +56,37 @@
     <h1>Frente de Batalla</h1>
     <p id="overlayMsg"></p>
     <button id="play" class="primary">Jugar</button>
+    <button id="menuSettings" class="primary alt"><span data-icon="settings"></span> Ajustes</button>
     <p class="help" id="help"></p>
+  </div>
+  <div id="settings" hidden role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="panel">
+      <div class="head">
+        <h2 id="settingsTitle">Ajustes</h2>
+        <button id="settingsClose" class="btn" aria-label="Cerrar ajustes" data-icon="x"></button>
+      </div>
+      <div class="opt">
+        <span>Sonido</span>
+        <button id="setSound" class="switch" role="switch" aria-checked="true" aria-label="Sonido"><span></span></button>
+      </div>
+      <div class="opt">
+        <span>Temblor de cámara</span>
+        <button id="setShake" class="switch" role="switch" aria-checked="true" aria-label="Temblor de cámara"><span></span></button>
+      </div>
+      <div class="opt col">
+        <span>Calidad gráfica</span>
+        <div class="seg" role="radiogroup" aria-label="Calidad gráfica">
+          <button role="radio" data-quality="auto" aria-checked="true">Automática</button>
+          <button role="radio" data-quality="alta" aria-checked="false">Alta</button>
+          <button role="radio" data-quality="baja" aria-checked="false">Baja</button>
+        </div>
+        <small>Automática baja la calidad si el dispositivo va lento.</small>
+      </div>
+      <nav class="links">
+        <a href="./privacidad.html"><span data-icon="fileText"></span> Política de privacidad</a>
+        <a href="./creditos.html"><span data-icon="info"></span> Créditos y licencias</a>
+      </nav>
+    </div>
   </div>
   <script type="module" src="/src/shooter/main.ts"></script>
 </body>

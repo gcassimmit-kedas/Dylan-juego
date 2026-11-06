@@ -1,0 +1,19 @@
+{
+  "name": "Juegos de Dylan",
+  "short_name": "Juegos",
+  "description": "Frente de Batalla: shooter de oleadas contra robots. Incluye Tres en Raya 3D.",
+  "lang": "es",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#1d2416",
+  "theme_color": "#1d2416",
+  "categories": ["games"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/emblema.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

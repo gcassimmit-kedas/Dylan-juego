@@ -20,3 +20,6 @@ input[type=range] { width: 150px; }
 #hud .left { display: flex; gap: 8px; align-items: center; }
 #menu { color: var(--text); text-decoration: none; background: var(--panel); border: 1px solid #343a66; border-radius: 10px;
   min-width: 40px; height: 40px; display: grid; place-items: center; font-size: 1.1rem; }
+
+#menu .ic { width: 22px; height: 22px; }
+:focus-visible { outline: 3px solid #ffe066; outline-offset: 2px; }

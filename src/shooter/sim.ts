@@ -529,7 +529,7 @@ export function step(w: World, input: Input, dt: number): void {
   }
   w.pickups = w.pickups.filter((k) => k.life > 0);
 
-  // --- Fin de oleada → tienda ---
+  // --- Fin de oleada: abrir la tienda ---
   if (!w.over && w.wave > 0 && w.toSpawn === 0 && w.enemies.length === 0) {
     const bonus = waveBonus(w.wave);
     w.coins += bonus;

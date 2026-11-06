@@ -148,7 +148,7 @@ function sync() {
   statusEl.className = '';
   if (state.winner) {
     const w = state.winner === 1 ? 'X' : 'O';
-    statusEl.textContent = mode() !== '2p' ? (state.winner === 1 ? '¡Ganaste! 🎉' : 'Gana la CPU') : `¡Gana ${w}! 🎉`;
+    statusEl.textContent = mode() !== '2p' ? (state.winner === 1 ? '¡Has ganado!' : 'Gana la CPU') : `¡Gana ${w}!`;
     statusEl.classList.add(w.toLowerCase());
   } else if (state.draw) {
     statusEl.textContent = 'Empate';

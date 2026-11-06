@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="es"><head><meta charset="UTF-8"><title>Hoja de iconos</title>
+<style>body{margin:0;padding:24px;background:#262d1f;color:#f4f1e4;font-family:system-ui;display:grid;grid-template-columns:repeat(6,1fr);gap:18px}
+.c{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;color:#c4c2a8}.ic{width:56px;height:56px}.s{display:flex;gap:8px}.s .ic{width:20px;height:20px}</style></head>
+<body><script type="module">
+import { icon, ALL_ICONS } from '../src/ui/icons.ts';
+for (const n of ALL_ICONS) document.body.insertAdjacentHTML('beforeend', `<div class="c">${icon(n)}<div class="s">${icon(n)}</div>${n}</div>`);
+</script></body></html>

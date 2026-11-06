@@ -23,7 +23,7 @@ npm run build    # genera dist/ para publicar en cualquier hosting estático
 - Móvil: el pulgar izquierdo mueve y el derecho apunta y dispara. Abajo está la barra de armas y a la derecha el equipo.
 - PC: WASD para moverte, el ratón para apuntar, clic para disparar, 1-7 o Q/E para cambiar de arma.
   Equipo: T (torreta), G (mina), F (escudo), B (barricada).
-- Pausa: botón ⏸ arriba a la derecha (o P / Esc en PC). El juego también se pausa solo si cambias de app o de pestaña.
+- Pausa: botón de pausa arriba a la derecha (o P / Esc en PC). El juego también se pausa solo si cambias de app o de pestaña.
 
 **Personajes:** tu soldado (casco, chaleco, mochila, piernas animadas; el arma cambia en la mano) contra tres robots:
 araña (roja, rápida), artillero (naranja, bípedo con cañón; dispara si te ve y te busca si te escondes) y tanque
@@ -33,9 +33,9 @@ araña (roja, rápida), artillero (naranja, bípedo con cañón; dispara si te v
 Rocas, árboles y sacos terreros paran las balas; las cajas se rompen y sueltan monedas, vida o disparo rápido.
 El mapa cambia en cada partida.
 
-**Tienda** (al terminar cada oleada; cada robot da monedas y hay un bonus por oleada):
+**Tienda** (precios en monedas; al terminar cada oleada; cada robot da monedas y hay un bonus por oleada):
 
-| Armas | 🪙 | Mejoras | 🪙 | Equipo (botón) | 🪙 |
+| Armas | Precio | Mejoras | Precio | Equipo (botón) | Precio |
 |---|---|---|---|---|---|
 | Subfusil | 60 | Botiquín (+2 vida) | 20 | Torreta (dispara sola 30 s) | 50 |
 | Escopeta | 90 | Armadura (+1 vida máx., ×3) | 50 | Mina (explota al pasar un robot) | 25 |
@@ -88,3 +88,12 @@ El juego va empaquetado dentro de la app (no carga una URL remota). Eso es neces
 - `src/tres/game.ts`: lógica del tres en raya (tablero, líneas, victoria, IA).
 - `src/tres/main.ts`: escena 3D del tres en raya.
 - `src/**/*.test.ts`: tests (`npm test`).
+
+## Publicación en tiendas
+
+Normas del proyecto (sin emojis, iconos SVG, cumplimiento de tiendas) en `CLAUDE.md`.
+Estado del cumplimiento, decisiones pendientes y pasos para publicar en `docs/TIENDAS.md`.
+
+- Ajustes del juego: sonido, calidad gráfica y temblor de cámara (se guardan solo en el dispositivo).
+- Política de privacidad: `privacidad.html`. Créditos y licencias: `creditos.html`.
+- Iconos y pantallas de carga: `node scripts/recursos.cjs` (a partir de `resources/*.svg`).
