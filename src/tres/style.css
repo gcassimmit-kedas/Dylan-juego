@@ -17,3 +17,6 @@ button { cursor: pointer; font-weight: 600; } button:active { transform: scale(0
 #layers label { pointer-events: auto; background: var(--panel); padding: 8px 14px; border-radius: 12px;
   color: var(--muted); display: flex; gap: 10px; align-items: center; }
 input[type=range] { width: 150px; }
+#hud .left { display: flex; gap: 8px; align-items: center; }
+#menu { color: var(--text); text-decoration: none; background: var(--panel); border: 1px solid #343a66; border-radius: 10px;
+  min-width: 40px; height: 40px; display: grid; place-items: center; font-size: 1.1rem; }

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0d1a" />
+  <title>Arena Neón</title>
+  <link rel="stylesheet" href="/src/shooter/style.css" />
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="hud">
+    <div class="left">
+      <a href="./index.html" class="btn" aria-label="Menú">☰</a>
+      <div id="hp" aria-label="Vida"></div>
+    </div>
+    <div class="right">
+      <div id="wave">Oleada 1</div>
+      <div id="score">0</div>
+      <button id="mute" class="btn" aria-label="Sonido">🔊</button>
+    </div>
+  </div>
+  <div id="rapid" hidden>⚡ DISPARO RÁPIDO</div>
+  <div id="banner"></div>
+  <div class="stick" id="stickL"><div class="knob"></div></div>
+  <div class="stick" id="stickR"><div class="knob"></div></div>
+  <div id="overlay">
+    <h1>Arena Neón</h1>
+    <p id="overlayMsg"></p>
+    <button id="play">Jugar</button>
+    <p class="help" id="help"></p>
+  </div>
+  <script type="module" src="/src/shooter/main.ts"></script>
+</body>
+</html>
