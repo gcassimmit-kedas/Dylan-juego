@@ -744,7 +744,7 @@ buildBtn.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); toggleB
 function openShop(bonus: number, wood: number) {
   releaseStick('L'); releaseStick('R'); mouse.down = false;
   $('shopTitle').textContent = `Oleada ${world.wave} superada`;
-  $('shopSub').textContent = bonus ? `+${bonus} monedas y +${wood} de madera por superar la oleada` : 'Prepárate para la siguiente oleada';
+  $('shopSub').textContent = bonus ? `Vida completa · +${bonus} monedas y +${wood} de madera` : 'Prepárate para la siguiente oleada';
   shopPid = myId;
   renderShop();
   const nb = $<HTMLButtonElement>('nextWave');
@@ -972,7 +972,8 @@ function flushEvents() {
           aereo: 'Ataque aéreo en camino', emp: 'Pulso EMP', senuelo: 'Señuelo desplegado' }[ev.tool]);
         break;
       case 'regen': fx.text(p.x, 2.2, p.z, '+1', '#8aff9a', 'heart'); break;
-      case 'waveCleared': sfx.wave(); run.coins += ev.bonus; toggleBuild(false); banner('Oleada superada', `Oleada ${world.wave}`, `+${ev.bonus} monedas · +${ev.wood} de madera`); shopOpenedFor = world.wave; openShop(ev.bonus, ev.wood); break;
+      case 'waveCleared': sfx.wave(); run.coins += ev.bonus;
+        for (const q of world.players) if (q.alive) fx.text(q.x, 2.4, q.z, 'Vida completa', '#8aff9a', 'heart'); toggleBuild(false); banner('Oleada superada', `Oleada ${world.wave}`, `Vida completa · +${ev.bonus} monedas · +${ev.wood} de madera`); shopOpenedFor = world.wave; openShop(ev.bonus, ev.wood); break;
       case 'gameover': sfx.gameover(); fx.debris(p.x, 1, p.z, 0x5d7a3e, 14, 6); fx.smoke(p.x, 0.5, p.z, 6); gameOver(); break;
       case 'down':
         fx.debris(p.x, 1, p.z, p.color, 10, 5); fx.smoke(p.x, 0.5, p.z, 4);

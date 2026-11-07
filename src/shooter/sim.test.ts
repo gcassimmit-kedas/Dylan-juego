@@ -72,7 +72,6 @@ test('tienda: precio, máximo, monedas insuficientes y equipar', () => {
   assert.equal(cannotBuy(w, 'subfusil'), 'Comprada');
   assert.ok(buy(w, 'botas') && buy(w, 'botas'));
   assert.equal(cannotBuy(w, 'botas'), 'Al máximo');
-  assert.equal(cannotBuy(w, 'botiquin'), 'Vida llena');
   assert.ok(buy(w, 'armadura'));
   assert.equal(w.player.maxHp, 6);
   selectWeapon(w, 'granadas');
@@ -241,7 +240,7 @@ test('la regeneración cura con el tiempo', () => {
 test('todos los objetos de la tienda se pueden comprar', () => {
   const w = arena();
   w.coins = 99999; w.player.hp = 1;
-  for (const id of ['subfusil', 'escopeta', 'lanzallamas', 'francotirador', 'granadas', 'cohetes', 'botiquin', 'armadura', 'botas',
+  for (const id of ['subfusil', 'escopeta', 'lanzallamas', 'francotirador', 'granadas', 'cohetes', 'armadura', 'botas',
     'municion', 'iman', 'regeneracion', 'dron', 'torreta', 'mina', 'escudo', 'barricada'] as const) assert.ok(buy(w, id), id);
   assert.equal(w.player.owned.length, 7);
 });
@@ -665,4 +664,17 @@ test('personajes: la tiradora hace más daño y la ingeniera gana más madera', 
   step(w, null as unknown as Input, 1 / 60);
   const gain = (id: string) => w.players.find((p) => p.id === id)!.wood - before[id];
   assert.equal(gain('ingeniera'), gain('sargento') * 2);
+});
+
+test('al superar una oleada se recupera toda la vida', () => {
+  const w = newWorld(() => 0.5, false, [{ id: 'a', name: 'A', character: 'coloso' }, { id: 'b', name: 'B' }]);
+  w.wave = 2; w.toSpawn = 0; w.spawnTimer = 999;
+  const [a, b] = w.players;
+  a.hp = 1; b.hp = 0; b.alive = false;
+  step(w, null as unknown as Input, 1 / 60);
+  assert.equal(w.phase, 'shop');
+  assert.equal(a.hp, a.maxHp, 'vida completa (7 del Coloso)');
+  assert.equal(b.alive, false, 'el caído sigue fuera hasta la siguiente oleada');
+  nextWave(w);
+  assert.equal(b.hp, b.maxHp, 'y vuelve con la vida completa');
 });

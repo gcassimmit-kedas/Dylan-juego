@@ -47,17 +47,19 @@ npm run build    # genera dist/ para publicar en cualquier hosting estático
 Rocas, árboles y sacos terreros paran las balas; las cajas se rompen y sueltan monedas, vida o disparo rápido.
 El mapa cambia en cada partida.
 
+**Al superar cada oleada** recuperas toda la vida (los caídos vuelven con la vida completa al empezar la siguiente).
+
 **Tienda** (precios en monedas; al terminar cada oleada; cada robot da monedas y hay un bonus por oleada):
 
 | Armas | Precio | Mejoras | Precio | Equipo (botón) | Precio |
 |---|---|---|---|---|---|
-| Subfusil | 60 | Botiquín (+2 vida) | 20 | Torreta (dispara sola 30 s) | 50 |
-| Fusil de asalto | 100 | Armadura (+1 vida máx., ×3) | 50 | Mina (explota al pasar un robot) | 25 |
-| Escopeta | 90 | Botas (+12% velocidad, ×2) | 40 | Escudo (5 s invulnerable) | 45 |
-| Ametralladora (te frena al disparar) | 180 | Munición pesada (+30% daño, ×2) | 70 | Barricada (muro que para balas enemigas) | 30 |
-| Lanzallamas | 120 | Imán (atrae monedas) | 40 | Ataque aéreo (5 bombas en línea) | 80 |
-| Francotirador (atraviesa) | 140 | Regeneración (+1 vida/15 s) | 80 | Pulso EMP (paraliza 3 s) | 60 |
-| Cañón Tesla (salta a 3 robots) | 200 | Dron escolta (×2) | 90 | Señuelo (atrae a los robots 8 s) | 35 |
+| Subfusil | 60 | Armadura (+1 vida máx., ×3) | 50 | Torreta (dispara sola 30 s) | 50 |
+| Fusil de asalto | 100 | Botas (+12% velocidad, ×2) | 40 | Mina (explota al pasar un robot) | 25 |
+| Escopeta | 90 | Munición pesada (+30% daño, ×2) | 70 | Escudo (5 s invulnerable) | 45 |
+| Ametralladora (te frena al disparar) | 180 | Imán (atrae monedas) | 40 | Barricada (muro que para balas enemigas) | 30 |
+| Lanzallamas | 120 | Regeneración (+1 vida/15 s) | 80 | Ataque aéreo (5 bombas en línea) | 80 |
+| Francotirador (atraviesa) | 140 | Dron escolta (×2) | 90 | Pulso EMP (paraliza 3 s) | 60 |
+| Cañón Tesla (salta a 3 robots) | 200 | | | Señuelo (atrae a los robots 8 s) | 35 |
 | Lanzagranadas | 160 | | | | |
 | Lanzacohetes | 220 | | | | |
 

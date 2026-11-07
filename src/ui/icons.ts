@@ -15,7 +15,6 @@ import zap from 'lucide-static/icons/zap.svg?raw';
 import flame from 'lucide-static/icons/flame.svg?raw';
 import bomb from 'lucide-static/icons/bomb.svg?raw';
 import rocket from 'lucide-static/icons/rocket.svg?raw';
-import briefcaseMedical from 'lucide-static/icons/briefcase-medical.svg?raw';
 import footprints from 'lucide-static/icons/footprints.svg?raw';
 import magnet from 'lucide-static/icons/magnet.svg?raw';
 import drone from 'lucide-static/icons/drone.svg?raw';
@@ -90,7 +89,7 @@ const CUSTOM = {
 
 const LUCIDE = {
   pause, play, volumeOn, volumeOff, house, coins, heart, heartPulse, zap, flame, bomb, rocket,
-  briefcaseMedical, footprints, magnet, drone, shieldCheck, brickWall, settings, x, chevronRight, arrowLeft,
+  footprints, magnet, drone, shieldCheck, brickWall, settings, x, chevronRight, arrowLeft,
   trophy, check, fileText, info, crosshair, grid, rotateCcw, hammer, fence, castle, hospital, plane, zapOff, userRound, shieldOff,
   globe, lock, users, flag, copy, refreshCw, logIn, logOut, plus, wifiOff, ban, keyRound,
 };
@@ -111,7 +110,7 @@ export const ITEM_ICON: Record<string, IconName> = {
   pistola: 'pistola', subfusil: 'subfusil', fusil: 'fusil', escopeta: 'escopeta', ametralladora: 'ametralladora', lanzallamas: 'flame',
   francotirador: 'francotirador', tesla: 'tesla',
   granadas: 'bomb', cohetes: 'rocket',
-  botiquin: 'briefcaseMedical', armadura: 'armadura', botas: 'footprints', municion: 'municion', iman: 'magnet',
+  armadura: 'armadura', botas: 'footprints', municion: 'municion', iman: 'magnet',
   regeneracion: 'heartPulse', dron: 'drone',
   torreta: 'torreta', mina: 'mina', escudo: 'shieldCheck', barricada: 'brickWall', aereo: 'plane', emp: 'zapOff', senuelo: 'userRound',
   muro: 'fence', pinchos: 'pinchos', medico: 'hospital', torre: 'castle',

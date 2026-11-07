@@ -9,7 +9,7 @@ export type ToolId = 'torreta' | 'mina' | 'escudo' | 'barricada' | 'aereo' | 'em
 export type BuildId = 'muro' | 'pinchos' | 'torre' | 'medico';
 export type BulletKind = 'bala' | 'perdigon' | 'fuego' | 'rayo' | 'tesla' | 'granada' | 'cohete' | 'enemiga';
 export type ObstacleKind = 'rock' | 'tree' | 'crate' | 'sandbag' | 'barricade' | 'wall' | 'tower' | 'medic';
-export type ItemId = WeaponId | ToolId | 'botiquin' | 'armadura' | 'botas' | 'municion' | 'iman' | 'regeneracion' | 'dron';
+export type ItemId = WeaponId | ToolId | 'armadura' | 'botas' | 'municion' | 'iman' | 'regeneracion' | 'dron';
 export type Phase = 'fight' | 'shop';
 
 export interface Input { moveX: number; moveZ: number; aimX: number; aimZ: number; fire: boolean }
@@ -135,7 +135,6 @@ export const SHOP: ShopItem[] = [
   { id: 'tesla', name: 'Cañón Tesla', desc: 'El rayo salta a 3 robots cercanos', price: 200, kind: 'arma' },
   { id: 'granadas', name: 'Lanzagranadas', desc: 'Explota y daña en área', price: 160, kind: 'arma' },
   { id: 'cohetes', name: 'Lanzacohetes', desc: 'Explosión enorme', price: 220, kind: 'arma' },
-  { id: 'botiquin', name: 'Botiquín', desc: 'Recupera 2 de vida', price: 20, kind: 'mejora' },
   { id: 'armadura', name: 'Armadura', desc: '+1 de vida máxima. Al nivel 3: 30% de bloquear golpes', price: 50, max: 3, kind: 'mejora' },
   { id: 'botas', name: 'Botas', desc: '+12% de velocidad', price: 40, max: 2, kind: 'mejora' },
   { id: 'municion', name: 'Munición pesada', desc: '+30% de daño', price: 70, max: 2, kind: 'mejora' },
@@ -290,7 +289,6 @@ export function owns(w: World, id: ItemId, pid?: string): number {
     case 'iman': return p.magnet;
     case 'regeneracion': return p.regen;
     case 'dron': return p.drones;
-    case 'botiquin': return 0;
     default: return p.owned.includes(id) ? 1 : 0;
   }
 }
@@ -303,7 +301,6 @@ export function cannotBuy(w: World, id: ItemId, pid?: string): string | null {
   const n = owns(w, id, p.id);
   if (item.kind === 'arma' && n) return 'Comprada';
   if (item.max !== undefined && n >= item.max) return 'Al máximo';
-  if (id === 'botiquin' && p.hp >= p.maxHp) return 'Vida llena';
   if (p.coins < item.price) return 'Faltan monedas';
   return null;
 }
@@ -314,7 +311,6 @@ export function buy(w: World, id: ItemId, pid?: string): boolean {
   p.coins -= SHOP.find((s) => s.id === id)!.price;
   if (isTool(id)) { p.tools[id]++; return true; }
   switch (id) {
-    case 'botiquin': p.hp = Math.min(p.maxHp, p.hp + 2); break;
     case 'armadura': p.armorLvl++; p.maxHp++; p.hp++; break;
     case 'botas': p.speedLvl++; break;
     case 'municion': p.dmgLvl++; break;
@@ -833,7 +829,10 @@ export function step(w: World, input: Input | null, dt: number): void {
   // --- Fin de oleada: abrir la tienda (monedas y madera para todos, también para los caídos) ---
   if (!w.over && w.wave > 0 && w.toSpawn === 0 && w.enemies.length === 0) {
     const bonus = waveBonus(w.wave), wood = woodReward(w.wave);
-    for (const p of w.players) { p.coins += bonus; p.wood += wood * CHARACTERS[p.character].woodMul; }
+    for (const p of w.players) {
+      p.coins += bonus; p.wood += wood * CHARACTERS[p.character].woodMul;
+      if (p.alive) p.hp = p.maxHp; // al superar la oleada, vida completa (los caídos vuelven con vida completa al empezar la siguiente)
+    }
     w.phase = 'shop';
     w.bullets = w.bullets.filter((b) => !b.enemy);
     w.strikes = [];
