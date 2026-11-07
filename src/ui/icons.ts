@@ -31,6 +31,7 @@ import fileText from 'lucide-static/icons/file-text.svg?raw';
 import info from 'lucide-static/icons/info.svg?raw';
 import crosshair from 'lucide-static/icons/crosshair.svg?raw';
 import grid from 'lucide-static/icons/grid-3x3.svg?raw';
+import rotateCcw from 'lucide-static/icons/rotate-ccw.svg?raw';
 
 /** Extrae solo el contenido interior de un SVG de Lucide (sin comentario de licencia ni atributos). */
 const inner = (svg: string) => svg.replace(/<!--[\s\S]*?-->/g, '').replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '').trim();
@@ -60,7 +61,7 @@ const CUSTOM = {
 const LUCIDE = {
   pause, play, volumeOn, volumeOff, house, coins, heart, heartPulse, zap, flame, bomb, rocket,
   briefcaseMedical, footprints, magnet, drone, shieldCheck, brickWall, settings, x, chevronRight, arrowLeft,
-  trophy, check, fileText, info, crosshair, grid,
+  trophy, check, fileText, info, crosshair, grid, rotateCcw,
 };
 
 export type IconName = keyof typeof LUCIDE | keyof typeof CUSTOM;

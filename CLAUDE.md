@@ -11,6 +11,11 @@ Reglas obligatorias para cualquier cambio en este repositorio. Si una petición 
   - armas y equipo militar dibujados a mano **con el mismo estilo** (rejilla 24 px, trazo 2 px, extremos redondeados).
   - Antes de añadir un icono propio, se revisa renderizado (hoja de pruebas: `dev/iconos.html` con `npm run dev`).
 - Textos de la interfaz en español, con tildes y signos de apertura (¿ ¡).
+- **Sistema visual común** (todas las pantallas deben parecer el mismo producto):
+  - tipografías empaquetadas `src/ui/fonts.css`: **Oswald** para títulos, botones y cifras (en mayúsculas); **Inter** para textos;
+  - paleta oliva oscuro + dorado `#ffc83d` (variables en `src/shooter/style.css`);
+  - paneles y botones con **esquina recortada** (clip-path), botón principal dorado y secundarios translúcidos;
+  - cada pantalla con estructura de juego comercial: título con logotipo, HUD con barra de vida e indicador de oleada, anuncios de oleada, pantalla final con estadísticas.
 
 ## 2. Cumplimiento de tiendas (App Store y Google Play)
 

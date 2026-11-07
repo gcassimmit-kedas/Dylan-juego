@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#7ec3ec" />
+  <meta name="theme-color" content="#1d2416" />
   <link rel="icon" type="image/svg+xml" href="./icons/emblema.svg" />
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
   <link rel="manifest" href="./manifest.webmanifest" />
@@ -12,54 +12,114 @@
 </head>
 <body>
   <canvas id="scene"></canvas>
+
+  <!-- Pantalla de carga (se oculta al dibujar el primer fotograma) -->
+  <div id="loading" aria-live="polite">
+    <img src="./icons/emblema.svg" alt="" />
+    <div class="loadbar"><span></span></div>
+    <p>Preparando el campo de batalla</p>
+  </div>
+
+  <!-- HUD: solo visible durante la partida -->
   <div id="hud">
     <div class="left">
-      <a href="./index.html" class="btn" aria-label="Volver al menú de juegos" data-icon="house"></a>
-      <div id="hp" class="chip" aria-label="Vida"></div>
+      <div id="hp" class="hpbar" role="meter" aria-label="Vida" aria-valuemin="0">
+        <span class="hp-ic" data-icon="heart"></span>
+        <div class="track"><div class="fill" id="hpFill"></div></div>
+        <span class="val" id="hpVal">5/5</span>
+      </div>
+    </div>
+    <div class="center">
+      <div class="wave" id="wave" aria-live="polite">
+        <span class="lbl">Oleada</span><span class="n" id="waveN">1</span>
+      </div>
+      <div class="remaining" id="remaining" aria-label="Robots restantes"><span data-icon="crosshair"></span><span id="enemiesN">0</span></div>
     </div>
     <div class="right">
-      <div id="wave" class="chip">Oleada 1</div>
-      <div id="coins" class="chip" aria-label="Monedas"><span data-icon="coins"></span><span id="coinsN">0</span></div>
-      <div id="score" class="chip">0</div>
-      <button id="pauseBtn" class="btn" aria-label="Pausar" title="Pausar (P)" hidden data-icon="pause"></button>
+      <div id="coins" class="stat" aria-label="Monedas"><span data-icon="coins"></span><span id="coinsN">0</span></div>
+      <div id="score" class="stat score" aria-label="Puntuación"><span data-icon="trophy"></span><span id="scoreN">0</span></div>
+      <button id="pauseBtn" class="btn" aria-label="Pausar" title="Pausar (P)"></button>
       <button id="mute" class="btn" aria-label="Silenciar"></button>
     </div>
   </div>
-  <div id="rapid" hidden><span data-icon="zap"></span> DISPARO RÁPIDO</div>
-  <div id="banner"></div>
-  <div id="toolbar"><div id="weapons"></div></div>
+  <div id="rapid" hidden><span data-icon="zap"></span> Disparo rápido</div>
+  <div id="banner" aria-live="polite"><div class="kicker" id="bannerKicker"></div><div class="title" id="bannerTitle"></div><div class="sub" id="bannerSub"></div></div>
+  <div id="toast" aria-live="polite"></div>
+  <div id="toolbar"><div id="weaponName"></div><div id="weapons"></div></div>
   <div id="tools" aria-label="Equipo"></div>
   <div class="stick" id="stickL"><div class="knob"></div></div>
   <div class="stick" id="stickR"><div class="knob"></div></div>
 
-  <div id="shop" hidden>
+  <!-- Tienda entre oleadas -->
+  <div id="shop" class="screen" hidden>
     <div class="panel">
-      <h2 id="shopTitle">Tienda</h2>
-      <p id="shopSub"></p>
-      <div class="wallet"><span data-icon="coins"></span> <span id="shopCoins">0</span></div>
+      <header class="shop-head">
+        <div>
+          <p class="kicker" id="shopTitle">Oleada superada</p>
+          <h2>Arsenal</h2>
+          <p id="shopSub"></p>
+        </div>
+        <div class="wallet" aria-label="Monedas disponibles"><span data-icon="coins"></span><span id="shopCoins">0</span></div>
+      </header>
       <div id="shopBody"></div>
-      <button id="nextWave" class="primary">Siguiente oleada <span data-icon="chevronRight"></span></button>
+      <footer class="shop-foot">
+        <button id="nextWave" class="primary big">Siguiente oleada <span data-icon="chevronRight"></span></button>
+      </footer>
     </div>
   </div>
 
-  <div id="pause" hidden>
-    <div class="panel">
+  <!-- Pausa -->
+  <div id="pause" class="screen" hidden>
+    <div class="panel menu-panel">
+      <p class="kicker">Partida en pausa</p>
       <h2>Pausa</h2>
-      <button id="resume" class="primary"><span data-icon="play"></span> Continuar</button>
-      <button id="pauseSettings" class="primary alt"><span data-icon="settings"></span> Ajustes</button>
-      <button id="quit" class="primary alt"><span data-icon="house"></span> Salir al menú</button>
+      <button id="resume" class="primary big"><span data-icon="play"></span> Continuar</button>
+      <button id="pauseSettings" class="ghost"><span data-icon="settings"></span> Ajustes</button>
+      <button id="quit" class="ghost"><span data-icon="house"></span> Menú principal</button>
       <p class="help" id="pauseHelp"></p>
     </div>
   </div>
 
-  <div id="overlay">
-    <h1>Frente de Batalla</h1>
-    <p id="overlayMsg"></p>
-    <button id="play" class="primary">Jugar</button>
-    <button id="menuSettings" class="primary alt"><span data-icon="settings"></span> Ajustes</button>
-    <p class="help" id="help"></p>
+  <!-- Fin de partida -->
+  <div id="gameover" class="screen" hidden>
+    <div class="panel menu-panel result">
+      <p class="kicker danger">Misión fallida</p>
+      <h2>Has caído en la oleada <span id="goWave">1</span></h2>
+      <div class="newrecord" id="goRecord" hidden><span data-icon="trophy"></span> Nuevo récord</div>
+      <dl class="stats">
+        <div><dt>Puntuación</dt><dd id="goScore">0</dd></div>
+        <div><dt>Robots destruidos</dt><dd id="goKills">0</dd></div>
+        <div><dt>Monedas ganadas</dt><dd id="goCoins">0</dd></div>
+        <div><dt>Récord</dt><dd id="goBest">0</dd></div>
+      </dl>
+      <button id="retry" class="primary big"><span data-icon="rotateCcw"></span> Reintentar</button>
+      <button id="goMenu" class="ghost"><span data-icon="house"></span> Menú principal</button>
+    </div>
   </div>
-  <div id="settings" hidden role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+
+  <!-- Pantalla de título -->
+  <div id="overlay" class="screen title">
+    <div class="brand">
+      <img class="emblem" src="./icons/emblema.svg" alt="" />
+      <h1><span class="l1">Frente</span><span class="l2">de Batalla</span></h1>
+      <p class="tagline">Defiende la línea. Sobrevive a las oleadas.</p>
+    </div>
+    <div class="menu">
+      <button id="play" class="primary big"><span data-icon="play"></span> Jugar</button>
+      <button id="menuSettings" class="ghost"><span data-icon="settings"></span> Ajustes</button>
+      <a href="./creditos.html" class="ghost"><span data-icon="info"></span> Créditos</a>
+      <a href="./index.html" class="ghost"><span data-icon="grid"></span> Otros juegos</a>
+    </div>
+    <dl class="records" id="records">
+      <div><dt>Mejor puntuación</dt><dd id="bestScore">0</dd></div>
+      <div><dt>Mejor oleada</dt><dd id="bestWave">0</dd></div>
+    </dl>
+    <p class="help" id="help"></p>
+    <span class="version">v0.1.0</span>
+  </div>
+
+  <!-- Ajustes -->
+  <div id="settings" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
     <div class="panel">
       <div class="head">
         <h2 id="settingsTitle">Ajustes</h2>

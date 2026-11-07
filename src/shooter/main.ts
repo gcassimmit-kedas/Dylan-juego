@@ -12,8 +12,9 @@ import { settings, type Quality } from './settings.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>('scene');
-const hpEl = $('hp'), waveEl = $('wave'), coinsEl = $('coins'), coinsN = $('coinsN'), scoreEl = $('score'), bannerEl = $('banner'), rapidEl = $('rapid');
-const overlay = $('overlay'), overlayMsg = $('overlayMsg'), playBtn = $<HTMLButtonElement>('play'), muteBtn = $('mute');
+const hpEl = $('hp'), hpFill = $('hpFill'), hpVal = $('hpVal'), waveN = $('waveN'), enemiesN = $('enemiesN'), coinsEl = $('coins'), coinsN = $('coinsN'),
+  scoreN = $('scoreN'), bannerEl = $('banner'), rapidEl = $('rapid'), toastEl = $('toast'), weaponNameEl = $('weaponName');
+const overlay = $('overlay'), playBtn = $<HTMLButtonElement>('play'), muteBtn = $('mute'), gameoverEl = $('gameover');
 const weaponsEl = $('weapons'), toolsEl = $('tools'), shopEl = $('shop');
 const isTouch = matchMedia('(pointer: coarse)').matches;
 $('help').textContent = isTouch
@@ -388,18 +389,28 @@ function readInput(): Input {
 }
 
 // ---------- HUD ----------
-let best = 0;
-try { best = Number(localStorage.getItem('shooter.best')) || 0; } catch { /* sin storage */ }
+const readNum = (k: string) => { try { return Number(localStorage.getItem(k)) || 0; } catch { return 0; } };
+const writeNum = (k: string, v: number) => { try { localStorage.setItem(k, String(v)); } catch { /* sin almacenamiento */ } };
+let best = readNum('shooter.best'), bestWave = readNum('shooter.bestWave');
+/** Estadísticas de la partida en curso (para la pantalla final). */
+const run = { kills: 0, coins: 0 };
 let hudKey = '', prevCoins = 0;
 function hud() {
   const p = world.player;
   rapidEl.hidden = p.rapid <= 0;
-  const key = [p.hp, p.maxHp, world.score, world.wave, world.coins, p.weapon, p.owned.length, ...TOOL_ORDER.map((t) => p.tools[t]), p.shield > 0].join('|');
+  const left = world.toSpawn + world.enemies.length;
+  const key = [p.hp, p.maxHp, world.score, world.wave, left, world.coins, p.weapon, p.owned.length, ...TOOL_ORDER.map((t) => p.tools[t]), p.shield > 0].join('|');
   if (key === hudKey) return;
   hudKey = key;
-  hpEl.innerHTML = Array.from({ length: p.maxHp }, (_, i) => `<span class="${i < p.hp ? '' : 'off'}"></span>`).join('');
-  scoreEl.textContent = String(world.score);
-  waveEl.textContent = `Oleada ${Math.max(1, world.wave)}`;
+  hpEl.style.setProperty('--n', String(p.maxHp));
+  hpFill.style.transform = `scaleX(${Math.max(0, p.hp) / p.maxHp})`;
+  hpVal.textContent = `${Math.max(0, p.hp)}/${p.maxHp}`;
+  hpEl.classList.toggle('low', p.hp > 0 && p.hp <= 2);
+  hpEl.setAttribute('aria-valuenow', String(p.hp)); hpEl.setAttribute('aria-valuemax', String(p.maxHp));
+  scoreN.textContent = world.score.toLocaleString('es-ES');
+  waveN.textContent = String(Math.max(1, world.wave));
+  enemiesN.textContent = String(left);
+  weaponNameEl.textContent = WEAPONS[p.weapon].name;
   coinsN.textContent = String(world.coins);
   if (world.coins > prevCoins) { coinsEl.classList.add('pulse'); setTimeout(() => coinsEl.classList.remove('pulse'), 150); }
   prevCoins = world.coins;
@@ -432,12 +443,22 @@ function hud() {
 function pickWeapon(id: WeaponId) { selectWeapon(world, id); hud(); }
 function tool(id: ToolId) { if (useTool(world, id)) { flushEvents(); hud(); } }
 
-let bannerTimer = 0;
-function banner(text: string) {
-  bannerEl.textContent = text;
+let bannerTimer = 0, toastTimer = 0;
+/** Anuncio grande (inicio y fin de oleada). */
+function banner(title: string, kicker = '', sub = '') {
+  $('bannerTitle').textContent = title;
+  $('bannerKicker').textContent = kicker;
+  $('bannerSub').textContent = sub;
   bannerEl.classList.add('show');
   clearTimeout(bannerTimer);
-  bannerTimer = window.setTimeout(() => bannerEl.classList.remove('show'), 1400);
+  bannerTimer = window.setTimeout(() => bannerEl.classList.remove('show'), 1800);
+}
+/** Aviso pequeño (equipo, recogidas). */
+function toast(text: string) {
+  toastEl.textContent = text;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 1300);
 }
 function renderMute() {
   muteBtn.innerHTML = icon(isMuted() ? 'volumeOff' : 'volumeOn');
@@ -449,7 +470,7 @@ muteBtn.addEventListener('click', () => { setMuted(!isMuted()); renderMute(); re
 
 // ---------- Tienda ----------
 const SECTIONS: { kind: ShopKind; title: string }[] = [
-  { kind: 'arma', title: 'Armas' }, { kind: 'mejora', title: 'Mejoras' }, { kind: 'equipo', title: 'Equipo (se usa con un botón)' },
+  { kind: 'arma', title: 'Armas' }, { kind: 'mejora', title: 'Mejoras' }, { kind: 'equipo', title: 'Equipo de campo' },
 ];
 function card(item: ShopItem) {
   const reason = cannotBuy(world, item.id);
@@ -479,10 +500,10 @@ function renderShop() {
 }
 function openShop(bonus: number) {
   releaseStick('L'); releaseStick('R'); mouse.down = false;
-  $('shopTitle').textContent = `¡Oleada ${world.wave} superada!`;
+  $('shopTitle').textContent = `Oleada ${world.wave} superada`;
   $('shopSub').textContent = `+${bonus} monedas de bonificación`;
   renderShop();
-  setTimeout(() => { shopEl.hidden = false; ($('shopBody').parentElement as HTMLElement).scrollTop = 0; }, 700);
+  setTimeout(() => { shopEl.hidden = false; $('shopBody').scrollTop = 0; }, 900);
 }
 $('nextWave').addEventListener('click', () => { shopEl.hidden = true; nextWave(world); flushEvents(); });
 
@@ -499,24 +520,47 @@ function start() {
   clearScene();
   world = newWorld();
   hudKey = ''; prevCoins = 0;
-  overlay.hidden = true; shopEl.hidden = true;
+  run.kills = 0; run.coins = 0;
+  snapCam = true;
+  overlay.hidden = true; shopEl.hidden = true; gameoverEl.hidden = true;
+  document.body.classList.add('playing');
   playing = true;
   setPaused(false);
-  pauseBtn.hidden = false;
   last = performance.now();
   hud();
 }
 function gameOver() {
   playing = false;
-  pauseBtn.hidden = true;
   const record = world.score > best;
-  if (record) { best = world.score; try { localStorage.setItem('shooter.best', String(best)); } catch { /* sin storage */ } }
-  overlayMsg.textContent = `${record ? '¡Nuevo récord! ' : ''}Puntos: ${world.score} · Oleada ${world.wave} · Récord: ${best}`;
-  playBtn.textContent = 'Otra vez';
-  setTimeout(() => (overlay.hidden = false), 1100);
+  if (record) { best = world.score; writeNum('shooter.best', best); }
+  if (world.wave > bestWave) { bestWave = world.wave; writeNum('shooter.bestWave', bestWave); }
+  const fmt = (n: number) => n.toLocaleString('es-ES');
+  $('goWave').textContent = String(world.wave);
+  $('goScore').textContent = fmt(world.score);
+  $('goKills').textContent = fmt(run.kills);
+  $('goCoins').textContent = fmt(run.coins);
+  $('goBest').textContent = fmt(best);
+  $('goRecord').hidden = !record || world.score === 0;
+  setTimeout(() => { document.body.classList.remove('playing'); gameoverEl.hidden = false; $('retry').focus(); }, 1200);
 }
-overlayMsg.textContent = best ? `Récord: ${best}` : 'Sobrevive a las oleadas de robots. Gana monedas y compra armas y equipo entre una y otra.';
+/** Vuelve a la pantalla de título. */
+function toTitle() {
+  playing = false;
+  document.body.classList.remove('playing');
+  shopEl.hidden = true; gameoverEl.hidden = true;
+  clearScene();
+  renderRecords();
+  overlay.hidden = false;
+}
+function renderRecords() {
+  $('bestScore').textContent = best.toLocaleString('es-ES');
+  $('bestWave').textContent = String(bestWave);
+  $('records').hidden = best === 0;
+}
+renderRecords();
 playBtn.addEventListener('click', start);
+$('retry').addEventListener('click', start);
+$('goMenu').addEventListener('click', toTitle);
 // ---------- Pausa ----------
 const pauseEl = $('pause'), pauseBtn = $('pauseBtn');
 let paused = false;
@@ -531,18 +575,10 @@ function setPaused(v: boolean) {
   releaseStick('L'); releaseStick('R'); mouse.down = false; keys.clear();
   last = performance.now();
 }
+pauseBtn.innerHTML = icon('pause');
 pauseBtn.addEventListener('click', () => setPaused(!paused));
 $('resume').addEventListener('click', () => setPaused(false));
-$('quit').addEventListener('click', () => {
-  setPaused(false);
-  playing = false;
-  pauseBtn.hidden = true;
-  shopEl.hidden = true;
-  clearScene();
-  overlayMsg.textContent = best ? `Récord: ${best}` : 'Sobrevive a las oleadas de robots. Gana monedas y compra armas y equipo entre una y otra.';
-  playBtn.textContent = 'Jugar';
-  overlay.hidden = false;
-});
+$('quit').addEventListener('click', () => { setPaused(false); toTitle(); });
 
 document.addEventListener('visibilitychange', () => {
   last = performance.now();
@@ -567,6 +603,7 @@ function flushEvents() {
       case 'hit': sfx.hit(); fx.sparks(ev.x, 0.8, ev.z, 0xffe7a0, 3, 4); break;
       case 'kill': {
         sfx.kill();
+        run.kills++; run.coins += ev.coins;
         const c = ENEMY_COLOR[ev.type], big = ev.type === 'tank';
         fx.debris(ev.x, 0.7, ev.z, c, big ? 16 : 9, big ? 9 : 7, big ? 0.3 : 0.2);
         fx.debris(ev.x, 0.7, ev.z, 0x34383c, big ? 8 : 4, 6, 0.16);
@@ -582,19 +619,20 @@ function flushEvents() {
         if (ev.type === 'health') fx.text(p.x, 2.2, p.z, '+1', '#ff8a8a', 'heart');
         else if (ev.type === 'coins') fx.text(p.x, 2.2, p.z, '+15', '#ffd54a', 'coin');
         else fx.text(p.x, 2.2, p.z, 'x2', '#ffd54a', 'zap');
-        if (ev.type === 'rapid') banner('¡DISPARO RÁPIDO!');
+        if (ev.type === 'rapid') toast('Disparo rápido');
+        if (ev.type === 'coins') run.coins += 15;
         break;
-      case 'wave': sfx.wave(); banner(`OLEADA ${ev.wave}`); break;
+      case 'wave': sfx.wave(); banner(`Oleada ${ev.wave}`, ev.wave === 1 ? 'Comienza el asalto' : 'Se acercan robots', `${world.toSpawn} enemigos`); break;
       case 'explosion': sfx.kill(); fx.explosion(ev.x, ev.z, ev.r); shake = Math.max(shake, 0.25 + ev.r * 0.08); break;
       case 'crate': sfx.hit(); fx.debris(ev.x, 0.6, ev.z, 0xa7783f, 14, 6, 0.25); fx.smoke(ev.x, 0.4, ev.z, 3, 0xb79f78, 1, 1); break;
       case 'blocked': fx.sparks(ev.x, 0.9, ev.z, 0xffd0a0, 3, 3); break;
       case 'tool':
         sfx.pickup();
-        banner({ torreta: 'TORRETA', mina: 'MINA COLOCADA', escudo: '¡ESCUDO!', barricada: 'BARRICADA' }[ev.tool]);
+        toast({ torreta: 'Torreta desplegada', mina: 'Mina colocada', escudo: 'Escudo activado', barricada: 'Barricada levantada' }[ev.tool]);
         if (ev.tool === 'barricada') fx.smoke(p.x + Math.sin(p.angle) * 2.4, 0.3, p.z + Math.cos(p.angle) * 2.4, 4, 0xb79f78, 1.5, 0.6);
         break;
       case 'regen': fx.text(p.x, 2.2, p.z, '+1', '#8aff9a', 'heart'); break;
-      case 'waveCleared': sfx.wave(); banner('¡OLEADA SUPERADA!'); openShop(ev.bonus); break;
+      case 'waveCleared': sfx.wave(); run.coins += ev.bonus; banner('Oleada superada', `Oleada ${world.wave}`, `+${ev.bonus} monedas de bonificación`); openShop(ev.bonus); break;
       case 'gameover': sfx.gameover(); fx.debris(p.x, 1, p.z, 0x5d7a3e, 14, 6); fx.smoke(p.x, 0.5, p.z, 6); gameOver(); break;
     }
   }
@@ -765,7 +803,8 @@ function frame(now: number) {
   const portrait = camera.aspect < 1;
   const h = (portrait ? 26 : 17) * ZOOM, back = (portrait ? 11 : 11.5) * ZOOM;
   camGoal.set(p.x, h, p.z + back);
-  camera.position.lerp(camGoal, 1 - Math.exp(-dt * 6));
+  // El primer fotograma (y al empezar partida) coloca la cámara directamente; después la sigue con suavidad.
+  if (snapCam) { camera.position.copy(camGoal); snapCam = false; } else camera.position.lerp(camGoal, 1 - Math.exp(-dt * 6));
   shake = Math.max(0, shake - dt * 2);
   const sk = settings.shake ? shake : 0; // accesibilidad: el temblor se puede desactivar en Ajustes
   jitter.set((Math.random() - 0.5) * sk, 0, (Math.random() - 0.5) * sk);
@@ -776,8 +815,10 @@ function frame(now: number) {
   sky.position.copy(camera.position);
 
   renderer.render(scene, camera);
+  if (!loaded) { loaded = true; const l = $('loading'); l.classList.add('done'); setTimeout(() => l.remove(), 450); }
   requestAnimationFrame(frame);
 }
+let loaded = false, snapCam = true;
 requestAnimationFrame(frame);
 
 // Para pruebas automatizadas

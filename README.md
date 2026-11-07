@@ -95,5 +95,6 @@ Normas del proyecto (sin emojis, iconos SVG, cumplimiento de tiendas) en `CLAUDE
 Estado del cumplimiento, decisiones pendientes y pasos para publicar en `docs/TIENDAS.md`.
 
 - Ajustes del juego: sonido, calidad gráfica y temblor de cámara (se guardan solo en el dispositivo).
+- Tipografías Oswald e Inter empaquetadas en la app (licencia SIL OFL 1.1).
 - Política de privacidad: `privacidad.html`. Créditos y licencias: `creditos.html`.
 - Iconos y pantallas de carga: `node scripts/recursos.cjs` (a partir de `resources/*.svg`).
