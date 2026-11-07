@@ -1,7 +1,7 @@
 {
   "name": "tres-en-raya-3d",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
@@ -10,7 +10,8 @@
     "test": "node --experimental-strip-types --test \"src/**/*.test.ts\"",
     "cap:sync": "npm run build && cap sync",
     "server": "node --experimental-strip-types server/index.ts",
-    "start": "npm run build && npm run server"
+    "start": "npm run build && npm run server",
+    "capturas": "node scripts/capturas.cjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.0",

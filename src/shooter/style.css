@@ -541,3 +541,45 @@ body:not(.playing) #buildPanel { display: none; }
   .cs-head { padding: 10px 16px 4px; } .cs-head h2 { font-size: 1.4rem; }
   .cs-foot { padding: 8px 16px 10px; }
 }
+
+/* ---------- HUD con jefe y equipo ---------- */
+/* La lista del equipo y el chip de sala ocupan el ancho de su columna, sin ensancharla (no empujan la derecha). */
+.players-hud, .room-chip { width: 0; min-width: 100%; }
+.room-chip { max-width: 220px; }
+.players-hud li { min-width: 0; }
+.players-hud .pn { min-width: 0; max-width: none; }
+/* Con jefe, los avisos bajan para no quedar debajo de su barra de vida */
+body.boss #rapid { top: calc(env(safe-area-inset-top) + 128px); }
+body.boss #toast { top: calc(env(safe-area-inset-top) + 160px); }
+@media (max-width: 560px) and (orientation: portrait) {
+  .boss-bar { width: 44vw; padding: 3px 6px; gap: 5px; }
+  .boss-bar .lbl { font-size: 0.6rem; letter-spacing: 0.1em; }
+  .players-hud li { padding: 2px 5px; font-size: 0.7rem; gap: 5px; }
+  .players-hud .pc { display: none; } /* en móvil vertical, las monedas de cada uno se ven en la tienda */
+  body.boss #rapid { top: calc(env(safe-area-inset-top) + 140px); }
+  body.boss #toast { top: calc(env(safe-area-inset-top) + 168px); }
+  body.boss.local #rapid, body.boss.multi #rapid { top: calc(env(safe-area-inset-top) + 210px); }
+  body.boss.local #toast, body.boss.multi #toast { top: calc(env(safe-area-inset-top) + 238px); }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .boss-bar { width: 30vw; padding: 2px 6px; }
+  .boss-bar .lbl { font-size: 0.6rem; }
+  body.boss #rapid { top: calc(env(safe-area-inset-top) + 104px); }
+  body.boss #toast { top: calc(env(safe-area-inset-top) + 132px); }
+}
+/* La barra del jefe cuelga bajo el indicador de oleada sin ensanchar la columna central (no empuja los botones de la derecha). */
+#hud .center { position: relative; }
+.boss-bar { position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); margin-top: 0; }
+@media (max-width: 560px) {
+  #hud .center { position: absolute; } /* en móvil el centro ya va en su propia fila */
+  .players-hud, .room-chip { min-width: 0; width: calc(50vw - 74px); max-width: none; } /* a la izquierda del indicador de oleada */
+}
+@media (max-width: 560px) and (orientation: portrait) {
+  body.boss #tools { margin-top: 34px; }
+}
+@media (min-width: 561px) {
+  .players-hud { min-width: min(100%, 180px); }
+}
+@media (min-width: 561px) and (max-width: 900px) {
+  .boss-bar { width: 40vw; }
+}

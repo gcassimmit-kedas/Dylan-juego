@@ -1162,7 +1162,7 @@ function beginMulti() {
   const r = joinedRoom!;
   roomChip.hidden = false;
   roomChip.innerHTML = `${icon(r.public ? 'globe' : 'lock')}<span></span>`;
-  roomChip.querySelector('span')!.textContent = r.code ? `Código ${r.code}` : r.name;
+  roomChip.querySelector('span')!.textContent = r.code ?? r.name; // el candado ya indica que es privada
   roomChip.setAttribute('aria-label', r.code ? `Sala privada, código ${r.code}. Pulsa para copiarlo` : `Sala pública ${r.name}`);
   roomChip.disabled = !r.code;
   playersHud.hidden = false;
@@ -1515,7 +1515,8 @@ function frame(now: number) {
       const d = (q.x - e.x) ** 2 + (q.z - e.z) ** 2;
       if (d < bd) { bd = d; tx = q.x; tz = q.z; }
     }
-    animateRobot(r, e.x, e.z, tx, tz, dt, t, e.flash > 0, e.stun > 0);
+    // El jefe recibe balas sin parar: su destello es más corto para que se le vea el color.
+    animateRobot(r, e.x, e.z, tx, tz, dt, t, e.flash > (e.type === 'jefe' ? 0.04 : 0), e.stun > 0);
     const hurtK = e.hp / e.maxHp;
     r.bar.g.visible = hurtK < 1;
     if (hurtK < 1) {
@@ -1529,6 +1530,7 @@ function frame(now: number) {
   // Barra de vida del jefe en el HUD
   const boss = world.enemies.find((e) => e.type === 'jefe');
   bossBarEl.hidden = !boss || !playing;
+  document.body.classList.toggle('boss', !bossBarEl.hidden);
   if (boss) {
     const k = Math.max(0, boss.hp / boss.maxHp);
     bossFill.style.transform = `scaleX(${k})`;

@@ -1,6 +1,6 @@
 # Publicación en App Store y Google Play
 
-Estado a 7 de noviembre de 2026. Los requisitos de las tiendas cambian cada año: lo marcado como **(comprobar)**
+Estado a 7 de noviembre de 2026 (versión 1.0.0). Los requisitos de las tiendas cambian cada año: lo marcado como **(comprobar)**
 debe verificarse en la documentación oficial justo antes de enviar.
 
 ## Ya cumplido en el código
@@ -95,7 +95,11 @@ Plan gratuito: el servidor se duerme tras 15 minutos sin visitas y tarda alreded
 - **Clasificación por edades:** violencia de fantasía/dibujos contra robots, sin sangre, sin compras, sin publicidad. **Marcar "los usuarios pueden interactuar"** (juego en línea con nombres visibles, sin chat). Resultado probable: 9+ en Apple y PEGI 7 en Google, con el aviso de interacción en línea **(se confirma al rellenar el cuestionario)**.
 - **Anuncios:** no contiene anuncios. **Compras integradas:** no.
 
-## Ficha de la tienda (material que falta)
+## Ficha de la tienda
+
+Textos, capturas y pasos de envío: ver `docs/FICHA.md`. Capturas en los tamaños de cada tienda con `npm run capturas` (servidor en marcha).
+
+### Material que falta
 
 - Política de privacidad en una **URL pública** (las tiendas no aceptan solo la página interna): basta con publicar `dist/privacidad.html`, por ejemplo con GitHub Pages.
 - URL de soporte (Apple la exige).
