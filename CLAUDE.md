@@ -28,9 +28,13 @@ Reglas obligatorias para cualquier cambio en este repositorio. Si una petición 
 - **Iconos y pantallas de carga:** se generan desde `resources/*.svg` con `node scripts/recursos.cjs`. El icono de iOS no lleva transparencia.
 - Checklist completa y tareas pendientes en `docs/TIENDAS.md`.
 
-## 3. Futuro juego en línea
+## 3. Juego en línea (cooperativo)
 
-El multijugador se retiró (commit "Quitar el modo multijugador") y queda en el historial. Si se recupera, debe cumplir esta constitución: sin emojis, política de privacidad actualizada (nombre de jugador, datos de conexión), servidor con HTTPS/WSS y moderación de nombres.
+- El servidor (`server/index.ts`) manda: la simulación corre allí y el cliente solo envía su entrada. Nunca confiar en lo que llega del cliente.
+- Nombres de jugador y de sala pública siempre pasan por `src/shooter/moderation.ts` en el servidor. Sin chat ni otro texto libre sin antes ampliar la moderación.
+- Denunciar y bloquear jugadores deben seguir disponibles (norma 1.2 de Apple).
+- Producción solo con HTTPS/WSS.
+- Cualquier dato nuevo que se trate exige actualizar antes `privacidad.html`, `docs/TIENDAS.md` y las fichas de privacidad.
 
 ## 4. Forma de trabajar
 

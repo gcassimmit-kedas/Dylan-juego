@@ -100,6 +100,8 @@ function weaponModel(id: WeaponId): THREE.Group {
 export interface Soldier {
   root: THREE.Group; body: THREE.Group; legL: THREE.Group; legR: THREE.Group; armL: THREE.Group; armR: THREE.Group;
   weapons: Record<WeaponId, THREE.Group>; shield: THREE.Mesh; muzzle: THREE.Object3D; walk: number;
+  /** Retroceso, arma visible, posición anterior y cartel con el nombre (en línea). */
+  recoil: number; weapon: WeaponId | null; px: number; pz: number; label: THREE.Sprite | null; labelText: string;
 }
 
 function limb(upper: THREE.Material, lower: THREE.Material, len: number, thick: number) {
@@ -174,7 +176,7 @@ export function makeSoldier(color = 0x5d7a3e): Soldier {
 
   castShadows(root);
   shield.castShadow = false;
-  return { root, body, legL, legR, armL, armR, weapons, shield, muzzle, walk: 0 };
+  return { root, body, legL, legR, armL, armR, weapons, shield, muzzle, walk: 0, recoil: 0, weapon: null, px: 0, pz: 0, label: null, labelText: '' };
 }
 
 export function animateSoldier(s: Soldier, speed: number, dt: number, t: number, recoil: number) {
@@ -189,6 +191,8 @@ export function animateSoldier(s: Soldier, speed: number, dt: number, t: number,
 }
 
 export function showWeapon(s: Soldier, id: WeaponId) {
+  if (s.weapon === id) return;
+  s.weapon = id;
   for (const [k, g] of Object.entries(s.weapons)) g.visible = k === id;
   // Con el lanzacohetes al hombro el brazo izquierdo sube
   s.armL.rotation.set(id === 'cohetes' ? -1.75 : -1.25, 0, id === 'cohetes' ? -0.25 : 0.35);
@@ -407,4 +411,24 @@ export function makeSpikes(r: number, rot: number) {
   }
   g.rotation.y = -rot;
   return castShadows(g);
+}
+
+/** Cartel con el nombre que flota sobre otro jugador (modo en línea). */
+export function makeLabel(text: string, color: number, muted = false): THREE.Sprite {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 64;
+  const g = c.getContext('2d')!;
+  g.font = `${muted ? '600 italic' : '700'} 30px Oswald, 'Arial Narrow', sans-serif`;
+  const w = Math.min(312, g.measureText(text).width + 30);
+  g.fillStyle = 'rgba(20, 24, 14, 0.78)';
+  g.beginPath(); g.roundRect((320 - w) / 2, 10, w, 44, 4); g.fill();
+  g.fillStyle = muted ? '#b3b199' : '#' + new THREE.Color(color).offsetHSL(0, 0, 0.28).getHexString();
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(text, 160, 33);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }));
+  sp.scale.set(3.6, 0.72, 1);
+  sp.renderOrder = 8;
+  return sp;
 }

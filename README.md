@@ -65,6 +65,30 @@ Los robots no rodean tus estructuras: **las atacan** hasta romperlas (cada una m
 reales (pone sombras simples bajo los personajes) y baja la resolución. Se puede forzar con `index.html?calidad=alta`
 o `?calidad=baja`.
 
+### Multijugador cooperativo en línea
+
+Hasta 8 jugadores contra las mismas oleadas (Título > **Multijugador**):
+
+- **Servidor público** principal: si se llena, se abre otra sala automáticamente.
+- **Salas públicas** que cualquiera crea y aparecen en la lista.
+- **Salas privadas** con un código de 5 caracteres (se copia pulsando el chip de la sala).
+
+Cada jugador tiene sus monedas, madera, armas y equipo; la puntuación es del equipo. Las oleadas crecen un 50 % por
+jugador extra. Si caes, vuelves al terminar la oleada; la partida acaba cuando cae todo el equipo y la sala empieza otra
+sola a los 8 segundos. La tienda dura 30 segundos o hasta que todos pulsan "Estoy listo".
+
+Moderación: nombres filtrados en el servidor, y en el menú de la partida se puede **bloquear** (deja de verse su
+nombre) o **denunciar** a un jugador. Ver `docs/TIENDAS.md`.
+
+```bash
+npm run start                      # compila y arranca el servidor de juego en http://localhost:8080
+PORT=9000 npm run server           # solo el servidor (sirve dist/ y el WebSocket en /ws)
+npm run dev                        # desarrollo: Vite redirige /ws al servidor del puerto 8080
+```
+
+En producción el servidor debe ir detrás de HTTPS/WSS. Para las apps nativas, compilar con
+`VITE_SERVER_URL=wss://tu-servidor/ws npm run build`; en el navegador también vale `?servidor=wss://...`.
+
 ## Tres en Raya 3D
 
 **Controles:** arrastra para girar el cubo, pellizca o usa la rueda para hacer zoom, toca una esfera para jugar.
@@ -100,6 +124,10 @@ El juego va empaquetado dentro de la app (no carga una URL remota). Eso es neces
 - `src/shooter/main.ts`: escena de día, terreno, joysticks táctiles, ratón y teclado, HUD y tienda.
 - `src/shooter/models.ts`: modelos 3D low-poly (soldado, robots, armas, torreta, dron, mina, obstáculos) y sus animaciones.
 - `src/shooter/fx.ts`: efectos (fuego, humo, explosiones, escombros, polvo, fogonazos, textos flotantes).
+- `src/shooter/protocol.ts`: mensajes y formato compacto de las instantáneas del modo en línea.
+- `src/shooter/net.ts`: cliente en línea (conexión, suavizado y predicción del movimiento propio).
+- `src/shooter/moderation.ts`: filtro de nombres (lo usan servidor y cliente).
+- `server/index.ts`: servidor del modo en línea (salas, simulación autoritativa a 60 Hz, denuncias).
 - `src/shooter/audio.ts`: efectos de sonido sintetizados con WebAudio (no usa archivos de audio).
 - `src/tres/game.ts`: lógica del tres en raya (tablero, líneas, victoria, IA).
 - `src/tres/main.ts`: escena 3D del tres en raya.

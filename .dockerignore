@@ -1,0 +1,6 @@
+node_modules
+server/reports.jsonl
+dist
+android
+ios
+.git

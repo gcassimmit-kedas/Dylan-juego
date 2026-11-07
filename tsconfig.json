@@ -7,8 +7,9 @@
     "strict": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["node"]
   },
-  "include": ["src"],
+  "include": ["src", "server"],
   "exclude": ["src/**/*.test.ts"]
 }

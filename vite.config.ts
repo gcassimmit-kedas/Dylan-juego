@@ -57,6 +57,8 @@ self.addEventListener('fetch', (e) => {
 export default defineConfig({
   base: './', // rutas relativas: necesario para Capacitor (iOS/Android)
   plugins: [serviceWorker()],
+  // En desarrollo (npm run dev) el WebSocket va al servidor de juego en el puerto 8080
+  server: { proxy: { '/ws': { target: 'ws://localhost:8080', ws: true } } },
   build: {
     chunkSizeWarningLimit: 800,
     rolldownOptions: {

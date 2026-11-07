@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { build, cannotBuild, woodReward, ARMOR_MAX, newWorld, step, spawnEnemy, waveSize, waveBonus, buy, cannotBuy, nextWave, useTool, selectWeapon, dronePos, type Input, type World } from './sim.ts';
+import { addPlayer, removePlayer, build, cannotBuild, woodReward, ARMOR_MAX, newWorld, step, spawnEnemy, waveSize, waveBonus, buy, cannotBuy, nextWave, useTool, selectWeapon, dronePos, type Input, type World } from './sim.ts';
 
 const idle: Input = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false };
 const seq = (vals: number[]) => { let i = 0; return () => vals[i++ % vals.length]; };
@@ -405,4 +405,111 @@ test('todas las armas y herramientas nuevas están en la tienda', () => {
   w.coins = 99999;
   for (const id of ['fusil', 'ametralladora', 'tesla', 'aereo', 'emp', 'senuelo'] as const) assert.ok(buy(w, id), id);
   assert.equal(w.player.owned.length, 4);
+});
+
+// ---------- Cooperativo en línea (varios jugadores en el mismo mundo) ----------
+
+test('coop: cada jugador se mueve con su propia entrada y tiene su color', () => {
+  const w = arena();
+  const b = addPlayer(w, 'p2', 'Ana');
+  w.players[0].input = { ...idle, moveX: 1 };
+  b.input = { ...idle, moveX: -1 };
+  const ax = w.players[0].x, bx = b.x;
+  run(w, null as unknown as Input, 30);
+  assert.ok(w.players[0].x > ax && b.x < bx);
+  assert.notEqual(w.players[0].color, b.color);
+});
+
+test('coop: monedas, puntos y bajas para quien mata (también con trampas y torres)', () => {
+  const w = arena();
+  const b = addPlayer(w, 'p2', 'Ana');
+  b.x = 10; b.z = 0;
+  const e = spawnEnemy(w, 'chaser', 10, 6); e.speed = 0;
+  b.input = { ...idle, aimZ: 1, fire: true };
+  run(w, null as unknown as Input, 90);
+  assert.ok(!w.enemies.includes(e));
+  assert.equal(b.coins, 3); assert.equal(b.kills, 1);
+  assert.equal(w.players[0].coins, 0, 'el otro jugador no cobra');
+  b.input = { ...idle };
+  b.wood = 10; b.angle = 0;
+  assert.ok(build(w, 'pinchos', 'p2'));
+  const trap = w.traps[0];
+  assert.equal(trap.owner, 'p2');
+  const e2 = spawnEnemy(w, 'chaser', trap.x, trap.z); e2.speed = 0; e2.hp = 0.5;
+  run(w, null as unknown as Input, 20);
+  assert.equal(b.kills, 2, 'la baja de los pinchos es para quien los construyó');
+});
+
+test('coop: los robots van a por el jugador vivo más cercano', () => {
+  const w = arena();
+  const b = addPlayer(w, 'p2', 'Ana');
+  w.players[0].x = -15; w.players[0].z = 0; b.x = 15; b.z = 0; b.invuln = 0;
+  const e = spawnEnemy(w, 'chaser', 10, 0);
+  run(w, null as unknown as Input, 30);
+  assert.ok(e.x > 10, 'va hacia Ana');
+  b.hp = 1;
+  run(w, null as unknown as Input, 90);
+  assert.equal(b.alive, false);
+  assert.equal(w.over, false, 'la partida sigue mientras quede alguien');
+  const x = e.x;
+  run(w, null as unknown as Input, 30);
+  assert.ok(e.x < x, 'ahora va a por el otro jugador');
+});
+
+test('coop: los caídos vuelven en la siguiente oleada y la partida acaba si caen todos', () => {
+  const w = arena();
+  const b = addPlayer(w, 'p2', 'Ana');
+  b.alive = false; b.hp = 0;
+  w.toSpawn = 0; w.enemies = [];
+  run(w, idle, 2);
+  assert.equal(w.phase, 'shop');
+  assert.ok(b.coins > 0 && b.wood === woodReward(1), 'monedas y madera también para los caídos');
+  nextWave(w);
+  assert.ok(b.alive && b.hp === b.maxHp);
+  assert.equal(w.toSpawn, waveSize(2, 2), 'oleadas más grandes con más jugadores');
+  for (const q of w.players) { q.hp = 1; q.invuln = 0; }
+  const t1 = spawnEnemy(w, 'tank', w.players[0].x, w.players[0].z + 0.5); t1.speed = 0;
+  const t2 = spawnEnemy(w, 'tank', b.x + 0.5, b.z); t2.speed = 0;
+  run(w, idle, 5);
+  assert.ok(w.over);
+});
+
+test('coop: tienda, equipo y construcción por jugador; el puesto médico cura a cualquiera', () => {
+  const w = arena();
+  const b = addPlayer(w, 'p2', 'Ana');
+  b.coins = 100;
+  assert.ok(buy(w, 'subfusil', 'p2'));
+  assert.equal(b.coins, 40);
+  assert.deepEqual(w.players[0].owned, ['pistola']);
+  assert.equal(cannotBuy(w, 'subfusil'), 'Faltan monedas', 'el primer jugador no tiene monedas');
+  b.tools.torreta = 1;
+  assert.ok(useTool(w, 'torreta', 'p2'));
+  assert.equal(w.turrets[0].owner, 'p2');
+  b.wood = 20; b.angle = 0; b.x = 8; b.z = 0;
+  assert.equal(cannotBuild(w, 'medico'), 'Falta madera', 'la madera es de cada uno');
+  assert.ok(build(w, 'medico', 'p2'));
+  const med = w.obstacles.find((o) => o.kind === 'medic')!;
+  const a = w.players[0];
+  a.x = med.x + 1.5; a.z = med.z; a.hp = 3;
+  run(w, null as unknown as Input, 60 * 6.5);
+  assert.equal(a.hp, 4, 'el puesto de Ana cura al otro jugador');
+  removePlayer(w, 'p2');
+  assert.equal(w.players.length, 1);
+});
+
+test('coop: la armadura bloquea golpes de cada jugador por separado', () => {
+  let r = 12345;
+  const w = newWorld(() => (r = (r * 16807) % 2147483647) / 2147483647, false);
+  w.wave = 1; w.toSpawn = 1; w.spawnTimer = 999;
+  const b = addPlayer(w, 'p2', 'Ana');
+  b.armorLvl = ARMOR_MAX; b.x = 10;
+  let blocked = 0;
+  for (let i = 0; i < 300; i++) {
+    b.invuln = 0; b.hp = 5; b.alive = true;
+    w.bullets.push({ id: 10000 + i, kind: 'enemiga', x: b.x, z: b.z, vx: 0, vz: 0, life: 1, maxLife: 1, enemy: true, dmg: 1, blast: 0, pierce: 0, hits: [], owner: null });
+    step(w, null as unknown as Input, 1 / 60);
+    if (b.hp === 5) blocked++;
+  }
+  assert.ok(blocked / 300 > 0.18 && blocked / 300 < 0.42, `bloquea ~30% (${blocked / 300})`);
+  assert.equal(w.players[0].hp, 5, 'el otro jugador no recibe nada');
 });

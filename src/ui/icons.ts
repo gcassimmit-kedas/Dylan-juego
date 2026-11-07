@@ -40,6 +40,18 @@ import plane from 'lucide-static/icons/plane.svg?raw';
 import zapOff from 'lucide-static/icons/zap-off.svg?raw';
 import userRound from 'lucide-static/icons/user-round.svg?raw';
 import shieldOff from 'lucide-static/icons/shield-off.svg?raw';
+import globe from 'lucide-static/icons/globe.svg?raw';
+import lock from 'lucide-static/icons/lock.svg?raw';
+import users from 'lucide-static/icons/users.svg?raw';
+import flag from 'lucide-static/icons/flag.svg?raw';
+import copy from 'lucide-static/icons/copy.svg?raw';
+import refreshCw from 'lucide-static/icons/refresh-cw.svg?raw';
+import logIn from 'lucide-static/icons/log-in.svg?raw';
+import logOut from 'lucide-static/icons/log-out.svg?raw';
+import plus from 'lucide-static/icons/plus.svg?raw';
+import wifiOff from 'lucide-static/icons/wifi-off.svg?raw';
+import ban from 'lucide-static/icons/ban.svg?raw';
+import keyRound from 'lucide-static/icons/key-round.svg?raw';
 
 /** Extrae solo el contenido interior de un SVG de Lucide (sin comentario de licencia ni atributos). */
 const inner = (svg: string) => svg.replace(/<!--[\s\S]*?-->/g, '').replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '').trim();
@@ -80,6 +92,7 @@ const LUCIDE = {
   pause, play, volumeOn, volumeOff, house, coins, heart, heartPulse, zap, flame, bomb, rocket,
   briefcaseMedical, footprints, magnet, drone, shieldCheck, brickWall, settings, x, chevronRight, arrowLeft,
   trophy, check, fileText, info, crosshair, grid, rotateCcw, hammer, fence, castle, hospital, plane, zapOff, userRound, shieldOff,
+  globe, lock, users, flag, copy, refreshCw, logIn, logOut, plus, wifiOff, ban, keyRound,
 };
 
 export type IconName = keyof typeof LUCIDE | keyof typeof CUSTOM;

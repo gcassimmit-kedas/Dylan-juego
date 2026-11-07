@@ -28,6 +28,8 @@
         <div class="track"><div class="fill" id="hpFill"></div></div>
         <span class="val" id="hpVal">5/5</span>
       </div>
+      <button id="roomChip" class="room-chip" hidden aria-label="Copiar código de la sala"><span data-icon="lock"></span><span id="roomChipText"></span></button>
+      <ul id="playersHud" class="players-hud" hidden aria-label="Equipo"></ul>
     </div>
     <div class="center">
       <div class="wave" id="wave" aria-live="polite">
@@ -72,6 +74,7 @@
       </header>
       <div id="shopBody"></div>
       <footer class="shop-foot">
+        <p id="shopTimer" class="shop-timer" hidden aria-live="polite"></p>
         <button id="nextWave" class="primary big">Siguiente oleada <span data-icon="chevronRight"></span></button>
       </footer>
     </div>
@@ -80,8 +83,12 @@
   <!-- Pausa -->
   <div id="pause" class="screen" hidden>
     <div class="panel menu-panel">
-      <p class="kicker">Partida en pausa</p>
-      <h2>Pausa</h2>
+      <p class="kicker" id="pauseKicker">Partida en pausa</p>
+      <h2 id="pauseTitle">Pausa</h2>
+      <section id="pausePlayers" class="team" hidden aria-labelledby="teamTitle">
+        <h3 id="teamTitle">Jugadores en la sala</h3>
+        <ul id="playersList"></ul>
+      </section>
       <button id="resume" class="primary big"><span data-icon="play"></span> Continuar</button>
       <button id="pauseSettings" class="ghost"><span data-icon="settings"></span> Ajustes</button>
       <button id="quit" class="ghost"><span data-icon="house"></span> Menú principal</button>
@@ -99,8 +106,9 @@
         <div><dt>Puntuación</dt><dd id="goScore">0</dd></div>
         <div><dt>Robots destruidos</dt><dd id="goKills">0</dd></div>
         <div><dt>Monedas ganadas</dt><dd id="goCoins">0</dd></div>
-        <div><dt>Récord</dt><dd id="goBest">0</dd></div>
+        <div><dt id="goBestLabel">Récord</dt><dd id="goBest">0</dd></div>
       </dl>
+      <p class="help" id="goAuto" hidden>Nueva partida en unos segundos</p>
       <button id="retry" class="primary big"><span data-icon="rotateCcw"></span> Reintentar</button>
       <button id="goMenu" class="ghost"><span data-icon="house"></span> Menú principal</button>
     </div>
@@ -115,6 +123,7 @@
     </div>
     <div class="menu">
       <button id="play" class="primary big"><span data-icon="play"></span> Jugar</button>
+      <button id="multiBtn" class="ghost"><span data-icon="users"></span> Multijugador</button>
       <button id="menuSettings" class="ghost"><span data-icon="settings"></span> Ajustes</button>
       <a href="./creditos.html" class="ghost"><span data-icon="info"></span> Créditos</a>
       <a href="./juegos.html" class="ghost"><span data-icon="grid"></span> Otros juegos</a>
@@ -125,6 +134,67 @@
     </dl>
     <p class="help" id="help"></p>
     <span class="version">v0.1.0</span>
+  </div>
+
+  <!-- Multijugador: vestíbulo -->
+  <div id="lobby" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="lobbyTitle">
+    <div class="panel lobby-panel">
+      <div class="head">
+        <div>
+          <p class="kicker">Cooperativo en línea</p>
+          <h2 id="lobbyTitle">Multijugador</h2>
+        </div>
+        <button id="lobbyClose" class="btn" aria-label="Cerrar multijugador" data-icon="x"></button>
+      </div>
+      <div class="lobby-body">
+        <label class="field">
+          <span>Tu nombre de jugador</span>
+          <input id="nick" maxlength="16" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Por ejemplo, Halcón" />
+          <small id="nickMsg">Usa un apodo. No pongas tu nombre real.</small>
+        </label>
+        <p id="lobbyStatus" class="lobby-status" role="status" aria-live="polite"></p>
+        <button id="joinMain" class="primary big"><span data-icon="globe"></span> Entrar al servidor público</button>
+
+        <section class="lobby-sec">
+          <div class="sec-head">
+            <h3>Salas públicas</h3>
+            <button id="roomsRefresh" class="btn" aria-label="Actualizar salas" data-icon="refreshCw"></button>
+          </div>
+          <ul id="roomsList" class="rooms"></ul>
+        </section>
+
+        <section class="lobby-sec">
+          <h3>Crear sala</h3>
+          <div class="row">
+            <input id="roomName" maxlength="16" autocomplete="off" placeholder="Nombre de la sala" aria-label="Nombre de la sala" />
+            <button id="roomPrivate" class="switch" role="switch" aria-checked="false" aria-label="Sala privada"><span></span></button>
+            <span class="lbl" aria-hidden="true">Privada</span>
+          </div>
+          <button id="createRoom" class="ghost"><span data-icon="plus"></span> Crear sala</button>
+        </section>
+
+        <section class="lobby-sec">
+          <h3>Sala privada</h3>
+          <div class="row">
+            <input id="roomCode" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Código" aria-label="Código de la sala" />
+            <button id="joinCode" class="ghost"><span data-icon="keyRound"></span> Entrar</button>
+          </div>
+        </section>
+        <p class="help">Al jugar en línea se comparte tu nombre de jugador con los demás. <a href="./privacidad.html">Política de privacidad</a></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Denunciar a un jugador -->
+  <div id="reportDlg" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="reportTitle">
+    <div class="panel menu-panel">
+      <p class="kicker danger">Denunciar</p>
+      <h2 id="reportTitle">Denunciar a <span id="reportName"></span></h2>
+      <p class="help">La denuncia es anónima. Si varios jugadores lo denuncian, se le retira de la sala.</p>
+      <button class="ghost" data-reason="nombre"><span data-icon="userRound"></span> Nombre ofensivo</button>
+      <button class="ghost" data-reason="conducta"><span data-icon="flag"></span> Mala conducta</button>
+      <button id="reportCancel" class="ghost"><span data-icon="x"></span> Cancelar</button>
+    </div>
   </div>
 
   <!-- Ajustes -->
