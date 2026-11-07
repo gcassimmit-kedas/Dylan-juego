@@ -40,6 +40,7 @@ import zapOff from 'lucide-static/icons/zap-off.svg?raw';
 import userRound from 'lucide-static/icons/user-round.svg?raw';
 import shieldOff from 'lucide-static/icons/shield-off.svg?raw';
 import globe from 'lucide-static/icons/globe.svg?raw';
+import search from 'lucide-static/icons/search.svg?raw';
 import lock from 'lucide-static/icons/lock.svg?raw';
 import users from 'lucide-static/icons/users.svg?raw';
 import flag from 'lucide-static/icons/flag.svg?raw';
@@ -91,7 +92,7 @@ const LUCIDE = {
   pause, play, volumeOn, volumeOff, house, coins, heart, heartPulse, zap, flame, bomb, rocket,
   footprints, magnet, drone, shieldCheck, brickWall, settings, x, chevronRight, arrowLeft,
   trophy, check, fileText, info, crosshair, grid, rotateCcw, hammer, fence, castle, hospital, plane, zapOff, userRound, shieldOff,
-  globe, lock, users, flag, copy, refreshCw, logIn, logOut, plus, wifiOff, ban, keyRound,
+  globe, search, lock, users, flag, copy, refreshCw, logIn, logOut, plus, wifiOff, ban, keyRound,
 };
 
 export type IconName = keyof typeof LUCIDE | keyof typeof CUSTOM;

@@ -23,6 +23,7 @@ export class NetSession {
   /** Eventos recibidos pendientes de procesar por el render. */
   events: GameEvent[] = [];
   onRooms: (r: RoomInfo[]) => void = () => {};
+  onFound: (name: string, r: RoomInfo[]) => void = () => {};
   onJoined: (r: JoinedRoom) => void = () => {};
   onError: (msg: string) => void = () => {};
   onNotice: (msg: string) => void = () => {};
@@ -51,6 +52,7 @@ export class NetSession {
   private handle(m: ServerMsg) {
     switch (m.t) {
       case 'rooms': this.onRooms(m.rooms); break;
+      case 'found': this.onFound(m.name, m.rooms); break;
       case 'error': this.onError(m.msg); break;
       case 'notice': this.onNotice(m.msg); break;
       case 'kicked': this.room = null; this.world = null; this.onKicked(m.msg); break;

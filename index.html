@@ -168,6 +168,17 @@
         <button id="joinMain" class="ghost big-ghost"><span data-icon="globe"></span> Entrar al servidor público</button>
 
         <section class="lobby-sec">
+          <h3>Unirse a un amigo</h3>
+          <div class="row">
+            <input id="friendName" maxlength="16" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Nombre de tu amigo" aria-label="Nombre de tu amigo" />
+            <button id="findFriend" class="ghost"><span data-icon="search"></span> Buscar</button>
+          </div>
+          <p id="friendMsg" class="lobby-status" role="status" aria-live="polite"></p>
+          <ul id="friendResults" class="rooms" hidden aria-live="polite"></ul>
+          <p class="help">Entras en su sala aunque esté en plena batalla. Solo se encuentran jugadores en salas públicas; para una privada, pídele el código.</p>
+        </section>
+
+        <section class="lobby-sec">
           <div class="sec-head">
             <h3>Salas públicas</h3>
             <button id="roomsRefresh" class="btn" aria-label="Actualizar salas" data-icon="refreshCw"></button>

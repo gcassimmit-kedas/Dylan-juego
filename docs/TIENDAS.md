@@ -66,6 +66,7 @@ Medidas para la norma 1.2 de Apple (contenido generado por usuarios) y la polít
 - [x] **Denunciar** a un jugador (nombre ofensivo o mala conducta) desde el menú de la partida. Con 3 denuncias de jugadores distintos se le retira de la sala y su nombre queda vetado en ella. En salas privadas pequeñas basta con que lo denuncien todos los demás; en salas públicas nunca basta una sola denuncia (con dos jugadores, queda bloquear y salir), para que nadie pueda echar a otro a solas.
 - [x] **Bloquear** a un jugador: deja de verse su nombre en ese dispositivo.
 - [x] Sin chat ni texto libre aparte del nombre.
+- [x] **Unirse a un amigo** por su nombre: solo encuentra jugadores en salas públicas (coincidencia exacta, una búsqueda por segundo como máximo); las privadas solo con código. La búsqueda no se guarda.
 - [x] Las denuncias se guardan como máximo 30 días, sin IP ni identidad de quien denuncia (`server/reports.jsonl`).
 - [ ] **Contacto para quejas** visible en la ficha y en la política (Apple exige poder contactar con el desarrollador): pendiente del correo del responsable.
 - [ ] Revisar las denuncias guardadas de forma periódica.

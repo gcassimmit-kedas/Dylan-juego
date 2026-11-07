@@ -53,6 +53,11 @@ export function cleanName(raw: unknown, max = 16): string {
     .slice(0, max);
 }
 
+/** Clave para comparar nombres al buscar a un amigo: sin mayúsculas, tildes ni espacios sobrantes (coincidencia exacta). */
+export function nameKey(raw: unknown): string {
+  return cleanName(raw).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
 export type NameCheck = { ok: true; name: string } | { ok: false; reason: string };
 
 /** Valida un nombre de jugador o de sala. */

@@ -99,6 +99,7 @@ Hasta 8 jugadores contra las mismas oleadas (Título > **Multijugador**):
 - **Servidor público** principal: si se llena, se abre otra sala automáticamente.
 - **Salas públicas** que cualquiera crea y aparecen en la lista.
 - **Salas privadas** con un código de 5 caracteres (se copia pulsando el chip de la sala).
+- **Unirse a un amigo**: escribe su nombre y entras en su sala aunque esté en plena batalla (solo salas públicas; a las privadas, con el código).
 
 Cada jugador tiene sus monedas, madera, armas y equipo; la puntuación es del equipo. Las oleadas crecen un 50 % por
 jugador extra. Si caes, vuelves al terminar la oleada; la partida acaba cuando cae todo el equipo y la sala empieza otra

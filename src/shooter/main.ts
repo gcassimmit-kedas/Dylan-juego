@@ -1023,8 +1023,7 @@ async function ensureConnected(): Promise<boolean> {
     return false;
   }
 }
-function renderRooms(rooms: RoomInfo[]) {
-  const list = $('roomsList');
+function renderRooms(rooms: RoomInfo[], list = $('roomsList')) {
   list.innerHTML = '';
   if (!rooms.length) {
     const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'No hay salas públicas. Crea una.';
@@ -1097,7 +1096,40 @@ nickEl.addEventListener('input', () => { const m = $('nickMsg'); m.textContent =
 nickEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') void joinWith({ main: true }); });
 $('roomCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('joinCode').click(); });
 
-net.onRooms = renderRooms;
+net.onRooms = (r) => renderRooms(r);
+/** Unirse a un amigo: busca su nombre en las salas públicas. Si solo está en una, entra directamente. */
+function setFriendMsg(text: string, error = false) {
+  const el = $('friendMsg');
+  el.textContent = text;
+  el.classList.toggle('error', error);
+}
+async function findFriend() {
+  const friend = $<HTMLInputElement>('friendName').value.trim();
+  if (friend.length < 2) { setFriendMsg('Escribe el nombre de tu amigo.', true); return; }
+  if (!nickOrNull() || !(await ensureConnected())) return;
+  $('friendResults').hidden = true;
+  setFriendMsg(`Buscando a ${friend}`);
+  net.send({ t: 'find', name: friend });
+}
+net.onFound = (name, rooms) => {
+  const list = $('friendResults');
+  if (!rooms.length) {
+    list.hidden = true;
+    setFriendMsg(`No hay nadie llamado ${name} en las salas públicas. Si está en una sala privada, pídele el código.`, true);
+    return;
+  }
+  if (rooms.length === 1 && rooms[0].players < rooms[0].max) {
+    list.hidden = true;
+    setFriendMsg(`${name} está en ${rooms[0].name}. Entrando`);
+    void joinWith({ room: rooms[0].id });
+    return;
+  }
+  setFriendMsg(rooms.length > 1 ? `Hay ${rooms.length} jugadores llamados ${name}. Elige su sala:` : `${name} está en una sala llena.`, rooms.length === 1);
+  list.hidden = false;
+  renderRooms(rooms, list);
+};
+$('findFriend').addEventListener('click', () => void findFriend());
+$('friendName').addEventListener('keydown', (e) => { if (e.key === 'Enter') void findFriend(); });
 net.onError = (msg) => { if (!lobbyEl.hidden) setLobbyStatus(msg, true); else toast(msg); };
 net.onNotice = (msg) => toast(msg);
 net.onJoined = (room) => {

@@ -18,10 +18,10 @@ import {
   SHOP, WEAPON_ORDER, TOOL_ORDER, BUILDS, type World, type GameEvent,
 } from '../src/shooter/sim.ts';
 import {
-  encode, clampInput, MAX_PLAYERS, SIM_HZ, SNAPSHOT_EVERY, SHOP_SECONDS, RESTART_SECONDS, reportsToKick,
+  encode, clampInput, findFriendRooms, MAX_PLAYERS, SIM_HZ, SNAPSHOT_EVERY, SHOP_SECONDS, RESTART_SECONDS, reportsToKick,
   type ClientMsg, type ServerMsg, type RoomInfo,
 } from '../src/shooter/protocol.ts';
-import { checkName, normalizeForFilter } from '../src/shooter/moderation.ts';
+import { checkName, normalizeForFilter, nameKey } from '../src/shooter/moderation.ts';
 
 const PORT = Number(process.env.PORT) || 8080;
 const DIST = resolve(process.env.DIST_DIR || join(import.meta.dirname, '..', 'dist'));
@@ -32,7 +32,7 @@ const EMPTY_ROOM_TTL = 60_000;
 
 // ---------------- Salas ----------------
 
-interface Client { ws: WebSocket; pid: string; name: string; character: CharacterId; room: Room | null; msgs: number; lastInput: number }
+interface Client { ws: WebSocket; pid: string; name: string; character: CharacterId; room: Room | null; msgs: number; lastInput: number; lastFind: number }
 interface Room {
   id: string; name: string; code: string | null; isPublic: boolean; main: boolean;
   world: World; clients: Map<string, Client>; ready: Set<string>;
@@ -227,6 +227,17 @@ function onMessage(c: Client, raw: string) {
   const room = c.room, w = room?.world;
   switch (m.t) {
     case 'list': return send(c, { t: 'rooms', rooms: publicRooms() });
+    case 'find': {
+      // Buscar a un amigo por su nombre (solo salas públicas; como mucho una búsqueda por segundo)
+      const now = Date.now();
+      if (now - c.lastFind < 1000) return;
+      c.lastFind = now;
+      const key = nameKey(m.name);
+      const found = findFriendRooms([...rooms.values()].map((r) => ({
+        info: roomInfo(r), isPublic: r.isPublic, playerKeys: [...r.clients.values()].filter((x) => x !== c).map((x) => nameKey(x.name)),
+      })), key);
+      return send(c, { t: 'found', name: String(m.name ?? '').slice(0, 16), rooms: found });
+    }
     case 'join': {
       if (!acceptName(c, m.name)) return;
       c.character = isCharacter(m.character) ? m.character : 'sargento'; // nunca confiar en el cliente
@@ -293,7 +304,7 @@ const http = createServer((req, res) => { void serveStatic(req, res); });
 const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 4096 });
 
 wss.on('connection', (ws) => {
-  const c: Client = { ws, pid: makeId(), name: 'Soldado', character: 'sargento', room: null, msgs: 0, lastInput: 0 };
+  const c: Client = { ws, pid: makeId(), name: 'Soldado', character: 'sargento', room: null, msgs: 0, lastInput: 0, lastFind: 0 };
   const reset = setInterval(() => (c.msgs = 0), 1000);
   ws.on('message', (data) => onMessage(c, data.toString()));
   ws.on('close', () => { clearInterval(reset); leaveRoom(c); });
