@@ -1,9 +1,9 @@
 # Juegos de Dylan
 
-Juegos 3D para navegador, Android e iOS. `index.html` es el menú.
+**Shooter 2027**: juego 3D para navegador, Android e iOS. La app abre directamente el juego (`index.html`); `juegos.html` lista los juegos incluidos.
 
-- **Shooter 2027** (`shooter.html`): shooter de oleadas de día en un campo de batalla, con tienda de armas y herramientas.
-- **Tres en Raya 3D** (`tres-en-raya.html`): tres en raya en un cubo de 4×4×4 o 3×3×3.
+- **Shooter 2027** (`index.html`): shooter de oleadas de día en un campo de batalla, con tienda de armas y herramientas.
+- **Tres en Raya 3D** (`tres-en-raya.html`, incluido como juego extra): tres en raya en un cubo de 4×4×4 o 3×3×3.
 
 **Stack:** TypeScript + [Three.js](https://threejs.org) (render 3D) + Vite (build) + Capacitor (apps móviles).
 Un solo código para las tres plataformas.
@@ -46,7 +46,7 @@ El mapa cambia en cada partida.
 | | | Dron escolta (×2) | 90 | | |
 
 **Gráficos y rendimiento:** si el dispositivo no llega a 40 FPS en los primeros segundos, el juego quita las sombras
-reales (pone sombras simples bajo los personajes) y baja la resolución. Se puede forzar con `shooter.html?calidad=alta`
+reales (pone sombras simples bajo los personajes) y baja la resolución. Se puede forzar con `index.html?calidad=alta`
 o `?calidad=baja`.
 
 ## Tres en Raya 3D

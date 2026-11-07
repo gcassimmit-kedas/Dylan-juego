@@ -1,7 +1,7 @@
 {
-  "name": "Juegos de Dylan",
-  "short_name": "Juegos",
-  "description": "Shooter 2027: shooter de oleadas contra robots. Incluye Tres en Raya 3D.",
+  "name": "Shooter 2027",
+  "short_name": "Shooter 2027",
+  "description": "Shooter de oleadas contra robots. Defiende la línea y sobrevive.",
   "lang": "es",
   "start_url": "./index.html",
   "scope": "./",
