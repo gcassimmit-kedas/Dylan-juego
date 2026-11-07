@@ -25,9 +25,23 @@ npm run build    # genera dist/ para publicar en cualquier hosting estático
   Equipo: T (torreta), G (mina), F (escudo), B (barricada), Z (ataque aéreo), X (pulso EMP), C (señuelo). V abre el menú de construir.
 - Pausa: botón de pausa arriba a la derecha (o P / Esc en PC). El juego también se pausa solo si cambias de app o de pestaña.
 
-**Personajes:** tu soldado (casco, chaleco, mochila, piernas animadas; el arma cambia en la mano) contra tres robots:
-araña (roja, rápida), artillero (naranja, bípedo con cañón; dispara si te ve y te busca si te escondes) y tanque
-(morado, con orugas y torreta que te apunta). Los robots muestran su barra de vida al recibir daño.
+**Soldados para elegir** (antes de cada partida; cada uno con su aspecto y una ventaja):
+
+| Soldado | Rol | Ventaja |
+|---|---|---|
+| Sargento | Asalto | Equilibrado; empieza con un escudo de energía |
+| Coloso | Pesado | +2 de vida máxima, más lento |
+| Halcón | Explorador | 20 % más rápido, 1 de vida menos |
+| Ingeniera | Construcción | Empieza con 8 de madera y gana el doble por oleada |
+| Tiradora | Precisión | +25 % de daño con todas las armas |
+
+**Robots enemigos** (muestran su barra de vida al recibir daño):
+
+- **Araña** (roja, rápida) y **tanque** (morado, orugas y torreta que te apunta) desde el principio.
+- **Artillero** (naranja, bípedo con cañón; dispara si te ve y te busca si te escondes).
+- **Kamikaze** (amarillo y negro, desde la oleada 3): rueda hacia ti y explota al tocarte a ti o a tu base. Si lo derribas antes, la explosión daña a los robots de alrededor.
+- **Dron** (verde azulado, desde la oleada 4): vuela por encima de rocas, muros y barricadas.
+- **Jefe** (cada 5 oleadas): coloso blindado con mucha vida (más con más jugadores) que dispara abanicos de 7 balas. Su vida se ve arriba en el HUD y al caer suelta botiquines y monedas.
 
 **Campo de batalla:** de día, con cielo, sombras de nubes en movimiento, caminos de tierra, hierba y flores.
 Rocas, árboles y sacos terreros paran las balas; las cajas se rompen y sueltan monedas, vida o disparo rápido.

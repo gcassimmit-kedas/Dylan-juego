@@ -14,7 +14,7 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import {
-  newWorld, step, addPlayer, removePlayer, buy, selectWeapon, useTool, nextWave, build, IDLE,
+  newWorld, step, addPlayer, removePlayer, buy, selectWeapon, useTool, nextWave, build, IDLE, isCharacter, type CharacterId,
   SHOP, WEAPON_ORDER, TOOL_ORDER, BUILDS, type World, type GameEvent,
 } from '../src/shooter/sim.ts';
 import {
@@ -32,7 +32,7 @@ const EMPTY_ROOM_TTL = 60_000;
 
 // ---------------- Salas ----------------
 
-interface Client { ws: WebSocket; pid: string; name: string; room: Room | null; msgs: number; lastInput: number }
+interface Client { ws: WebSocket; pid: string; name: string; character: CharacterId; room: Room | null; msgs: number; lastInput: number }
 interface Room {
   id: string; name: string; code: string | null; isPublic: boolean; main: boolean;
   world: World; clients: Map<string, Client>; ready: Set<string>;
@@ -83,7 +83,7 @@ function joinRoom(c: Client, room: Room) {
   room.clients.set(c.pid, c);
   c.room = room;
   room.emptySince = 0;
-  const p = addPlayer(room.world, c.pid, c.name);
+  const p = addPlayer(room.world, c.pid, c.name, c.character);
   if (room.world.phase === 'fight' && room.world.wave > 0) p.invuln = 3;
   room.obstacleSig = ''; // fuerza a mandar los obstáculos al que entra
   send(c, { t: 'joined', you: c.pid, room: { id: room.id, name: room.name, code: room.code, public: room.isPublic } });
@@ -101,7 +101,7 @@ function leaveRoom(c: Client) {
 }
 
 function resetRoom(room: Room) {
-  const keep = [...room.clients.values()].map((c) => ({ id: c.pid, name: c.name }));
+  const keep = [...room.clients.values()].map((c) => ({ id: c.pid, name: c.name, character: c.character }));
   room.world = newWorld(Math.random, true, keep);
   room.ready.clear();
   room.shopLeft = 0; room.restartLeft = 0;
@@ -229,6 +229,7 @@ function onMessage(c: Client, raw: string) {
     case 'list': return send(c, { t: 'rooms', rooms: publicRooms() });
     case 'join': {
       if (!acceptName(c, m.name)) return;
+      c.character = isCharacter(m.character) ? m.character : 'sargento'; // nunca confiar en el cliente
       if (m.main) return joinRoom(c, mainRoom());
       const target = m.code
         ? [...rooms.values()].find((r) => r.code && r.code === String(m.code).toUpperCase().trim())
@@ -238,6 +239,7 @@ function onMessage(c: Client, raw: string) {
     }
     case 'create': {
       if (!acceptName(c, m.name)) return;
+      c.character = isCharacter(m.character) ? m.character : 'sargento'; // nunca confiar en el cliente
       if (rooms.size >= MAX_ROOMS) return send(c, { t: 'error', msg: 'El servidor tiene demasiadas salas. Prueba más tarde.' });
       let name = `Sala de ${c.name}`;
       if (String(m.roomName ?? '').trim()) {
@@ -291,7 +293,7 @@ const http = createServer((req, res) => { void serveStatic(req, res); });
 const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 4096 });
 
 wss.on('connection', (ws) => {
-  const c: Client = { ws, pid: makeId(), name: 'Soldado', room: null, msgs: 0, lastInput: 0 };
+  const c: Client = { ws, pid: makeId(), name: 'Soldado', character: 'sargento', room: null, msgs: 0, lastInput: 0 };
   const reset = setInterval(() => (c.msgs = 0), 1000);
   ws.on('message', (data) => onMessage(c, data.toString()));
   ws.on('close', () => { clearInterval(reset); leaveRoom(c); });

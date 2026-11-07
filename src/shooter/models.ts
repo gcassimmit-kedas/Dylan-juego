@@ -1,6 +1,6 @@
 // Modelos 3D low-poly hechos con primitivas de Three.js (sin archivos externos) y sus animaciones.
 import * as THREE from 'three';
-import type { EnemyType, WeaponId, ObstacleKind } from './sim.ts';
+import type { EnemyType, WeaponId, ObstacleKind, CharacterId } from './sim.ts';
 
 const std = (color: number, o: THREE.MeshStandardMaterialParameters = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.75, ...o });
 
@@ -15,6 +15,13 @@ export const MAT = {
   tread: std(0x26262a, { roughness: 0.9 }),
   eyeRed: new THREE.MeshBasicMaterial({ color: 0xff3020 }), eyeYellow: new THREE.MeshBasicMaterial({ color: 0xffe14a }),
   eyeCyan: new THREE.MeshBasicMaterial({ color: 0x5ff2ff }),
+  eyeOrange: new THREE.MeshBasicMaterial({ color: 0xff8a1e }),
+  hair: std(0x3b2a1e, { roughness: 0.9 }), ghillie: std(0x4c5a2e, { flatShading: true, roughness: 1 }), ghillieDark: std(0x39451f, { flatShading: true, roughness: 1 }),
+  plate: std(0x4a4f55, { metalness: 0.55, roughness: 0.45 }), hardhat: std(0xf0b429, { roughness: 0.5 }), scarf: std(0x8a3b2a, { roughness: 0.9 }),
+  hazard: std(0xf2c230, { roughness: 0.5, metalness: 0.3 }), hazardDark: std(0x2b2b2b, { roughness: 0.6, metalness: 0.4 }),
+  teal: std(0x2f8f8a, { roughness: 0.45, metalness: 0.5 }), tealDark: std(0x1d5a57, { roughness: 0.5, metalness: 0.5 }),
+  boss: std(0x3a3f46, { roughness: 0.45, metalness: 0.65 }), bossDark: std(0x22262b, { roughness: 0.5, metalness: 0.6 }),
+  bossRed: std(0xb3261e, { roughness: 0.4, metalness: 0.5 }),
   flash: new THREE.MeshBasicMaterial({ color: 0xffffff }),
   stun: new THREE.MeshBasicMaterial({ color: 0x6fd3ff }),
   plank: std(0x8a6236, { roughness: 0.9 }), plankDark: std(0x6b4a28, { roughness: 0.95 }), rope: std(0xc9b48a),
@@ -102,6 +109,8 @@ export interface Soldier {
   weapons: Record<WeaponId, THREE.Group>; shield: THREE.Mesh; muzzle: THREE.Object3D; walk: number;
   /** Retroceso, arma visible, posición anterior y cartel con el nombre (en línea). */
   recoil: number; weapon: WeaponId | null; px: number; pz: number; label: THREE.Sprite | null; labelText: string;
+  /** Personaje (aspecto). */
+  look: CharacterId;
 }
 
 function limb(upper: THREE.Material, lower: THREE.Material, len: number, thick: number) {
@@ -123,7 +132,7 @@ function uniformMats(color: number) {
   return u;
 }
 
-export function makeSoldier(color = 0x5d7a3e): Soldier {
+export function makeSoldier(color = 0x5d7a3e, look: CharacterId = 'sargento'): Soldier {
   const U = uniformMats(color);
   const root = new THREE.Group();
   const body = new THREE.Group();
@@ -138,17 +147,9 @@ export function makeSoldier(color = 0x5d7a3e): Soldier {
   body.add(
     at(box(0.5, 0.18, 0.3, U.dark), 0, 0.05, 0), // cadera
     at(box(0.56, 0.5, 0.34, U.main), 0, 0.38, 0), // torso
-    at(box(0.6, 0.42, 0.38, MAT.vest), 0, 0.4, 0), // chaleco
-    at(box(0.12, 0.12, 0.06, MAT.strap), -0.15, 0.48, 0.2), at(box(0.12, 0.12, 0.06, MAT.strap), 0.15, 0.32, 0.2), // bolsillos
-    at(box(0.44, 0.48, 0.24, U.dark), 0, 0.42, -0.3), // mochila
-    at(box(0.36, 0.12, 0.2, U.helmet), 0, 0.68, -0.32), // saco de dormir
     at(sph(0.2, MAT.skin), 0, 0.82, 0), // cabeza
-    at(box(0.26, 0.06, 0.02, MAT.visor), 0, 0.86, 0.19), // gafas
   );
-  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), U.helmet);
-  helmet.position.y = 0.86; helmet.scale.set(1, 0.85, 1.08);
-  const brim = cyl(0.29, 0.29, 0.04, U.helmet, 14); brim.position.y = 0.86;
-  body.add(helmet, brim);
+  dressSoldier(body, look, U);
 
   const armL = limb(U.main, MAT.skin, 0.62, 0.15), armR = limb(U.main, MAT.skin, 0.62, 0.15);
   armL.position.set(-0.36, 0.6, 0.02); armR.position.set(0.36, 0.6, 0.02);
@@ -176,7 +177,56 @@ export function makeSoldier(color = 0x5d7a3e): Soldier {
 
   castShadows(root);
   shield.castShadow = false;
-  return { root, body, legL, legR, armL, armR, weapons, shield, muzzle, walk: 0, recoil: 0, weapon: null, px: 0, pz: 0, label: null, labelText: '' };
+  // Complexión: el Coloso es más ancho; el Halcón, más ligero.
+  if (look === 'coloso') { body.scale.set(1.18, 1.04, 1.15); legL.scale.set(1.2, 1, 1.2); legR.scale.set(1.2, 1, 1.2); }
+  if (look === 'halcon') { body.scale.set(0.92, 1, 0.92); }
+  return { root, body, legL, legR, armL, armR, weapons, shield, muzzle, walk: 0, recoil: 0, weapon: null, px: 0, pz: 0, label: null, labelText: '', look };
+}
+
+/** Casco, chaleco y equipo de cada personaje (la silueta los distingue de lejos). */
+function dressSoldier(body: THREE.Group, look: CharacterId, U: { main: THREE.Material; dark: THREE.Material; helmet: THREE.Material }) {
+  const dome = (r: number, m: THREE.Material) => new THREE.Mesh(new THREE.SphereGeometry(r, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), m);
+  const vest = (m: THREE.Material) => at(box(0.6, 0.42, 0.38, m), 0, 0.4, 0);
+  const pouches = () => [at(box(0.12, 0.12, 0.06, MAT.strap), -0.15, 0.48, 0.2), at(box(0.12, 0.12, 0.06, MAT.strap), 0.15, 0.32, 0.2)];
+  switch (look) {
+    case 'sargento': { // casco clásico, gafas, mochila y saco de dormir
+      const helmet = dome(0.26, U.helmet); helmet.position.y = 0.86; helmet.scale.set(1, 0.85, 1.08);
+      body.add(vest(MAT.vest), ...pouches(), at(box(0.44, 0.48, 0.24, U.dark), 0, 0.42, -0.3), at(box(0.36, 0.12, 0.2, U.helmet), 0, 0.68, -0.32),
+        at(box(0.26, 0.06, 0.02, MAT.visor), 0, 0.86, 0.19), helmet, at(cyl(0.29, 0.29, 0.04, U.helmet, 14), 0, 0.86, 0));
+      break;
+    }
+    case 'coloso': { // blindaje pesado: casco cerrado con visor, hombreras y placas
+      const helmet = dome(0.28, MAT.plate); helmet.position.y = 0.84; helmet.scale.set(1, 1.05, 1.08);
+      body.add(vest(MAT.plate), at(box(0.62, 0.2, 0.06, MAT.plate), 0, 0.3, 0.21),
+        at(box(0.28, 0.16, 0.4, MAT.plate), -0.38, 0.6, 0), at(box(0.28, 0.16, 0.4, MAT.plate), 0.38, 0.6, 0),
+        at(cyl(0.22, 0.24, 0.24, MAT.plate, 12), 0, 0.78, 0), helmet, at(box(0.34, 0.1, 0.04, MAT.visor), 0, 0.84, 0.25),
+        at(box(0.5, 0.5, 0.26, U.dark), 0, 0.42, -0.31), at(cyl(0.08, 0.08, 0.5, MAT.metal, 8), 0.18, 0.45, -0.46));
+      break;
+    }
+    case 'halcon': { // explorador ligero: gorra con visera hacia atrás, pañuelo y gafas en la frente
+      const cap = dome(0.22, U.helmet); cap.position.y = 0.88; cap.scale.set(1, 0.7, 1.05);
+      body.add(at(box(0.58, 0.3, 0.36, MAT.strap), 0, 0.48, 0), ...pouches(), cap, at(box(0.24, 0.03, 0.16, U.helmet), 0, 0.89, -0.25),
+        at(box(0.3, 0.06, 0.04, MAT.visor), 0, 0.95, 0.15), at(cyl(0.21, 0.24, 0.12, MAT.scarf, 12), 0, 0.68, 0),
+        at(box(0.3, 0.36, 0.18, U.dark), 0, 0.42, -0.27));
+      break;
+    }
+    case 'ingeniera': { // casco de obra, coleta, cinturón de herramientas y mochila con antena
+      const hat = dome(0.25, MAT.hardhat); hat.position.y = 0.88; hat.scale.set(1, 0.8, 1.05);
+      const antenna = at(cyl(0.015, 0.015, 0.7, MAT.metal, 6), 0.14, 0.95, -0.36);
+      body.add(vest(MAT.vest), ...pouches(), hat, at(cyl(0.32, 0.32, 0.03, MAT.hardhat, 16), 0, 0.88, 0.02), at(box(0.08, 0.12, 0.04, MAT.hardhat), 0, 1.0, 0.18),
+        at(box(0.12, 0.26, 0.1, MAT.hair), 0, 0.72, -0.2), at(box(0.62, 0.1, 0.36, MAT.strap), 0, 0.14, 0),
+        at(box(0.1, 0.16, 0.08, MAT.metalLight), -0.28, 0.1, 0.12), at(box(0.06, 0.2, 0.06, MAT.wood), 0.28, 0.08, 0.12),
+        at(box(0.44, 0.44, 0.26, U.dark), 0, 0.44, -0.3), antenna, at(sph(0.04, MAT.eyeRed, 6, 4), 0.14, 1.3, -0.36));
+      break;
+    }
+    case 'tiradora': { // capucha de camuflaje (ghillie), bufanda y fusil largo a la espalda
+      const hood = dome(0.28, MAT.ghillie); hood.position.y = 0.8; hood.scale.set(1, 1.2, 1.12);
+      const rifle = at(box(0.06, 0.06, 1.2, MAT.metal), -0.16, 0.5, -0.32); rifle.rotation.z = 0.6;
+      body.add(at(box(0.62, 0.46, 0.4, MAT.ghillie), 0, 0.4, 0), at(box(0.16, 0.2, 0.42, MAT.ghillieDark), -0.3, 0.55, 0), at(box(0.16, 0.2, 0.42, MAT.ghillieDark), 0.3, 0.55, 0),
+        hood, at(box(0.3, 0.12, 0.05, MAT.ghillieDark), 0, 0.74, 0.18), at(box(0.22, 0.05, 0.02, MAT.visor), 0, 0.86, 0.2), rifle);
+      break;
+    }
+  }
 }
 
 export function animateSoldier(s: Soldier, speed: number, dt: number, t: number, recoil: number) {
@@ -205,7 +255,8 @@ export interface Robot { root: THREE.Group; type: EnemyType; parts: THREE.Mesh[]
 
 function robotParts(g: THREE.Object3D) {
   const parts: THREE.Mesh[] = [];
-  g.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh && m.name !== 'blob' && m.material !== MAT.eyeRed && m.material !== MAT.eyeYellow) { m.userData.base = m.material; parts.push(m); } });
+  const eyes = [MAT.eyeRed, MAT.eyeYellow, MAT.eyeCyan, MAT.eyeOrange];
+  g.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh && m.name !== 'blob' && !eyes.includes(m.material as THREE.MeshBasicMaterial)) { m.userData.base = m.material; parts.push(m); } });
   return parts;
 }
 
@@ -264,8 +315,61 @@ function makeWalker(): Robot {
   return { root, type: 'gunner', parts: robotParts(root), legs, head: torso, walk: 0, px: 0, pz: 0 };
 }
 
+/** Kamikaze: rodante con carga explosiva amarilla y negra y una luz que parpadea. */
+function makeKamikaze(): Robot {
+  const root = new THREE.Group(), legs: THREE.Object3D[] = [];
+  root.add(blobShadow(0.65));
+  const body = new THREE.Group(); body.position.y = 0.5; root.add(body);
+  const ball = sph(0.42, MAT.hazardDark, 14, 10);
+  const band1 = at(cyl(0.43, 0.43, 0.12, MAT.hazard, 16), 0, 0.12, 0), band2 = at(cyl(0.43, 0.43, 0.12, MAT.hazard, 16), 0, -0.12, 0);
+  const wheel = at(cyl(0.3, 0.3, 0.7, MAT.metal, 12), 0, -0.22, 0); wheel.rotation.z = Math.PI / 2; legs.push(wheel);
+  const fuse = at(cyl(0.035, 0.035, 0.3, MAT.metal), 0, 0.5, -0.05);
+  const light = at(sph(0.08, MAT.eyeOrange, 8, 6), 0, 0.68, -0.05); light.name = 'light';
+  body.add(ball, band1, band2, wheel, fuse, light, at(box(0.3, 0.07, 0.05, MAT.eyeRed), 0, 0.05, 0.42));
+  return { root, type: 'kamikaze', parts: robotParts(root), legs, head: body, walk: 0, px: 0, pz: 0 };
+}
+
+/** Dron enemigo: cuadricóptero de ataque que vuela por encima de los obstáculos. */
+function makeEnemyDrone(): Robot {
+  const root = new THREE.Group(), legs: THREE.Object3D[] = [];
+  root.add(blobShadow(0.7));
+  const body = new THREE.Group(); body.position.y = 1.7; root.add(body);
+  body.add(at(box(0.55, 0.2, 0.7, MAT.teal), 0, 0, 0), at(box(0.35, 0.14, 0.4, MAT.tealDark), 0, 0.15, -0.05),
+    at(box(0.3, 0.1, 0.06, MAT.eyeCyan), 0, 0.02, 0.36), at(cyl(0.05, 0.05, 0.4, MAT.metal), 0, -0.18, 0.2).rotateX(Math.PI / 2));
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    body.add(at(box(0.5, 0.05, 0.06, MAT.metal), x * 0.3, 0.05, z * 0.32).rotateY((Math.PI / 4) * x * z));
+    const rotor = at(cyl(0.24, 0.24, 0.02, MAT.metalLight, 14), x * 0.5, 0.12, z * 0.5);
+    body.add(rotor); legs.push(rotor);
+  }
+  return { root, type: 'dron', parts: robotParts(root), legs, head: body, walk: 0, px: 0, pz: 0 };
+}
+
+/** Jefe: coloso blindado con dos cañones, hombreras y un núcleo rojo. */
+function makeBoss(): Robot {
+  const root = new THREE.Group(), legs: THREE.Object3D[] = [];
+  root.add(blobShadow(2));
+  for (const x of [-0.75, 0.75]) {
+    const leg = new THREE.Group(); leg.position.set(x, 1.5, 0);
+    leg.add(at(box(0.55, 0.8, 0.6, MAT.bossDark), 0, -0.4, 0), at(box(0.45, 0.7, 0.5, MAT.boss), 0, -1.05, 0.05), at(box(0.75, 0.22, 1.0, MAT.bossDark), 0, -1.38, 0.12));
+    root.add(leg); legs.push(leg);
+  }
+  const torso = new THREE.Group(); torso.position.y = 1.55;
+  torso.add(
+    at(box(2.0, 1.2, 1.3, MAT.boss), 0, 0.6, 0), at(box(1.6, 0.4, 1.1, MAT.bossDark), 0, -0.05, 0),
+    at(cyl(0.3, 0.3, 0.12, MAT.bossRed, 16), 0, 0.65, 0.66).rotateX(Math.PI / 2), at(sph(0.18, MAT.eyeRed, 10, 8), 0, 0.65, 0.7),
+    at(box(0.9, 0.35, 0.6, MAT.bossDark), 0, 1.35, 0.1), at(box(0.7, 0.1, 0.05, MAT.eyeRed), 0, 1.38, 0.41),
+    at(box(0.75, 0.5, 0.9, MAT.bossRed), -1.3, 1.0, 0), at(box(0.75, 0.5, 0.9, MAT.bossRed), 1.3, 1.0, 0), // hombreras
+    at(cyl(0.2, 0.24, 1.6, MAT.metal, 10), -1.3, 0.35, 0.65).rotateX(Math.PI / 2), at(cyl(0.2, 0.24, 1.6, MAT.metal, 10), 1.3, 0.35, 0.65).rotateX(Math.PI / 2), // cañones
+    at(box(0.55, 0.55, 0.7, MAT.bossDark), -1.3, 0.35, 0), at(box(0.55, 0.55, 0.7, MAT.bossDark), 1.3, 0.35, 0),
+    at(cyl(0.05, 0.05, 0.8, MAT.metal), 0.6, 1.9, -0.3), at(cyl(0.05, 0.05, 0.6, MAT.metal), -0.6, 1.8, -0.3),
+  );
+  root.add(torso);
+  return { root, type: 'jefe', parts: robotParts(root), legs, head: torso, walk: 0, px: 0, pz: 0 };
+}
+
 export function makeRobot(type: EnemyType): Robot {
-  const r = type === 'chaser' ? makeSpider() : type === 'tank' ? makeTank() : makeWalker();
+  const r = type === 'chaser' ? makeSpider() : type === 'tank' ? makeTank() : type === 'gunner' ? makeWalker()
+    : type === 'kamikaze' ? makeKamikaze() : type === 'dron' ? makeEnemyDrone() : makeBoss();
   castShadows(r.root);
   return r;
 }
@@ -288,11 +392,24 @@ export function animateRobot(r: Robot, x: number, z: number, faceX: number, face
     r.root.rotation.y += diff * Math.min(1, dt * 3);
     r.head!.rotation.y = aim - r.root.rotation.y;
     r.legs.forEach((wheel) => (wheel.rotation.x = r.walk));
+  } else if (r.type === 'kamikaze') {
+    r.root.rotation.y = heading;
+    r.legs[0].rotation.x = r.walk * 2; // la rueda gira al rodar
+    r.head!.position.y = 0.5 + Math.abs(Math.sin(r.walk * 2)) * 0.05;
+    r.head!.rotation.z = Math.sin(t * 20) * 0.04; // tiembla: va a explotar
+    const light = r.head!.getObjectByName('light');
+    if (light) light.visible = Math.floor(t * 8) % 2 === 0;
+  } else if (r.type === 'dron') {
+    r.root.rotation.y = aim;
+    r.head!.position.y = 1.7 + Math.sin(t * 3 + r.px) * 0.15;
+    r.head!.rotation.x = Math.min(0.35, speed * 0.05); // se inclina al avanzar
+    for (const rotor of r.legs) rotor.rotation.y += dt * 45;
   } else {
     r.root.rotation.y = aim;
-    const k = Math.min(1, speed / 3);
+    const k = Math.min(1, speed / (r.type === 'jefe' ? 1.5 : 3));
     r.legs[0].rotation.x = Math.sin(r.walk) * 0.6 * k; r.legs[1].rotation.x = -Math.sin(r.walk) * 0.6 * k;
-    r.head!.position.y = 0.85 + Math.abs(Math.cos(r.walk)) * 0.05 * k + Math.sin(t * 3) * 0.01;
+    const baseY = r.type === 'jefe' ? 1.55 : 0.85;
+    r.head!.position.y = baseY + Math.abs(Math.cos(r.walk)) * 0.05 * k + Math.sin(t * 3) * 0.01;
   }
   // Aturdido por el EMP: azul y parpadeando; si no, destello blanco al recibir daño
   for (const p of r.parts) p.material = flash ? MAT.flash : stunned && Math.floor(t * 8) % 2 === 0 ? MAT.stun : (p.userData.base as THREE.Material);

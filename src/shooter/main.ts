@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   newWorld, step, buy, cannotBuy, owns, nextWave, useTool, selectWeapon, dronePos, build, cannotBuild, getPlayer, autoAim, leash,
+  CHARACTERS, CHARACTER_ORDER, isCharacter, PLAYER_COLORS, type CharacterId,
   SHOP, WEAPONS, WEAPON_ORDER, TOOL_ORDER, BUILDS,
   type World, type Input, type Player, type Bullet, type Pickup, type EnemyType, type WeaponId, type ToolId, type ShopItem, type ShopKind, type BuildId, type BuildItem,
 } from './sim.ts';
@@ -20,6 +21,7 @@ const hpEl = $('hp'), hpFill = $('hpFill'), hpVal = $('hpVal'), waveN = $('waveN
   scoreN = $('scoreN'), bannerEl = $('banner'), rapidEl = $('rapid'), toastEl = $('toast'), weaponNameEl = $('weaponName');
 const overlay = $('overlay'), playBtn = $<HTMLButtonElement>('play'), muteBtn = $('mute'), gameoverEl = $('gameover');
 const weaponsEl = $('weapons'), toolsEl = $('tools'), shopEl = $('shop');
+const bossBarEl = $('bossBar'), bossFill = $('bossFill');
 const isTouch = matchMedia('(pointer: coarse)').matches;
 $('help').textContent = isTouch
   ? 'Pulgar izquierdo: moverte · Pulgar derecho: apuntar y disparar. Escóndete detrás de rocas y sacos.'
@@ -233,8 +235,9 @@ const crateMat = new THREE.MeshStandardMaterial({ map: crateTex, roughness: 0.85
 const soldiers = new Map<string, Soldier>();
 function soldierFor(q: Player): Soldier {
   let sd = soldiers.get(q.id);
+  if (sd && sd.look !== q.character) { removeSoldier(q.id); sd = undefined; } // cambió de personaje
   if (!sd) {
-    sd = makeSoldier(q.color);
+    sd = makeSoldier(q.color, q.character);
     sd.px = q.x; sd.pz = q.z;
     setBlobs(sd.root);
     soldiers.set(q.id, sd);
@@ -257,7 +260,9 @@ function removeSoldier(id: string) {
   soldiers.delete(id);
 }
 
-const ENEMY_COLOR: Record<EnemyType, number> = { chaser: 0xc8342f, tank: 0x5b4f7a, gunner: 0xe39a26 };
+const ENEMY_COLOR: Record<EnemyType, number> = { chaser: 0xc8342f, tank: 0x5b4f7a, gunner: 0xe39a26, kamikaze: 0xf2c230, dron: 0x2f8f8a, jefe: 0x3a3f46 };
+/** Altura de la barra de vida sobre cada robot. */
+const BAR_Y: Record<EnemyType, number> = { chaser: 1.9, tank: 2.1, gunner: 1.9, kamikaze: 1.5, dron: 2.6, jefe: 4.4 };
 
 interface Bar { g: THREE.Group; fg: THREE.Mesh }
 const barGeo = new THREE.PlaneGeometry(1, 0.14);
@@ -499,8 +504,13 @@ function pollOnePad(g: Gamepad) {
   const pid = padOwner(g);
   const visible = (id: string) => !$(id).hidden;
   if (visible('settings')) { if (hit(1) || hit(9)) $('settingsClose').click(); return; }
+  if (!charSelEl.hidden) {
+    if (hit(14) || hit(15)) moveCharSel(hit(15) ? 1 : -1);
+    if (hit(0) || hit(9)) $('csGo').click(); else if (hit(1)) $('csBack').click();
+    return;
+  }
   if (!lobbyEl.hidden) { if (hit(1)) closeLobby(); else if (hit(0)) startLocal(); return; }
-  if (!overlay.hidden) { if (hit(0) || hit(9)) start(); return; }
+  if (!overlay.hidden) { if (hit(0) || hit(9)) playBtn.click(); return; }
   if (!gameoverEl.hidden) { if (hit(0) || hit(9)) start(lastLocal); else if (hit(1)) toTitle(); return; }
   if (!shopEl.hidden) {
     if (hit(9)) $<HTMLButtonElement>('nextWave').click();
@@ -774,7 +784,9 @@ function start(local = false) {
   shopPid = buildPid = 'p1';
   document.body.classList.remove('multi');
   document.body.classList.toggle('local', local);
-  world = local ? newWorld(Math.random, true, [{ id: 'p1', name: 'Jugador 1' }, { id: 'p2', name: 'Jugador 2' }]) : newWorld();
+  world = local
+    ? newWorld(Math.random, true, [{ id: 'p1', name: 'Jugador 1', character: savedChar(1) }, { id: 'p2', name: 'Jugador 2', character: savedChar(2) }])
+    : newWorld(Math.random, true, [{ id: 'p1', name: 'Tú', character: savedChar(1) }]);
   lobbyEl.hidden = true;
   playersHud.hidden = !local; teamKey = '';
   if (local) {
@@ -842,9 +854,9 @@ function renderRecords() {
   $('records').hidden = best === 0;
 }
 renderRecords();
-playBtn.addEventListener('click', () => start());
+playBtn.addEventListener('click', () => openCharSelect(1, () => start()));
 $('retry').addEventListener('click', () => start(lastLocal));
-function startLocal() { start(true); }
+function startLocal() { openCharSelect(1, () => openCharSelect(2, () => start(true), 'Jugador 2'), 'Jugador 1'); }
 $('goMenu').addEventListener('click', toTitle);
 
 
@@ -910,12 +922,14 @@ function flushEvents() {
         break;
       }
       case 'enemyShoot': sfx.enemyShoot(); break;
+      case 'boss': sfx.wave(); shake = Math.max(shake, 0.5); banner('¡Llega el jefe!', `Oleada ${ev.wave}`, 'Un coloso blindado entra por el norte'); break;
       case 'hit': sfx.hit(); fx.sparks(ev.x, 0.8, ev.z, 0xffe7a0, 3, 4); break;
       case 'kill': {
         const byMe = mode === 'local' || ev.pid === myId || (ev.pid === null && mode === 'solo');
         sfx.kill();
         if (byMe) { run.kills++; run.coins += ev.coins; }
-        const c = ENEMY_COLOR[ev.type], big = ev.type === 'tank';
+        const c = ENEMY_COLOR[ev.type], big = ev.type === 'tank' || ev.type === 'jefe';
+        if (ev.type === 'jefe') { fx.explosion(ev.x, ev.z, 4); shake = Math.max(shake, 0.9); banner('Jefe derribado', `Oleada ${world.wave}`, 'Recoge el botín'); }
         fx.debris(ev.x, 0.7, ev.z, c, big ? 16 : 9, big ? 9 : 7, big ? 0.3 : 0.2);
         fx.debris(ev.x, 0.7, ev.z, 0x34383c, big ? 8 : 4, 6, 0.16);
         fx.sparks(ev.x, 0.8, ev.z, 0xffc56a, 10, 8);
@@ -1050,7 +1064,7 @@ async function joinWith(target: { main?: boolean; room?: string; code?: string }
   const name = nickOrNull();
   if (!name || !(await ensureConnected())) return;
   setLobbyStatus('Entrando en la sala');
-  net.send({ t: 'join', name, ...target });
+  net.send({ t: 'join', name, character: savedChar(1), ...target });
 }
 $('multiBtn').addEventListener('click', () => void openLobby());
 $('localBtn').addEventListener('click', startLocal);
@@ -1076,7 +1090,7 @@ $('createRoom').addEventListener('click', async () => {
   }
   if (!(await ensureConnected())) return;
   setLobbyStatus('Creando la sala');
-  net.send({ t: 'create', name, roomName, public: privBtn.getAttribute('aria-checked') !== 'true' });
+  net.send({ t: 'create', name, roomName, public: privBtn.getAttribute('aria-checked') !== 'true', character: savedChar(1) });
 });
 nickEl.addEventListener('input', () => { const m = $('nickMsg'); m.textContent = 'Usa un apodo. No pongas tu nombre real.'; m.classList.remove('error'); });
 nickEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') void joinWith({ main: true }); });
@@ -1241,6 +1255,101 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('#reportDlg [data-r
   });
 $('reportCancel').addEventListener('click', () => { reportPid = ''; $('reportDlg').hidden = true; });
 
+// ---------- Elegir soldado ----------
+const charSelEl = $('charSelect');
+/** Personaje guardado de cada jugador (1: tú / jugador 1; 2: jugador 2 en cooperativo local). */
+function savedChar(n: 1 | 2): CharacterId {
+  const v = readStr(n === 1 ? 'shooter.personaje' : 'shooter.personaje2');
+  return isCharacter(v) ? v : n === 1 ? 'sargento' : 'coloso';
+}
+let csWho: 1 | 2 = 1, csSel: CharacterId = 'sargento', csDone: () => void = () => {}, csBack: () => void = () => {};
+let portraits: Partial<Record<CharacterId, string>> = {};
+/** Retratos 3D de los soldados, dibujados una vez con un renderizador aparte. */
+function makePortraits() {
+  if (Object.keys(portraits).length) return;
+  try {
+    const W = 240, H = 280;
+    const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    r.setPixelRatio(1); r.setSize(W, H, false);
+    r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
+    const sc = new THREE.Scene();
+    sc.add(new THREE.HemisphereLight(0xfff4e0, 0x3a4a2a, 1.7));
+    const key = new THREE.DirectionalLight(0xfff1d6, 2.4); key.position.set(2.5, 4, 3.5); sc.add(key);
+    const rim = new THREE.DirectionalLight(0xbcd7ff, 1.2); rim.position.set(-3, 2.5, -2.5); sc.add(rim);
+    const cam = new THREE.PerspectiveCamera(28, W / H, 0.1, 50);
+    cam.position.set(1.5, 1.75, 3.9); cam.lookAt(0, 1.0, 0);
+    for (const c of CHARACTER_ORDER) {
+      const sd = makeSoldier(PLAYER_COLORS[0], c);
+      showWeapon(sd, c === 'tiradora' ? 'francotirador' : c === 'coloso' ? 'ametralladora' : c === 'halcon' ? 'subfusil' : c === 'ingeniera' ? 'escopeta' : 'fusil');
+      sd.root.rotation.y = 0.45;
+      animateSoldier(sd, 0, 0, 0, 0);
+      sc.add(sd.root);
+      r.render(sc, cam);
+      portraits[c] = r.domElement.toDataURL('image/png');
+      sc.remove(sd.root);
+    }
+    r.dispose(); r.forceContextLoss();
+  } catch { portraits = {}; } // sin retratos, las tarjetas siguen funcionando
+}
+function statBar(label: string, k: number) {
+  return `<div class="cs-stat"><span>${label}</span><div class="track"><div class="fill" style="transform: scaleX(${Math.max(0.08, Math.min(1, k))})"></div></div></div>`;
+}
+function renderCharSelect() {
+  $('csKicker').textContent = csLabel;
+  const grid = $('csGrid');
+  grid.innerHTML = '';
+  for (const c of CHARACTER_ORDER) {
+    const ch = CHARACTERS[c];
+    const b = document.createElement('button');
+    b.className = 'cs-card';
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(c === csSel));
+    b.dataset.char = c;
+    b.innerHTML = `<div class="cs-art">${portraits[c] ? `<img src="${portraits[c]}" alt="" />` : icon('userRound')}</div>`
+      + `<div class="cs-info"><span class="cs-role">${ch.role}</span><span class="cs-name">${ch.name}</span><p>${ch.perk}</p>`
+      + statBar('Vida', (5 + ch.hp) / 7) + statBar('Velocidad', ch.speed / 1.2) + statBar('Daño', ch.dmg / 1.25) + '</div>';
+    b.setAttribute('aria-label', `${ch.name}, ${ch.role}. ${ch.perk}`);
+    b.addEventListener('click', () => { csSel = c; renderCharSelect(); });
+    b.addEventListener('dblclick', () => $('csGo').click());
+    grid.appendChild(b);
+  }
+}
+let csLabel = 'Tu soldado';
+function openCharSelect(who: 1 | 2, done: () => void, label = 'Tu soldado', back: () => void = () => {}) {
+  unlock();
+  csWho = who; csLabel = label; csSel = savedChar(who);
+  csDone = done; csBack = back;
+  charSelEl.hidden = false;
+  makePortraits();
+  renderCharSelect();
+  ($('csGrid').querySelector('[aria-checked="true"]') as HTMLElement | null)?.focus({ preventScroll: true });
+}
+function moveCharSel(dir: 1 | -1) {
+  const i = CHARACTER_ORDER.indexOf(csSel);
+  csSel = CHARACTER_ORDER[(i + CHARACTER_ORDER.length + dir) % CHARACTER_ORDER.length];
+  renderCharSelect();
+  ($('csGrid').querySelector('[aria-checked="true"]') as HTMLElement | null)?.focus({ preventScroll: true });
+}
+$('csGo').addEventListener('click', () => {
+  writeStr(csWho === 1 ? 'shooter.personaje' : 'shooter.personaje2', csSel);
+  charSelEl.hidden = true;
+  renderLobbyChar();
+  csDone();
+});
+$('csBack').addEventListener('click', () => { charSelEl.hidden = true; csBack(); });
+charSelEl.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); moveCharSel(1); }
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); moveCharSel(-1); }
+  if (e.key === 'Escape') $('csBack').click();
+});
+/** Personaje elegido para jugar en línea (en el vestíbulo). */
+function renderLobbyChar() {
+  const c = savedChar(1);
+  $('lobbyCharName').textContent = `${CHARACTERS[c].name} · ${CHARACTERS[c].role}`;
+}
+$('lobbyChar').addEventListener('click', () => openCharSelect(1, () => $('lobbyChar').focus(), 'Tu soldado en línea'));
+renderLobbyChar();
+
 // ---------- Calidad gráfica ----------
 // Automática: mide los FPS de los primeros segundos y baja la calidad si no llega a 40.
 // Alta / Baja: elegidas por el jugador en Ajustes.
@@ -1377,13 +1486,21 @@ function frame(now: number) {
     const hurtK = e.hp / e.maxHp;
     r.bar.g.visible = hurtK < 1;
     if (hurtK < 1) {
-      r.bar.g.position.set(e.x, e.type === 'tank' ? 2.1 : 1.9, e.z);
+      r.bar.g.position.set(e.x, BAR_Y[e.type], e.z);
       r.bar.g.quaternion.copy(camera.quaternion);
       r.bar.fg.scale.x = Math.max(0.001, hurtK);
       r.bar.fg.position.x = -(1 - hurtK) / 2;
     }
   }
   for (const [id, r] of robots) if (!alive.has(id)) { scene.remove(r.root, r.bar.g); robots.delete(id); }
+  // Barra de vida del jefe en el HUD
+  const boss = world.enemies.find((e) => e.type === 'jefe');
+  bossBarEl.hidden = !boss || !playing;
+  if (boss) {
+    const k = Math.max(0, boss.hp / boss.maxHp);
+    bossFill.style.transform = `scaleX(${k})`;
+    bossBarEl.setAttribute('aria-valuenow', String(Math.round(k * 100)));
+  }
 
   sync(objs.obstacles, world.obstacles, (o) => setBlobs(makeObstacle(o.kind, o.r, o.rot, crateMat)), (m, o) => {
     m.position.set(o.x, 0, o.z);

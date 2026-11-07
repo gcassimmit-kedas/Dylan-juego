@@ -2,7 +2,7 @@
 // La misma lógica corre en el navegador (un jugador) y en el servidor (cooperativo en línea).
 // world.player y world.coins son atajos al primer jugador, para el modo de un jugador.
 
-export type EnemyType = 'chaser' | 'tank' | 'gunner';
+export type EnemyType = 'chaser' | 'tank' | 'gunner' | 'kamikaze' | 'dron' | 'jefe';
 export type PickupType = 'health' | 'rapid' | 'coins';
 export type WeaponId = 'pistola' | 'subfusil' | 'fusil' | 'escopeta' | 'ametralladora' | 'lanzallamas' | 'francotirador' | 'tesla' | 'granadas' | 'cohetes';
 export type ToolId = 'torreta' | 'mina' | 'escudo' | 'barricada' | 'aereo' | 'emp' | 'senuelo';
@@ -13,8 +13,25 @@ export type ItemId = WeaponId | ToolId | 'botiquin' | 'armadura' | 'botas' | 'mu
 export type Phase = 'fight' | 'shop';
 
 export interface Input { moveX: number; moveZ: number; aimX: number; aimZ: number; fire: boolean }
+/** Soldados para elegir: cada uno con su aspecto y una ventaja. */
+export type CharacterId = 'sargento' | 'coloso' | 'halcon' | 'ingeniera' | 'tiradora';
+export interface Character {
+  name: string; role: string; perk: string;
+  /** Vida máxima extra (o menos), multiplicadores de velocidad y daño, madera inicial y multiplicador de madera por oleada. */
+  hp: number; speed: number; dmg: number; startWood: number; woodMul: number; startShield: number;
+}
+export const CHARACTERS: Record<CharacterId, Character> = {
+  sargento: { name: 'Sargento', role: 'Asalto', perk: 'Equilibrado. Empieza con un escudo de energía.', hp: 0, speed: 1, dmg: 1, startWood: 0, woodMul: 1, startShield: 1 },
+  coloso: { name: 'Coloso', role: 'Pesado', perk: '+2 de vida máxima, pero se mueve más despacio.', hp: 2, speed: 0.86, dmg: 1, startWood: 0, woodMul: 1, startShield: 0 },
+  halcon: { name: 'Halcón', role: 'Explorador', perk: 'Un 20 % más rápido, con 1 de vida menos.', hp: -1, speed: 1.2, dmg: 1, startWood: 0, woodMul: 1, startShield: 0 },
+  ingeniera: { name: 'Ingeniera', role: 'Construcción', perk: 'Empieza con 8 de madera y gana el doble al superar oleadas.', hp: 0, speed: 1, dmg: 1, startWood: 8, woodMul: 2, startShield: 0 },
+  tiradora: { name: 'Tiradora', role: 'Precisión', perk: '+25 % de daño con todas las armas.', hp: 0, speed: 1, dmg: 1.25, startWood: 0, woodMul: 1, startShield: 0 },
+};
+export const CHARACTER_ORDER = Object.keys(CHARACTERS) as CharacterId[];
+export const isCharacter = (v: unknown): v is CharacterId => typeof v === 'string' && (CHARACTER_ORDER as string[]).includes(v);
+
 export interface Player {
-  id: string; name: string; color: number; alive: boolean; coins: number; score: number; kills: number; input: Input;
+  id: string; name: string; color: number; alive: boolean; character: CharacterId; coins: number; score: number; kills: number; input: Input;
   x: number; z: number; angle: number; hp: number; maxHp: number; cooldown: number; invuln: number; rapid: number;
   weapon: WeaponId; owned: WeaponId[]; tools: Record<ToolId, number>;
   speedLvl: number; armorLvl: number; dmgLvl: number; magnet: number; regen: number; regenT: number; drones: number; droneCd: number;
@@ -45,7 +62,7 @@ export type GameEvent =
   | { kind: 'tool'; pid: string; tool: ToolId } | { kind: 'regen'; pid: string } | { kind: 'blocked'; x: number; z: number }
   | { kind: 'armorBlock'; pid: string } | { kind: 'chain'; points: [number, number][] } | { kind: 'emp'; x: number; z: number; r: number }
   | { kind: 'strikeMark'; x: number; z: number } | { kind: 'build'; pid: string; what: BuildId; x: number; z: number } | { kind: 'structureLost'; x: number; z: number }
-  | { kind: 'down'; pid: string } | { kind: 'join'; pid: string } | { kind: 'leave'; pid: string };
+  | { kind: 'down'; pid: string } | { kind: 'join'; pid: string } | { kind: 'leave'; pid: string } | { kind: 'boss'; wave: number };
 
 export interface World {
   arena: number; // medio lado del campo cuadrado
@@ -104,7 +121,7 @@ export const BUILDS: BuildItem[] = [
 export const woodReward = (wave: number) => 3 + wave;
 const STRUCTURE_HP: Partial<Record<ObstacleKind, number>> = { wall: 40, tower: 35, medic: 30 };
 /** Daño por segundo que hace cada robot al empujar contra una estructura de la base. */
-const SIEGE_DPS: Record<EnemyType, number> = { chaser: 3, gunner: 2, tank: 8 };
+const SIEGE_DPS: Record<EnemyType, number> = { chaser: 3, gunner: 2, tank: 8, kamikaze: 0, dron: 0, jefe: 16 }; // kamikaze explota; el dron vuela por encima
 
 export type ShopKind = 'arma' | 'mejora' | 'equipo';
 export interface ShopItem { id: ItemId; name: string; desc: string; price: number; max?: number; kind: ShopKind }
@@ -138,12 +155,15 @@ const STATS: Record<EnemyType, { hp: number; speed: number; r: number; score: nu
   chaser: { hp: 3, speed: 5, r: 0.6, score: 10, coins: 3 },
   tank: { hp: 14, speed: 2.6, r: 1.05, score: 30, coins: 10 },
   gunner: { hp: 5, speed: 3.6, r: 0.7, score: 20, coins: 6 },
+  kamikaze: { hp: 2, speed: 6.5, r: 0.55, score: 15, coins: 4 },
+  dron: { hp: 3, speed: 5.5, r: 0.6, score: 20, coins: 5 },
+  jefe: { hp: 60, speed: 1.9, r: 1.6, score: 250, coins: 50 },
 };
 
 export const PLAYER_COLORS = [0x5d7a3e, 0x3e6ea8, 0xb5532f, 0x8a4fae, 0x2f9a8f, 0xc9a227, 0xb03a6a, 0x6b6b6b];
 export const IDLE: Input = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false };
 
-export function newWorld(rand: () => number = Math.random, withObstacles = true, players: { id: string; name: string }[] = [{ id: 'p1', name: 'Tú' }]): World {
+export function newWorld(rand: () => number = Math.random, withObstacles = true, players: { id: string; name: string; character?: CharacterId }[] = [{ id: 'p1', name: 'Tú' }]): World {
   const w = {
     arena: 30, players: [] as Player[],
     bullets: [], enemies: [], pickups: [], obstacles: [], turrets: [], mines: [], traps: [], decoys: [], strikes: [],
@@ -153,7 +173,7 @@ export function newWorld(rand: () => number = Math.random, withObstacles = true,
     get coins() { return this.players[0]?.coins ?? 0; },
     set coins(v: number) { if (this.players[0]) this.players[0].coins = v; },
   } as World;
-  for (const p of players) addPlayer(w, p.id, p.name);
+  for (const p of players) addPlayer(w, p.id, p.name, p.character);
   w.events.length = 0;
   if (withObstacles) generateObstacles(w);
   return w;
@@ -165,14 +185,15 @@ function spawnPoint(i: number): [number, number] {
   return [Math.cos(a) * 2.5, Math.sin(a) * 2.5];
 }
 
-export function addPlayer(w: World, id: string, name: string): Player {
+export function addPlayer(w: World, id: string, name: string, character: CharacterId = 'sargento'): Player {
+  const ch = CHARACTERS[isCharacter(character) ? character : 'sargento'];
   const used = new Set(w.players.map((p) => p.color));
   const color = PLAYER_COLORS.find((c) => !used.has(c)) ?? PLAYER_COLORS[w.players.length % PLAYER_COLORS.length];
   const [x, z] = spawnPoint(w.players.length);
   const p: Player = {
-    id, name, color, alive: true, coins: 0, score: 0, kills: 0, input: { ...IDLE },
-    x, z, angle: Math.PI, hp: 5, maxHp: 5, cooldown: 0, invuln: w.players.length ? 2 : 0, rapid: 0,
-    weapon: 'pistola', owned: ['pistola'], tools: { torreta: 0, mina: 0, escudo: 0, barricada: 0, aereo: 0, emp: 0, senuelo: 0 }, wood: 0,
+    id, name, color, alive: true, character: isCharacter(character) ? character : 'sargento', coins: 0, score: 0, kills: 0, input: { ...IDLE },
+    x, z, angle: Math.PI, hp: 5 + ch.hp, maxHp: 5 + ch.hp, cooldown: 0, invuln: w.players.length ? 2 : 0, rapid: 0,
+    weapon: 'pistola', owned: ['pistola'], tools: { torreta: 0, mina: 0, escudo: ch.startShield, barricada: 0, aereo: 0, emp: 0, senuelo: 0 }, wood: ch.startWood,
     speedLvl: 0, armorLvl: 0, dmgLvl: 0, magnet: 0, regen: 0, regenT: 0, drones: 0, droneCd: 0, shield: 0, moving: false,
   };
   w.players.push(p);
@@ -224,10 +245,19 @@ export function generateObstacles(w: World) {
 export const waveSize = (wave: number, players = 1) => Math.round((4 + wave * 3) * (1 + 0.5 * (Math.max(1, players) - 1)));
 export const waveBonus = (wave: number) => 10 + wave * 5;
 
+/** Radio de cada robot (lo usa también el cliente en línea). */
+export const ENEMY_RADIUS = Object.fromEntries(Object.entries(STATS).map(([k, v]) => [k, v.r])) as Record<EnemyType, number>;
+/** Cada cuántas oleadas aparece un jefe. */
+export const BOSS_EVERY = 5;
+export const KAMIKAZE_BLAST = 2.6;
+
 function pickType(w: World): EnemyType {
   const r = w.rand();
   if (w.wave >= 3 && r < 0.2) return 'gunner';
   if (w.wave >= 2 && r < 0.4) return 'tank';
+  // Parte de las arañas se cambian por robots nuevos a partir de la oleada 3 (kamikaze) y 4 (dron).
+  if (w.wave >= 4 && r > 0.88) return 'dron';
+  if (w.wave >= 3 && r > 0.74) return 'kamikaze';
   return 'chaser';
 }
 
@@ -237,8 +267,10 @@ export function spawnEnemy(w: World, type: EnemyType, x?: number, z?: number): E
     const t = (w.rand() * 2 - 1) * w.arena, side = Math.floor(w.rand() * 4), e = w.arena - 1;
     [x, z] = side === 0 ? [t, -e] : side === 1 ? [t, e] : side === 2 ? [-e, t] : [e, t];
   }
-  const speed = type === 'chaser' ? Math.min(8, s.speed + w.wave * 0.25) : s.speed;
-  const hp = s.hp + (type === 'tank' ? Math.floor(w.wave / 3) * 3 : 0) + Math.floor(w.wave / 4);
+  const speed = type === 'chaser' ? Math.min(8, s.speed + w.wave * 0.25) : type === 'kamikaze' ? Math.min(9, s.speed + w.wave * 0.15) : s.speed;
+  const hp = type === 'jefe'
+    ? Math.round((s.hp + w.wave * 10) * (1 + 0.5 * (Math.max(1, w.players.length) - 1))) // más vida con más jugadores
+    : s.hp + (type === 'tank' ? Math.floor(w.wave / 3) * 3 : 0) + Math.floor(w.wave / 4);
   const en: Enemy = { id: w.nextId++, type, x, z, hp, maxHp: hp, speed, r: s.r, cooldown: 1 + w.rand() * 1.5, flash: 0, side: 0, sideT: 0, ax: x, az: z, stuckT: 0, stun: 0 };
   w.enemies.push(en);
   return en;
@@ -412,6 +444,10 @@ export function nextWave(w: World) {
   w.toSpawn = waveSize(w.wave, w.players.length);
   w.spawnTimer = 1.2;
   w.events.push({ kind: 'wave', wave: w.wave });
+  if (w.wave % BOSS_EVERY === 0) {
+    spawnEnemy(w, 'jefe', 0, -(w.arena - 2)); // entra por el norte
+    w.events.push({ kind: 'boss', wave: w.wave });
+  }
 }
 
 // ---------- Simulación ----------
@@ -524,7 +560,7 @@ export function movePlayer(w: World, p: Player, inp: Input, dt: number) {
   const ml = Math.hypot(mx, mz);
   if (ml > 1) { mx /= ml; mz /= ml; }
   const slow = inp.fire ? WEAPONS[p.weapon].slow ?? 1 : 1; // la ametralladora pesa: frena mientras disparas
-  const speed = PLAYER_SPEED * (1 + p.speedLvl * 0.12) * slow;
+  const speed = PLAYER_SPEED * (1 + p.speedLvl * 0.12) * slow * CHARACTERS[p.character].speed;
   p.x = clamp(p.x + mx * speed * dt, -lim, lim);
   p.z = clamp(p.z + mz * speed * dt, -lim, lim);
   pushOut(p, PLAYER_R, w.obstacles);
@@ -557,7 +593,7 @@ export function step(w: World, input: Input | null, dt: number): void {
     if (inp.fire && p.cooldown <= 0) {
       const st = WEAPONS[p.weapon];
       p.cooldown = st.cooldown * (p.rapid > 0 ? 0.5 : 1);
-      fire(w, p.id, p.x, p.z, p.angle, st, 1 + p.dmgLvl * 0.3, p.rapid > 0);
+      fire(w, p.id, p.x, p.z, p.angle, st, (1 + p.dmgLvl * 0.3) * CHARACTERS[p.character].dmg, p.rapid > 0);
       w.events.push({ kind: 'shoot', pid: p.id, weapon: p.weapon });
     }
     // Drones escolta
@@ -642,6 +678,20 @@ export function step(w: World, input: Input | null, dt: number): void {
     let spike = 1, trapOwner: string | null = null;
     for (const t of w.traps) if (Math.hypot(t.x - e.x, t.z - e.z) < t.r + e.r * 0.5) { spike = 0.5; e.hp -= 4 * dt; e.flash = 0.03; trapOwner = t.owner; }
     if (e.hp <= 0) { kill(w, e, trapOwner); continue; }
+    if (e.type === 'jefe') {
+      // Jefe: avanza siempre y dispara un abanico de 7 balas.
+      e.cooldown -= dt;
+      if (e.cooldown <= 0 && d < 20) {
+        e.cooldown = 2.4;
+        const base = Math.atan2(dx, dz);
+        for (let k = -3; k <= 3; k++) {
+          const a = base + k * 0.16;
+          w.bullets.push({ id: w.nextId++, kind: 'enemiga', x: e.x, z: e.z, vx: Math.sin(a) * 10, vz: Math.cos(a) * 10,
+            life: 2.2, maxLife: 2.2, enemy: true, dmg: 1, blast: 0, pierce: 0, hits: [], owner: null });
+        }
+        w.events.push({ kind: 'enemyShoot' });
+      }
+    }
     if (e.type === 'gunner') {
       // Mantiene la distancia, pero solo se planta si te ve (si no, busca ángulo).
       const sees = lineOfSight(w, e.x, e.z, tx, tz);
@@ -659,7 +709,8 @@ export function step(w: World, input: Input | null, dt: number): void {
     // Si hay algo delante, rodearlo por un lado y mantener ese lado hasta pasarlo
     // (si no, las piezas de un muro empujan en sentidos opuestos y se anulan).
     let sx = 0, sz = 0, block = 0, nearest = Infinity, nearestCross = 0;
-    if (dir !== 0) for (const o of w.obstacles) {
+    const flies = e.type === 'dron'; // el dron pasa por encima de todo
+    if (dir !== 0 && !flies) for (const o of w.obstacles) {
       if (isStructure(o)) continue; // tus estructuras no se rodean: se atacan (defensa de la base)
       const ox = o.x - e.x, oz = o.z - e.z, od = Math.hypot(ox, oz), clear = od - o.r - e.r;
       if (clear > 2.2 || od === 0) continue;
@@ -674,7 +725,7 @@ export function step(w: World, input: Input | null, dt: number): void {
     } else if ((e.sideT -= dt) <= 0) e.side = 0;
     // Atascado en un rincón: cambia de lado y lo mantiene un rato.
     e.stuckT += dt;
-    if (e.stuckT > 0.75) {
+    if (e.stuckT > 0.75 && !flies) {
       const sieging = w.obstacles.some((o) => isStructure(o) && Math.hypot(o.x - e.x, o.z - e.z) < o.r + e.r + 0.3);
       if (!sieging && dir !== 0 && d > e.r + PLAYER_R + 0.6 && Math.hypot(e.x - e.ax, e.z - e.az) < 0.6) {
         e.side = e.side === 0 ? (w.rand() < 0.5 ? 1 : -1) : -e.side;
@@ -699,10 +750,12 @@ export function step(w: World, input: Input | null, dt: number): void {
       }
     }
   for (const e of w.enemies) {
-    pushOut(e, e.r, w.obstacles);
+    if (e.type !== 'dron') pushOut(e, e.r, w.obstacles);
     e.x = clamp(e.x, -w.arena + e.r, w.arena - e.r);
     e.z = clamp(e.z, -w.arena + e.r, w.arena - e.r);
     if (e.hp <= 0 || e.stun > 0) continue;
+    if (e.type === 'kamikaze' && (w.obstacles.some((o) => isStructure(o) && o.hp > 0 && Math.hypot(o.x - e.x, o.z - e.z) < o.r + e.r + 0.3)
+      || w.decoys.some((dc) => Math.hypot(dc.x - e.x, dc.z - e.z) < e.r + 0.9))) { detonate(w, e); continue; }
     // Asedio: los robots dañan las estructuras de la base y los señuelos que tocan
     for (const o of w.obstacles) if (isStructure(o) && o.hp > 0 && Math.hypot(o.x - e.x, o.z - e.z) < o.r + e.r + 0.15) hitObstacle(w, o, SIEGE_DPS[e.type] * dt);
     for (const dc of w.decoys) if (Math.hypot(dc.x - e.x, dc.z - e.z) < e.r + 0.7) dc.hp -= SIEGE_DPS[e.type] * dt;
@@ -745,6 +798,7 @@ export function step(w: World, input: Input | null, dt: number): void {
   // --- Contacto ---
   for (const e of w.enemies) {
     if (e.hp <= 0) continue;
+    if (e.type === 'kamikaze' && e.stun <= 0 && living.some((p) => p.alive && Math.hypot(p.x - e.x, p.z - e.z) < e.r + PLAYER_R + 0.4)) { detonate(w, e); continue; }
     for (const p of living) {
       if (!p.alive) continue;
       const dx = p.x - e.x, dz = p.z - e.z, d = Math.hypot(dx, dz);
@@ -779,7 +833,7 @@ export function step(w: World, input: Input | null, dt: number): void {
   // --- Fin de oleada: abrir la tienda (monedas y madera para todos, también para los caídos) ---
   if (!w.over && w.wave > 0 && w.toSpawn === 0 && w.enemies.length === 0) {
     const bonus = waveBonus(w.wave), wood = woodReward(w.wave);
-    for (const p of w.players) { p.coins += bonus; p.wood += wood; }
+    for (const p of w.players) { p.coins += bonus; p.wood += wood * CHARACTERS[p.character].woodMul; }
     w.phase = 'shop';
     w.bullets = w.bullets.filter((b) => !b.enemy);
     w.strikes = [];
@@ -825,6 +879,15 @@ function hurt(w: World, p: Player) {
   }
 }
 
+/** Un kamikaze que llega a su objetivo explota: daña a los jugadores, la base y los señuelos cercanos. No da monedas. */
+function detonate(w: World, e: Enemy) {
+  e.hp = 0;
+  w.events.push({ kind: 'explosion', x: e.x, z: e.z, r: KAMIKAZE_BLAST });
+  for (const p of w.players) if (p.alive && Math.hypot(p.x - e.x, p.z - e.z) < KAMIKAZE_BLAST + PLAYER_R) hurt(w, p);
+  for (const o of w.obstacles) if (isStructure(o) && Math.hypot(o.x - e.x, o.z - e.z) < KAMIKAZE_BLAST + o.r) hitObstacle(w, o, 8);
+  for (const dc of w.decoys) if (Math.hypot(dc.x - e.x, dc.z - e.z) < KAMIKAZE_BLAST + 0.7) dc.hp -= 2;
+}
+
 /** Baja de un robot: los puntos suman al equipo; monedas y puntos personales, para quien lo derribó. */
 function kill(w: World, e: Enemy, owner: string | null) {
   const s = STATS[e.type];
@@ -833,6 +896,16 @@ function kill(w: World, e: Enemy, owner: string | null) {
   const killer = (owner ? w.players.find((p) => p.id === owner) : undefined) ?? (w.players.length === 1 ? w.players[0] : undefined);
   if (killer) { killer.coins += s.coins; killer.score += pts; killer.kills++; }
   w.events.push({ kind: 'kill', x: e.x, z: e.z, type: e.type, coins: s.coins, pid: killer?.id ?? null });
+  if (e.type === 'jefe') {
+    // Botín del jefe: dos botiquines y monedas alrededor
+    for (let k = 0; k < 5; k++) {
+      const a = (k / 5) * Math.PI * 2;
+      w.pickups.push({ id: w.nextId++, type: k < 2 ? 'health' : 'coins', x: e.x + Math.sin(a) * 1.8, z: e.z + Math.cos(a) * 1.8, life: 15 });
+    }
+    return;
+  }
+  // Un kamikaze derribado revienta igualmente: daña a los robots de alrededor (no a los jugadores).
+  if (e.type === 'kamikaze') explode(w, { x: e.x, z: e.z, blast: 2.2, dmg: 4, owner });
   const chance = e.type === 'tank' ? 0.3 : 0.06;
   if (w.rand() < chance) w.pickups.push({ id: w.nextId++, type: w.rand() < 0.5 ? 'health' : 'rapid', x: e.x, z: e.z, life: 10 });
 }

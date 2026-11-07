@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addPlayer, removePlayer, autoAim, leash, build, cannotBuild, woodReward, ARMOR_MAX, newWorld, step, spawnEnemy, waveSize, waveBonus, buy, cannotBuy, nextWave, useTool, selectWeapon, dronePos, type Input, type World } from './sim.ts';
+import { addPlayer, removePlayer, autoAim, leash, BOSS_EVERY, CHARACTERS, CHARACTER_ORDER, build, cannotBuild, woodReward, ARMOR_MAX, newWorld, step, spawnEnemy, waveSize, waveBonus, buy, cannotBuy, nextWave, useTool, selectWeapon, dronePos, type Input, type World } from './sim.ts';
 
 const idle: Input = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false };
 const seq = (vals: number[]) => { let i = 0; return () => vals[i++ % vals.length]; };
@@ -543,4 +543,126 @@ test('cooperativo local: los jugadores no se separan más que la correa', () => 
   b.alive = false; b.x = 25; a.x = -25;
   leash(w, 24);
   assert.equal(a.x, -25, 'un jugador caído no tira del otro');
+});
+
+test('kamikaze: explota al tocarte, te quita vida y no da monedas', () => {
+  const w = newWorld(() => 0.5, false);
+  w.wave = 3; w.toSpawn = 1; // queda otro: no se cobra el premio de oleada w.spawnTimer = 999;
+  const p = w.players[0]; p.x = 0; p.z = 0;
+  const e = spawnEnemy(w, 'kamikaze', 0, 1.2);
+  step(w, null as unknown as Input, 1 / 60);
+  assert.equal(w.enemies.includes(e), false, 'el kamikaze desaparece');
+  assert.equal(p.hp, 4, 'quita 1 de vida');
+  assert.equal(p.coins, 0, 'no da monedas');
+});
+
+test('kamikaze derribado revienta y daña a los robots de alrededor', () => {
+  const w = newWorld(() => 0.5, false);
+  w.wave = 3; w.toSpawn = 0; w.spawnTimer = 999;
+  const p = w.players[0]; p.x = 0; p.z = 0; p.angle = 0;
+  const k = spawnEnemy(w, 'kamikaze', 0, 8); k.speed = 0; k.hp = 0.5;
+  const t = spawnEnemy(w, 'tank', 1.2, 8.6); t.speed = 0;
+  const hp0 = t.hp;
+  run(w, { moveX: 0, moveZ: 0, aimX: 0, aimZ: 1, fire: true }, 60);
+  assert.equal(w.enemies.includes(k), false);
+  assert.ok(t.hp < hp0, 'la explosión daña al tanque de al lado');
+  assert.equal(p.hp, 5, 'al jugador lejos no le hace nada');
+});
+
+test('kamikaze revienta contra la base', () => {
+  const w = newWorld(() => 0.5, false);
+  w.wave = 3; w.toSpawn = 0; w.spawnTimer = 999;
+  const p = w.players[0]; p.x = 0; p.z = 0; p.angle = 0; p.wood = 10;
+  assert.ok(build(w, 'muro'));
+  const walls = w.obstacles.filter((o) => o.kind === 'wall');
+  const hp0 = walls.reduce((s, o) => s + o.hp, 0);
+  spawnEnemy(w, 'kamikaze', walls[1].x, walls[1].z + 3);
+  run(w, null as unknown as Input, 120);
+  assert.equal(w.enemies.length, 0);
+  assert.ok(walls.reduce((s, o) => s + Math.max(0, o.hp), 0) < hp0, 'el muro recibe daño');
+  assert.equal(p.hp, 5, 'el muro protege al jugador');
+});
+
+test('dron: vuela por encima de los obstáculos', () => {
+  const w = newWorld(() => 0.5, false);
+  w.wave = 4; w.toSpawn = 0; w.spawnTimer = 999;
+  const p = w.players[0]; p.x = 0; p.z = 0;
+  w.obstacles.push({ id: 999, kind: 'rock', x: 0, z: 5, r: 1.6, hp: Infinity, rot: 0 });
+  const d = spawnEnemy(w, 'dron', 0, 10);
+  let passed = false;
+  for (let i = 0; i < 120; i++) { step(w, null as unknown as Input, 1 / 60); if (Math.abs(d.x) < 0.3 && Math.abs(d.z - 5) < 0.5) passed = true; }
+  assert.ok(passed, 'atraviesa la roca en línea recta');
+});
+
+test('jefe: aparece cada 5 oleadas, dispara en abanico y suelta botín', () => {
+  const w = newWorld(() => 0.5, false);
+  w.wave = BOSS_EVERY - 1;
+  nextWave(w);
+  const boss = w.enemies.find((e) => e.type === 'jefe');
+  assert.ok(boss, 'hay jefe en la oleada 5');
+  assert.ok(boss.hp >= 100);
+  const w4 = newWorld(() => 0.5, false); w4.wave = 2; nextWave(w4);
+  assert.equal(w4.enemies.some((e) => e.type === 'jefe'), false, 'en la 3 no');
+  const p = w.players[0]; p.x = 0; p.z = 0; w.spawnTimer = 999; w.toSpawn = 1;
+  boss.x = 0; boss.z = -12; boss.cooldown = 0; boss.speed = 0;
+  step(w, null as unknown as Input, 1 / 60);
+  assert.equal(w.bullets.filter((b) => b.enemy).length, 7, 'abanico de 7 balas');
+  const coins0 = p.coins;
+  boss.hp = 1;
+  w.bullets.push({ id: 5000, kind: 'bala', x: boss.x, z: boss.z, vx: 0, vz: 0, life: 1, maxLife: 1, enemy: false, dmg: 5, blast: 0, pierce: 0, hits: [], owner: 'p1' });
+  step(w, null as unknown as Input, 1 / 60);
+  assert.equal(w.enemies.includes(boss), false);
+  assert.equal(p.coins - coins0, 50, '50 monedas');
+  assert.equal(w.pickups.length, 5, 'botín alrededor');
+});
+
+test('jefe: más vida con más jugadores', () => {
+  const solo = newWorld(() => 0.5, false); solo.wave = 5;
+  const duo = newWorld(() => 0.5, false, [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }]); duo.wave = 5;
+  assert.ok(spawnEnemy(duo, 'jefe', 0, 0).hp > spawnEnemy(solo, 'jefe', 0, 0).hp);
+});
+
+const crew = () => newWorld(() => 0.5, false, CHARACTER_ORDER.map((c) => ({ id: c, name: c, character: c })));
+
+test('personajes: cada uno empieza con su ventaja', () => {
+  const w = crew();
+  const by = (id: string) => w.players.find((p) => p.id === id)!;
+  assert.equal(by('sargento').maxHp, 5);
+  assert.equal(by('sargento').tools.escudo, 1, 'el sargento lleva un escudo');
+  assert.equal(by('coloso').maxHp, 7);
+  assert.equal(by('coloso').hp, 7);
+  assert.equal(by('halcon').maxHp, 4);
+  assert.equal(by('ingeniera').wood, 8);
+  assert.equal(addPlayer(newWorld(() => 0.5, false), 'x', 'X', 'inventado' as never).character, 'sargento', 'un personaje desconocido no rompe nada');
+});
+
+test('personajes: velocidad distinta', () => {
+  const dist = (c: keyof typeof CHARACTERS) => {
+    const w = newWorld(() => 0.5, false, [{ id: 'a', name: 'A', character: c }]);
+    w.spawnTimer = 999;
+    const p = w.players[0];
+    run(w, { moveX: 1, moveZ: 0, aimX: 0, aimZ: 0, fire: false }, 30);
+    return p.x;
+  };
+  assert.ok(dist('halcon') > dist('sargento') * 1.15);
+  assert.ok(dist('coloso') < dist('sargento') * 0.9);
+});
+
+test('personajes: la tiradora hace más daño y la ingeniera gana más madera', () => {
+  const dmg = (c: keyof typeof CHARACTERS) => {
+    const w = newWorld(() => 0.5, false, [{ id: 'a', name: 'A', character: c }]);
+    w.spawnTimer = 999; w.toSpawn = 1;
+    const t = spawnEnemy(w, 'tank', 0, 5); t.speed = 0;
+    const hp0 = t.hp;
+    w.players[0].angle = 0;
+    run(w, { moveX: 0, moveZ: 0, aimX: 0, aimZ: 1, fire: true }, 20);
+    return hp0 - t.hp;
+  };
+  assert.ok(Math.abs(dmg('tiradora') - dmg('sargento') * 1.25) < 1e-9);
+  const w = crew();
+  w.wave = 1; w.toSpawn = 0; w.spawnTimer = 999;
+  const before = Object.fromEntries(w.players.map((p) => [p.id, p.wood]));
+  step(w, null as unknown as Input, 1 / 60);
+  const gain = (id: string) => w.players.find((p) => p.id === id)!.wood - before[id];
+  assert.equal(gain('ingeniera'), gain('sargento') * 2);
 });

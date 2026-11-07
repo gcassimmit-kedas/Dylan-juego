@@ -36,6 +36,7 @@
         <span class="lbl">Oleada</span><span class="n" id="waveN">1</span>
       </div>
       <div class="remaining" id="remaining" aria-label="Robots restantes"><span data-icon="crosshair"></span><span id="enemiesN">0</span></div>
+      <div id="bossBar" class="boss-bar" hidden role="meter" aria-label="Vida del jefe" aria-valuemin="0" aria-valuemax="100"><span class="lbl">Jefe</span><div class="track"><div class="fill" id="bossFill"></div></div></div>
     </div>
     <div class="right">
       <div id="coins" class="stat" aria-label="Monedas"><span data-icon="coins"></span><span id="coinsN">0</span></div>
@@ -157,6 +158,7 @@
           <p class="help">2 jugadores en esta pantalla, sin conexión. Jugador 1: WASD y ratón. Jugador 2: flechas e Intro para disparar (apunta solo). Con mandos, cada jugador el suyo.</p>
         </section>
         <h3 class="lobby-divider">En línea</h3>
+        <button id="lobbyChar" class="lobby-char" aria-label="Cambiar de soldado"><span data-icon="userRound"></span><span class="lc-txt"><small>Tu soldado</small><span id="lobbyCharName"></span></span><span class="lc-change">Cambiar</span></button>
         <label class="field">
           <span>Tu nombre de jugador</span>
           <input id="nick" maxlength="16" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Por ejemplo, Halcón" />
@@ -191,6 +193,21 @@
           </div>
         </section>
         <p class="help">Al jugar en línea se comparte tu nombre de jugador con los demás. <a href="./privacidad.html">Política de privacidad</a></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Elegir soldado -->
+  <div id="charSelect" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="csTitle">
+    <div class="panel cs-panel">
+      <div class="cs-head">
+        <p class="kicker" id="csKicker">Tu soldado</p>
+        <h2 id="csTitle">Elige tu soldado</h2>
+      </div>
+      <div id="csGrid" class="cs-grid" role="radiogroup" aria-labelledby="csTitle"></div>
+      <div class="cs-foot">
+        <button id="csBack" class="ghost"><span data-icon="arrowLeft"></span> Volver</button>
+        <button id="csGo" class="primary big"><span data-icon="check"></span> Elegir</button>
       </div>
     </div>
   </div>

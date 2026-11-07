@@ -1,4 +1,5 @@
 // Protocolo de red del modo cooperativo en línea. Lo comparten servidor y cliente: solo tipos y funciones puras.
+import { ENEMY_RADIUS } from './sim.ts';
 import type {
   World, Player, Enemy, Bullet, Pickup, Obstacle, Turret, Mine, Trap, Decoy, Strike, GameEvent, Input,
   EnemyType, BulletKind, PickupType, ObstacleKind, WeaponId, ItemId, ToolId, BuildId, Phase,
@@ -29,8 +30,8 @@ export type ReportReason = 'nombre' | 'conducta';
 
 export type ClientMsg =
   | { t: 'list' }
-  | { t: 'join'; room?: string; code?: string; main?: boolean; name: string }
-  | { t: 'create'; roomName: string; public: boolean; name: string }
+  | { t: 'join'; room?: string; code?: string; main?: boolean; name: string; character?: string }
+  | { t: 'create'; roomName: string; public: boolean; name: string; character?: string }
   | { t: 'in'; i: [number, number, number, number, number] }
   | { t: 'buy'; id: ItemId } | { t: 'weapon'; id: WeaponId } | { t: 'tool'; id: ToolId } | { t: 'build'; id: BuildId }
   | { t: 'ready' } | { t: 'leave' }
@@ -44,7 +45,7 @@ export type ServerMsg =
   | { t: 'notice'; msg: string }
   | { t: 'kicked'; msg: string };
 
-const ENEMY_T: EnemyType[] = ['chaser', 'tank', 'gunner'];
+const ENEMY_T: EnemyType[] = ['chaser', 'tank', 'gunner', 'kamikaze', 'dron', 'jefe'];
 const BULLET_K: BulletKind[] = ['bala', 'perdigon', 'fuego', 'rayo', 'tesla', 'granada', 'cohete', 'enemiga'];
 const PICKUP_T: PickupType[] = ['health', 'rapid', 'coins'];
 const OBST_K: ObstacleKind[] = ['rock', 'tree', 'crate', 'sandbag', 'barricade', 'wall', 'tower', 'medic'];
@@ -66,7 +67,7 @@ export interface Snapshot {
 
 export function encode(w: World, tick: number, extra: { ready: Set<string>; shopLeft: number; restartLeft: number; events: GameEvent[]; withObstacles: boolean }): Snapshot {
   const P: NetPlayer[] = w.players.map((p) => ({
-    id: p.id, name: p.name, color: p.color, alive: p.alive, coins: p.coins, score: p.score, kills: p.kills, wood: p.wood,
+    id: p.id, name: p.name, color: p.color, alive: p.alive, character: p.character, coins: p.coins, score: p.score, kills: p.kills, wood: p.wood,
     x: r2(p.x), z: r2(p.z), angle: r2(p.angle), hp: p.hp, maxHp: p.maxHp, invuln: r1(p.invuln), rapid: r1(p.rapid),
     weapon: p.weapon, owned: p.owned, tools: p.tools, speedLvl: p.speedLvl, armorLvl: p.armorLvl, dmgLvl: p.dmgLvl,
     magnet: p.magnet, regen: p.regen, drones: p.drones, shield: r1(p.shield), moving: p.moving, ready: extra.ready.has(p.id),
@@ -108,7 +109,7 @@ export function decode(s: Snapshot, prev: World | null): World {
   for (let i = 0; i < s.E.length; i += 8) {
     const type = ENEMY_T[s.E[i + 1]];
     enemies.push({ id: s.E[i], type, x: s.E[i + 2], z: s.E[i + 3], hp: s.E[i + 4], maxHp: s.E[i + 5], flash: s.E[i + 6] ? 0.05 : 0, stun: s.E[i + 7] ? 1 : 0,
-      speed: 0, r: type === 'tank' ? 1.05 : 0.65, cooldown: 0, side: 0, sideT: 0, ax: 0, az: 0, stuckT: 0 });
+      speed: 0, r: ENEMY_RADIUS[type], cooldown: 0, side: 0, sideT: 0, ax: 0, az: 0, stuckT: 0 });
   }
   const bullets: Bullet[] = [];
   for (let i = 0; i < s.B.length; i += 8) {
