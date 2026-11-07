@@ -24,7 +24,7 @@ input[type=range] { width: 150px; }
 #menu .ic { width: 22px; height: 22px; }
 :focus-visible { outline: 3px solid #ffe066; outline-offset: 2px; }
 
-/* ---------- Estilo de producto (mismo lenguaje visual que Frente de Batalla) ---------- */
+/* ---------- Estilo de producto (mismo lenguaje visual que Shooter 2027) ---------- */
 :root { --display: 'Oswald', 'Arial Narrow', system-ui, sans-serif; --body: 'Inter', system-ui, sans-serif; --accent: #ffe066; --cut: 8px; }
 html, body { font-family: var(--body); }
 #status { font-family: var(--display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; border-radius: 0;

@@ -1,7 +1,7 @@
 {
   "name": "Juegos de Dylan",
   "short_name": "Juegos",
-  "description": "Frente de Batalla: shooter de oleadas contra robots. Incluye Tres en Raya 3D.",
+  "description": "Shooter 2027: shooter de oleadas contra robots. Incluye Tres en Raya 3D.",
   "lang": "es",
   "start_url": "./index.html",
   "scope": "./",

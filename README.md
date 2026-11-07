@@ -2,7 +2,7 @@
 
 Juegos 3D para navegador, Android e iOS. `index.html` es el menú.
 
-- **Frente de Batalla** (`shooter.html`): shooter de oleadas de día en un campo de batalla, con tienda de armas y herramientas.
+- **Shooter 2027** (`shooter.html`): shooter de oleadas de día en un campo de batalla, con tienda de armas y herramientas.
 - **Tres en Raya 3D** (`tres-en-raya.html`): tres en raya en un cubo de 4×4×4 o 3×3×3.
 
 **Stack:** TypeScript + [Three.js](https://threejs.org) (render 3D) + Vite (build) + Capacitor (apps móviles).
@@ -17,7 +17,7 @@ npm test         # tests de la lógica y la IA
 npm run build    # genera dist/ para publicar en cualquier hosting estático
 ```
 
-## Frente de Batalla
+## Shooter 2027
 
 **Controles**
 - Móvil: el pulgar izquierdo mueve y el derecho apunta y dispara. Abajo está la barra de armas y a la derecha el equipo.

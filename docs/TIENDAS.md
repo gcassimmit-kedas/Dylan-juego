@@ -19,8 +19,8 @@ debe verificarse en la documentación oficial justo antes de enviar.
 
 ## Decisiones pendientes (del propietario)
 
-1. **Identificador de la app.** Ahora es `com.dylan.tresenraya3d` (nombre heredado del primer juego). **No se puede cambiar después de publicar.** Hay que elegirlo antes del primer envío, normalmente con un dominio propio invertido (p. ej. `com.tuestudio.frentedebatalla`).
-2. **Nombre en las tiendas.** La app abre "Juegos de Dylan" (shooter + tres en raya). Decidir si se publica así o como "Frente de Batalla".
+1. **Identificador de la app.** Ahora es `com.dylan.tresenraya3d` (nombre heredado del primer juego). **No se puede cambiar después de publicar.** Hay que elegirlo antes del primer envío, normalmente con un dominio propio invertido (p. ej. `com.tuestudio.shooter2027`).
+2. **Nombre en las tiendas.** La app abre "Juegos de Dylan" (shooter + tres en raya). Decidir si se publica así o como "Shooter 2027" (nombre del juego desde el 7 de noviembre de 2026). "Shooter" es una palabra genérica muy usada: conviene acompañarla de un subtítulo descriptivo en la ficha para que se encuentre en las búsquedas.
 3. **Público objetivo.** Si el público incluye menores de 13 años, Google aplica la política de Familias y Apple la categoría Niños, con requisitos extra. Si no se apunta a niños, declararlo así en ambas tiendas.
 4. **Responsable y correo de contacto** para la política de privacidad (marcados en naranja en `privacidad.html`).
 
