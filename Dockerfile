@@ -1,6 +1,6 @@
 # Servidor de juego + web en una sola imagen.
-#   docker build -t frente-de-batalla .
-#   docker run -p 8080:8080 frente-de-batalla
+#   docker build -t shooter-2027 .
+#   docker run -p 8080:8080 shooter-2027
 FROM node:22-alpine
 WORKDIR /app
 COPY package*.json ./

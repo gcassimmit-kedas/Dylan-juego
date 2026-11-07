@@ -77,6 +77,17 @@ Medidas para la norma 1.2 de Apple (contenido generado por usuarios) y la polít
 - Las apps nativas no se sirven desde el servidor: hay que compilar con la dirección del servidor, `VITE_SERVER_URL=wss://tu-servidor/ws npm run build`, y después `npx cap sync`.
 - Si el servidor no está disponible, el modo en solitario sigue funcionando sin conexión.
 
+### Publicación en dylanj.kedasrd.com (Render)
+
+`render.yaml` deja configurado el servicio: imagen del `Dockerfile`, comprobación en `/health`, publicación automática en cada push a la rama y el dominio `dylanj.kedasrd.com`. El juego y las partidas salen del mismo servidor, así que el multijugador conecta solo (`wss://dylanj.kedasrd.com/ws`) y Render pone el certificado HTTPS.
+
+1. Crear cuenta en Render con GitHub y dar acceso al repositorio `Dylan-juego`.
+2. New > Blueprint > elegir el repositorio. Render lee `render.yaml` y crea el servicio.
+3. En el proveedor del dominio kedasrd.com, cambiar el registro de `dylanj` por un **CNAME** que apunte a la dirección `....onrender.com` que muestra Render (Settings > Custom Domains). Esto sustituye al alojamiento actual de esa dirección.
+4. Esperar a que Render marque el dominio como verificado (certificado HTTPS automático).
+
+Plan gratuito: el servidor se duerme tras 15 minutos sin visitas y tarda alrededor de un minuto en despertar; el fichero de denuncias se pierde al reiniciarse (se guardan menos días, nunca más de 30). Para un servidor siempre despierto y denuncias persistentes, plan de pago con disco.
+
 ## Formularios de las tiendas (respuestas según el estado actual)
 
 - **Apple, privacidad de la app:** "Datos recopilados": **Contenido del usuario > Otro contenido del usuario** (nombre de jugador y de sala), no vinculado a la identidad, no usado para rastreo, finalidad "Funcionalidad de la app". La dirección IP se usa solo para mantener la conexión y no se guarda **(comprobar si Apple pide declararla)**.

@@ -1,0 +1,12 @@
+# Despliegue en Render (https://render.com): juego web + servidor de partidas en un solo servicio.
+# En Render: New > Blueprint > elegir este repositorio. Cada push a la rama se publica solo.
+services:
+  - type: web
+    name: shooter-2027
+    runtime: docker
+    plan: free
+    branch: claude/confident-dirac-q3cjmj
+    autoDeploy: true
+    healthCheckPath: /health
+    domains:
+      - dylanj.kedasrd.com
