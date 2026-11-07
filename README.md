@@ -97,7 +97,7 @@ PORT=9000 npm run server           # solo el servidor (sirve dist/ y el WebSocke
 npm run dev                        # desarrollo: Vite redirige /ws al servidor del puerto 8080
 ```
 
-Publicación en `dylanj.kedasrd.com` con Render: ver `render.yaml` y `docs/TIENDAS.md`.
+Servidor de partidas en Render (la web de dylanj.kedasrd.com se conecta a él): ver `render.yaml` y `docs/TIENDAS.md`.
 En producción el servidor debe ir detrás de HTTPS/WSS. Para las apps nativas, compilar con
 `VITE_SERVER_URL=wss://tu-servidor/ws npm run build`; en el navegador también vale `?servidor=wss://...`.
 

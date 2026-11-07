@@ -1,4 +1,5 @@
-# Despliegue en Render (https://render.com): juego web + servidor de partidas en un solo servicio.
+# Despliegue en Render (https://render.com): servidor de partidas (y también sirve el juego web).
+# La web de dylanj.kedasrd.com se conecta a él compilando con VITE_SERVER_URL=wss://<servicio>.onrender.com/ws.
 # En Render: New > Blueprint > elegir este repositorio. Cada push a la rama se publica solo.
 services:
   - type: web
@@ -8,5 +9,3 @@ services:
     branch: claude/confident-dirac-q3cjmj
     autoDeploy: true
     healthCheckPath: /health
-    domains:
-      - dylanj.kedasrd.com
