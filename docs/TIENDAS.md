@@ -63,7 +63,7 @@ Hasta 8 jugadores contra las oleadas: servidor principal público (se reparte en
 Medidas para la norma 1.2 de Apple (contenido generado por usuarios) y la política de Google sobre contenido de usuarios:
 
 - [x] **Filtro de nombres** de jugador y de sala pública (español e inglés, detecta disfraces como `p3rr4` o `p.u.t.a`). Lo aplica el servidor; el cliente solo avisa antes.
-- [x] **Denunciar** a un jugador (nombre ofensivo o mala conducta) desde el menú de la partida. Con 3 denuncias de jugadores distintos (o todos los demás en salas pequeñas) se le retira de la sala y su nombre queda vetado en ella.
+- [x] **Denunciar** a un jugador (nombre ofensivo o mala conducta) desde el menú de la partida. Con 3 denuncias de jugadores distintos se le retira de la sala y su nombre queda vetado en ella. En salas privadas pequeñas basta con que lo denuncien todos los demás; en salas públicas nunca basta una sola denuncia (con dos jugadores, queda bloquear y salir), para que nadie pueda echar a otro a solas.
 - [x] **Bloquear** a un jugador: deja de verse su nombre en ese dispositivo.
 - [x] Sin chat ni texto libre aparte del nombre.
 - [x] Las denuncias se guardan como máximo 30 días, sin IP ni identidad de quien denuncia (`server/reports.jsonl`).

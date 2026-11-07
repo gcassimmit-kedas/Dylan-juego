@@ -11,6 +11,18 @@ export const SHOP_SECONDS = 30;
 export const RESTART_SECONDS = 8;
 /** Denuncias de jugadores distintos necesarias para retirar a alguien de la sala. */
 export const REPORTS_TO_KICK = 3;
+/** En salas públicas nunca basta una sola denuncia: así nadie puede echar a otro estando solos los dos. */
+export const MIN_REPORTS_PUBLIC = 2;
+
+/**
+ * Denuncias necesarias para retirar a un jugador de una sala con `players` jugadores (él incluido).
+ * Privada: los demás jugadores bastan si son menos de 3 (es su partida con gente que conocen).
+ * Pública: al menos 2 denuncias; si no hay tantos jugadores, no se retira a nadie (queda bloquear y salir).
+ */
+export function reportsToKick(players: number, isPublic: boolean): number {
+  const others = Math.max(1, players - 1);
+  return isPublic ? Math.max(MIN_REPORTS_PUBLIC, Math.min(REPORTS_TO_KICK, others)) : Math.min(REPORTS_TO_KICK, others);
+}
 
 export interface RoomInfo { id: string; name: string; players: number; max: number; wave: number; main: boolean }
 export type ReportReason = 'nombre' | 'conducta';

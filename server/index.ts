@@ -18,7 +18,7 @@ import {
   SHOP, WEAPON_ORDER, TOOL_ORDER, BUILDS, type World, type GameEvent,
 } from '../src/shooter/sim.ts';
 import {
-  encode, clampInput, MAX_PLAYERS, SIM_HZ, SNAPSHOT_EVERY, SHOP_SECONDS, RESTART_SECONDS, REPORTS_TO_KICK,
+  encode, clampInput, MAX_PLAYERS, SIM_HZ, SNAPSHOT_EVERY, SHOP_SECONDS, RESTART_SECONDS, reportsToKick,
   type ClientMsg, type ServerMsg, type RoomInfo,
 } from '../src/shooter/protocol.ts';
 import { checkName, normalizeForFilter } from '../src/shooter/moderation.ts';
@@ -141,7 +141,7 @@ async function report(c: Client, targetPid: string, reason: string) {
   set.add(c.pid);
   send(c, { t: 'notice', msg: 'Denuncia enviada. Gracias por ayudar a que el juego sea un buen sitio.' });
   // Varias denuncias de jugadores distintos: se retira al jugador y su nombre queda vetado en esta sala.
-  const needed = Math.min(REPORTS_TO_KICK, Math.max(1, room.clients.size - 1));
+  const needed = reportsToKick(room.clients.size, room.isPublic);
   if (set.size >= needed && room.clients.size > 1) {
     room.bannedNames.add(normalizeForFilter(target.name));
     send(target, { t: 'kicked', msg: 'Has sido retirado de la sala por denuncias de otros jugadores.' });
