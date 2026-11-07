@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  newWorld, step, buy, cannotBuy, owns, nextWave, useTool, selectWeapon, dronePos, build, cannotBuild, getPlayer,
+  newWorld, step, buy, cannotBuy, owns, nextWave, useTool, selectWeapon, dronePos, build, cannotBuild, getPlayer, autoAim, leash,
   SHOP, WEAPONS, WEAPON_ORDER, TOOL_ORDER, BUILDS,
   type World, type Input, type Player, type Bullet, type Pickup, type EnemyType, type WeaponId, type ToolId, type ShopItem, type ShopKind, type BuildId, type BuildItem,
 } from './sim.ts';
@@ -69,8 +69,16 @@ const SUN_OFFSET = SUN_DIR.clone().multiplyScalar(70);
 
 let world: World = newWorld();
 const A = world.arena;
-/** Un jugador (local) o cooperativo en línea. En línea, el mundo lo manda el servidor. */
-let mode: 'solo' | 'multi' = 'solo';
+/**
+ * solo: un jugador. local: cooperativo de 2 en la misma pantalla (sin conexión).
+ * multi: cooperativo en línea (el mundo lo manda el servidor).
+ */
+let mode: 'solo' | 'local' | 'multi' = 'solo';
+/** Cooperativo local: distancia máxima entre jugadores para que quepan en la cámara. */
+const LEASH = 24;
+/** Jugador al que se refieren la tienda y el menú de construir (en cooperativo local cambia). */
+let shopPid = 'p1', buildPid = 'p1';
+let lastLocal = false;
 let myId = 'p1';
 const net = new NetSession();
 const me = (): Player => getPlayer(world, myId);
@@ -233,7 +241,7 @@ function soldierFor(q: Player): Soldier {
     scene.add(sd.root);
   }
   // Cartel con el nombre sobre los demás jugadores (en línea)
-  const text = mode === 'multi' && q.id !== myId ? shownName(q) : '';
+  const text = mode === 'multi' && q.id !== myId ? shownName(q) : mode === 'local' ? q.name : '';
   if (text !== sd.labelText) {
     if (sd.label) { scene.remove(sd.label); sd.label.material.map?.dispose(); sd.label.material.dispose(); sd.label = null; }
     sd.labelText = text;
@@ -356,14 +364,15 @@ addEventListener('keydown', (e) => {
   keys.add(e.code);
   if (e.code === 'Space') e.preventDefault();
   if (!playing || world.phase !== 'fight') return;
+  if (mode === 'local') {
+    // Jugador 2 con teclado: Intro dispara (no debe pulsar botones), coma y punto cambian de arma.
+    if (P2_FIRE.includes(e.code) || e.code.startsWith('Arrow')) e.preventDefault();
+    if ((e.code === 'Period' || e.code === 'Comma') && !padFor('p2')) cycleWeapon('p2', e.code === 'Period' ? 1 : -1);
+  }
   const n = Number(e.key);
   if (e.key >= '0' && e.key <= '9') pickWeapon(WEAPON_ORDER[n === 0 ? 9 : n - 1]);
   if (e.code === 'KeyV') toggleBuild();
-  if (e.code === 'KeyQ' || e.code === 'KeyE') {
-    const own = WEAPON_ORDER.filter((w) => me().owned.includes(w));
-    const i = own.indexOf(me().weapon);
-    pickWeapon(own[(i + (e.code === 'KeyE' ? 1 : own.length - 1)) % own.length]);
-  }
+  if (e.code === 'KeyQ' || e.code === 'KeyE') cycleWeapon(myId, e.code === 'KeyE' ? 1 : -1);
   for (const t of TOOL_ORDER) if (e.code === `Key${TOOL_KEY[t]}`) tool(t);
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
@@ -415,10 +424,11 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 function readInput(): Input {
   const inp: Input = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false };
-  if (keys.has('KeyA') || keys.has('ArrowLeft')) inp.moveX -= 1;
-  if (keys.has('KeyD') || keys.has('ArrowRight')) inp.moveX += 1;
-  if (keys.has('KeyW') || keys.has('ArrowUp')) inp.moveZ -= 1;
-  if (keys.has('KeyS') || keys.has('ArrowDown')) inp.moveZ += 1;
+  const arrows = mode !== 'local'; // en cooperativo local las flechas son del jugador 2
+  if (keys.has('KeyA') || (arrows && keys.has('ArrowLeft'))) inp.moveX -= 1;
+  if (keys.has('KeyD') || (arrows && keys.has('ArrowRight'))) inp.moveX += 1;
+  if (keys.has('KeyW') || (arrows && keys.has('ArrowUp'))) inp.moveZ -= 1;
+  if (keys.has('KeyS') || (arrows && keys.has('ArrowDown'))) inp.moveZ += 1;
   if (sticks.L) { inp.moveX = sticks.L.dx; inp.moveZ = sticks.L.dy; }
   if (sticks.R) {
     inp.aimX = sticks.R.dx; inp.aimZ = sticks.R.dy;
@@ -429,7 +439,22 @@ function readInput(): Input {
     if (ray.ray.intersectPlane(groundPlane, hitPt)) { inp.aimX = hitPt.x - me().x; inp.aimZ = hitPt.z - me().z; }
     inp.fire = mouse.down || keys.has('Space');
   } else inp.fire = keys.has('Space');
-  padInput(inp);
+  padInput(inp, padFor(myId));
+  return inp;
+}
+/** Teclas de disparo del jugador 2 (apunta solo al robot más cercano). */
+const P2_FIRE = ['Enter', 'NumpadEnter', 'ShiftRight', 'ControlRight', 'Numpad0'];
+/** Cooperativo local: entrada del jugador 2 (su mando o, si no hay, flechas con puntería automática). */
+function readInputP2(): Input {
+  const inp: Input = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false };
+  const g = padFor('p2');
+  if (g) { padInput(inp, g); return inp; }
+  if (keys.has('ArrowLeft')) inp.moveX -= 1;
+  if (keys.has('ArrowRight')) inp.moveX += 1;
+  if (keys.has('ArrowUp')) inp.moveZ -= 1;
+  if (keys.has('ArrowDown')) inp.moveZ += 1;
+  inp.fire = P2_FIRE.some((k) => keys.has(k));
+  if (inp.fire) { const a = autoAim(world, getPlayer(world, 'p2')); if (a) { inp.aimX = a.aimX; inp.aimZ = a.aimZ; } }
   return inp;
 }
 
@@ -437,14 +462,26 @@ function readInput(): Input {
 // Distribución estándar: 0 A/Cruz, 1 B/Círculo, 2 X/Cuadrado, 3 Y/Triángulo, 4 LB, 5 RB, 6 LT, 7 RT, 9 Start/Options.
 const DEAD = 0.22;
 const dz = (v: number | undefined) => (v === undefined || Math.abs(v) < DEAD ? 0 : v);
-let padPrev: boolean[] = [];
-function activePad(): Gamepad | null {
-  const pads = navigator.getGamepads?.() ?? [];
-  for (const g of pads) if (g && g.connected) return g;
-  return null;
+const padPrev = new Map<number, boolean[]>();
+function connectedPads(): Gamepad[] {
+  return [...(navigator.getGamepads?.() ?? [])].filter((g): g is Gamepad => !!g && g.connected);
 }
-function padInput(inp: Input) {
-  const g = activePad();
+/**
+ * Mando de cada jugador. Un jugador: el primero. Cooperativo local: con dos mandos, uno cada uno;
+ * con uno solo, es del jugador 2 (el jugador 1 usa teclado y ratón o la pantalla táctil).
+ */
+function padFor(pid: string): Gamepad | null {
+  const pads = connectedPads();
+  if (mode !== 'local') return pid === myId ? pads[0] ?? null : null;
+  if (pads.length >= 2) return pid === 'p1' ? pads[0] : pads[1];
+  return pads.length === 1 && pid === 'p2' ? pads[0] : null;
+}
+function padOwner(g: Gamepad): string {
+  if (mode !== 'local') return myId;
+  const pads = connectedPads();
+  return pads.length >= 2 && pads[0] === g ? 'p1' : 'p2';
+}
+function padInput(inp: Input, g: Gamepad | null) {
   if (!g) return;
   const lx = dz(g.axes[0]), ly = dz(g.axes[1]), rx = dz(g.axes[2]), ry = dz(g.axes[3]);
   if (lx || ly) { inp.moveX = lx; inp.moveZ = ly; }
@@ -453,40 +490,43 @@ function padInput(inp: Input) {
   if (aiming || (g.buttons[7]?.value ?? 0) > 0.3) inp.fire = true; // stick derecho (como en táctil) o gatillo derecho
 }
 /** Botones con efecto al pulsar (no al mantener): menús, pausa, armas y equipo. */
-function pollPad() {
-  const g = activePad();
-  if (!g) return;
+function pollPad() { for (const g of connectedPads()) pollOnePad(g); }
+function pollOnePad(g: Gamepad) {
   const now = g.buttons.map((b) => b.pressed);
-  const prev = padPrev; // copia del fotograma anterior (hay que guardarla antes de sobrescribir)
+  const prev = padPrev.get(g.index) ?? []; // fotograma anterior (hay que leerlo antes de sobrescribir)
   const hit = (i: number) => now[i] && !prev[i];
-  padPrev = now;
+  padPrev.set(g.index, now);
+  const pid = padOwner(g);
   const visible = (id: string) => !$(id).hidden;
   if (visible('settings')) { if (hit(1) || hit(9)) $('settingsClose').click(); return; }
+  if (!lobbyEl.hidden) { if (hit(1)) closeLobby(); else if (hit(0)) startLocal(); return; }
   if (!overlay.hidden) { if (hit(0) || hit(9)) start(); return; }
-  if (!gameoverEl.hidden) { if (hit(0) || hit(9)) start(); else if (hit(1)) toTitle(); return; }
-  if (!shopEl.hidden) { if (hit(9)) $<HTMLButtonElement>('nextWave').click(); return; }
+  if (!gameoverEl.hidden) { if (hit(0) || hit(9)) start(lastLocal); else if (hit(1)) toTitle(); return; }
+  if (!shopEl.hidden) {
+    if (hit(9)) $<HTMLButtonElement>('nextWave').click();
+    if (mode === 'local' && (hit(4) || hit(5))) setShopPid(shopPid === 'p1' ? 'p2' : 'p1');
+    return;
+  }
   if (paused) { if (hit(0) || hit(9) || hit(1)) setPaused(false); return; }
   if (!playing) return;
   if (hit(9)) { setPaused(true); return; }
-  const own = WEAPON_ORDER.filter((w) => me().owned.includes(w));
-  const i = own.indexOf(me().weapon);
-  if (hit(5)) pickWeapon(own[(i + 1) % own.length]);
-  if (hit(4)) pickWeapon(own[(i + own.length - 1) % own.length]);
-  if (hit(2)) tool('torreta');
-  if (hit(3)) tool('escudo');
-  if (hit(1)) tool('mina');
-  if (hit(6)) tool('barricada');
-  if (!buildPanel.hidden) {
+  if (hit(5)) cycleWeapon(pid, 1);
+  if (hit(4)) cycleWeapon(pid, -1);
+  if (hit(2)) tool('torreta', pid);
+  if (hit(3)) tool('escudo', pid);
+  if (hit(1) && buildPanel.hidden) tool('mina', pid);
+  if (hit(6)) tool('barricada', pid);
+  if (!buildPanel.hidden && buildPid === pid) {
     // Con el menú de construir abierto: cruceta izquierda/derecha elige, A construye, B o cruceta abajo cierra
     if (hit(14) || hit(15)) { buildSel = (buildSel + (hit(15) ? 1 : BUILDS.length - 1)) % BUILDS.length; renderBuild(); }
     if (hit(0)) doBuild(BUILDS[buildSel].id);
     if (hit(1) || hit(13)) toggleBuild(false);
     return;
   }
-  if (hit(12)) tool('aereo');
-  if (hit(15)) tool('emp');
-  if (hit(14)) tool('senuelo');
-  if (hit(13)) toggleBuild(true);
+  if (hit(12)) tool('aereo', pid);
+  if (hit(15)) tool('emp', pid);
+  if (hit(14)) tool('senuelo', pid);
+  if (hit(13)) toggleBuild(true, pid);
 }
 const PAD_HELP = 'Mando: stick izquierdo para moverte, stick derecho o RT para disparar, LB/RB arma, X torreta, Y escudo, B mina, LT barricada, cruceta: arriba ataque aéreo, derecha EMP, izquierda señuelo, abajo construir. Start pausa.';
 addEventListener('gamepadconnected', () => {
@@ -508,7 +548,7 @@ function hud() {
   const p = me();
   if (!p) return;
   rapidEl.hidden = p.rapid <= 0;
-  if (mode === 'multi') renderPlayers();
+  if (mode !== 'solo') renderPlayers();
   const left = world.toSpawn + world.enemies.length;
   const key = [p.hp, p.maxHp, world.score, world.wave, left, p.coins, p.wood, p.weapon, p.owned.join(), ...TOOL_ORDER.map((t) => p.tools[t]), p.shield > 0,
     p.speedLvl, p.armorLvl, p.dmgLvl, p.magnet, p.regen, p.drones, p.alive].join('|');
@@ -555,14 +595,20 @@ function hud() {
   }
   toolsEl.prepend(buildBtn); // construir siempre disponible, encima del equipo
 }
-function pickWeapon(id: WeaponId) {
-  selectWeapon(world, id, myId); // en línea se aplica ya y el servidor lo confirma
+function pickWeapon(id: WeaponId, pid = myId) {
+  selectWeapon(world, id, pid); // en línea se aplica ya y el servidor lo confirma
   if (mode === 'multi') net.send({ t: 'weapon', id });
   hud();
 }
-function tool(id: ToolId) {
+function cycleWeapon(pid: string, dir: 1 | -1) {
+  const p = getPlayer(world, pid);
+  const own = WEAPON_ORDER.filter((w) => p.owned.includes(w));
+  const i = own.indexOf(p.weapon);
+  pickWeapon(own[(i + own.length + dir) % own.length], pid);
+}
+function tool(id: ToolId, pid = myId) {
   if (mode === 'multi') { if (me().alive) net.send({ t: 'tool', id }); return; }
-  if (useTool(world, id)) { flushEvents(); hud(); }
+  if (useTool(world, id, pid)) { flushEvents(); hud(); }
 }
 
 let bannerTimer = 0, toastTimer = 0;
@@ -595,8 +641,8 @@ const SECTIONS: { kind: ShopKind; title: string }[] = [
   { kind: 'arma', title: 'Armas' }, { kind: 'mejora', title: 'Mejoras' }, { kind: 'equipo', title: 'Equipo de campo' },
 ];
 function card(item: ShopItem) {
-  const reason = cannotBuy(world, item.id, myId);
-  const n = owns(world, item.id, myId);
+  const reason = cannotBuy(world, item.id, shopPid);
+  const n = owns(world, item.id, shopPid);
   const lvl = item.max ? `<div class="lvl">${item.kind === 'equipo' ? `Tienes ${n}/${item.max}` : `Nivel ${n}/${item.max}`}</div>` : '';
   const el = document.createElement('div');
   el.className = `card${n && item.kind !== 'equipo' ? ' owned' : ''}`;
@@ -607,13 +653,13 @@ function card(item: ShopItem) {
   b.disabled = !!reason;
   b.addEventListener('click', () => {
     if (mode === 'multi') { net.send({ t: 'buy', id: item.id }); sfx.pickup(); b.disabled = true; return; }
-    if (buy(world, item.id)) { sfx.pickup(); renderShop(); hud(); }
+    if (buy(world, item.id, shopPid)) { sfx.pickup(); renderShop(); hud(); }
   });
   el.appendChild(b);
   return el;
 }
 function buildCard(item: BuildItem) {
-  const reason = cannotBuild(world, item.id, myId);
+  const reason = cannotBuild(world, item.id, shopPid);
   const el = document.createElement('div');
   el.className = 'card';
   el.innerHTML = `<div class="art">${icon(ITEM_ICON[item.id])}</div><div class="info"><div class="t">${item.name}</div><div class="d">${item.desc}</div></div>`;
@@ -622,13 +668,17 @@ function buildCard(item: BuildItem) {
   else { b.innerHTML = `${icon('madera')}<span>${item.wood}</span>`; b.setAttribute('aria-label', `Construir por ${item.wood} de madera`); }
   b.disabled = !!reason;
   b.className = 'wood';
-  b.addEventListener('click', () => { if (doBuild(item.id)) renderShop(); });
+  b.addEventListener('click', () => { if (doBuild(item.id, shopPid)) renderShop(); });
   el.appendChild(b);
   return el;
 }
 function renderShop() {
-  $('shopCoins').textContent = String(me().coins);
-  $('shopWood').textContent = String(me().wood);
+  const sp = getPlayer(world, shopPid);
+  $('shopCoins').textContent = String(sp.coins);
+  $('shopWood').textContent = String(sp.wood);
+  const tabs = $('shopTabs');
+  tabs.hidden = mode !== 'local';
+  for (const b of tabs.querySelectorAll<HTMLButtonElement>('[data-pid]')) b.setAttribute('aria-selected', String(b.dataset.pid === shopPid));
   const body = $('shopBody');
   body.innerHTML = '';
   for (const sec of SECTIONS) {
@@ -647,34 +697,36 @@ function renderShop() {
 const buildPanel = $('buildPanel'), buildBtn = $('buildBtn');
 let buildSel = 0;
 function renderBuild() {
-  $('bpWood').textContent = String(me().wood);
+  $('bpWood').textContent = String(getPlayer(world, buildPid).wood);
+  $('bpWho').textContent = mode === 'local' ? `Construir · ${getPlayer(world, buildPid).name}` : 'Construir';
   const list = $('bpList');
   list.innerHTML = '';
   BUILDS.forEach((item, i) => {
-    const reason = cannotBuild(world, item.id, myId);
+    const reason = cannotBuild(world, item.id, buildPid);
     const b = document.createElement('button');
     b.className = `bp-item${i === buildSel ? ' sel' : ''}`;
     b.setAttribute('role', 'menuitem');
     b.disabled = !!reason;
     b.innerHTML = `${icon(ITEM_ICON[item.id])}<span class="n">${item.name}</span><span class="c">${icon('madera')}${item.wood}</span>`;
     if (reason) b.title = reason;
-    b.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); buildSel = i; if (doBuild(item.id)) toggleBuild(false); });
+    b.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); buildSel = i; if (doBuild(item.id, buildPid)) toggleBuild(false); });
     list.appendChild(b);
   });
 }
-function toggleBuild(open = buildPanel.hidden) {
+function toggleBuild(open = buildPanel.hidden, pid = myId) {
   if (open && (!playing || paused)) return;
+  if (open) buildPid = pid;
   buildPanel.hidden = !open;
   buildBtn.setAttribute('aria-expanded', String(open));
   if (open) renderBuild();
 }
-function doBuild(id: BuildId): boolean {
+function doBuild(id: BuildId, pid = myId): boolean {
   if (mode === 'multi') {
     if (cannotBuild(world, id, myId)) { sfx.hit(); return false; }
     net.send({ t: 'build', id });
     return true;
   }
-  if (!build(world, id)) { sfx.hit(); return false; }
+  if (!build(world, id, pid)) { sfx.hit(); return false; }
   flushEvents(); hud();
   return true;
 }
@@ -683,6 +735,7 @@ function openShop(bonus: number, wood: number) {
   releaseStick('L'); releaseStick('R'); mouse.down = false;
   $('shopTitle').textContent = `Oleada ${world.wave} superada`;
   $('shopSub').textContent = bonus ? `+${bonus} monedas y +${wood} de madera por superar la oleada` : 'Prepárate para la siguiente oleada';
+  shopPid = myId;
   renderShop();
   const nb = $<HTMLButtonElement>('nextWave');
   nb.disabled = false;
@@ -713,13 +766,21 @@ function clearScene() {
   structBars.clear();
   fx.clear();
 }
-function start() {
+function start(local = false) {
   unlock();
   leaveMulti();
   clearScene();
-  mode = 'solo'; myId = 'p1';
+  mode = local ? 'local' : 'solo'; myId = 'p1'; lastLocal = local;
+  shopPid = buildPid = 'p1';
   document.body.classList.remove('multi');
-  world = newWorld();
+  document.body.classList.toggle('local', local);
+  world = local ? newWorld(Math.random, true, [{ id: 'p1', name: 'Jugador 1' }, { id: 'p2', name: 'Jugador 2' }]) : newWorld();
+  lobbyEl.hidden = true;
+  playersHud.hidden = !local; teamKey = '';
+  if (local) {
+    banner('Cooperativo local', '2 jugadores', 'Cada uno con sus monedas, armas y madera');
+    if (isTouch && !connectedPads().length) toast('El jugador 2 necesita un mando o un teclado');
+  }
   hudKey = ''; prevCoins = 0;
   run.kills = 0; run.coins = 0;
   snapCam = true;
@@ -765,6 +826,9 @@ function gameOver() {
 /** Vuelve a la pantalla de título. */
 function toTitle() {
   leaveMulti();
+  mode = 'solo';
+  document.body.classList.remove('local');
+  playersHud.hidden = true;
   playing = false;
   document.body.classList.remove('playing');
   shopEl.hidden = true; gameoverEl.hidden = true;
@@ -778,14 +842,16 @@ function renderRecords() {
   $('records').hidden = best === 0;
 }
 renderRecords();
-playBtn.addEventListener('click', start);
-$('retry').addEventListener('click', start);
+playBtn.addEventListener('click', () => start());
+$('retry').addEventListener('click', () => start(lastLocal));
+function startLocal() { start(true); }
 $('goMenu').addEventListener('click', toTitle);
 
 
 // ---------- Pausa ----------
 const pauseEl = $('pause'), pauseBtn = $('pauseBtn');
 let paused = false;
+const LOCAL_HELP = 'Jugador 1: WASD, ratón y clic (1-7 armas, V construir). Jugador 2: flechas, Intro dispara apuntando solo, coma y punto cambian de arma. Con mandos, cada jugador el suyo.';
 const pauseHelpSolo = isTouch ? 'El juego se pausa solo si cambias de app.' : 'P o Esc para pausar y continuar.';
 $('pauseHelp').textContent = pauseHelpSolo;
 function setPaused(v: boolean) {
@@ -796,7 +862,8 @@ function setPaused(v: boolean) {
   $('pauseKicker').textContent = mode === 'multi' ? 'La partida sigue en marcha' : 'Partida en pausa';
   $('pauseTitle').textContent = mode === 'multi' ? 'Menú' : 'Pausa';
   $('pausePlayers').hidden = mode !== 'multi';
-  $('pauseHelp').textContent = mode === 'multi' ? 'En línea los demás siguen jugando: tu soldado se queda quieto mientras estás en el menú.' : pauseHelpSolo;
+  $('pauseHelp').textContent = mode === 'multi' ? 'En línea los demás siguen jugando: tu soldado se queda quieto mientras estás en el menú.'
+    : mode === 'local' ? LOCAL_HELP : pauseHelpSolo;
   if (v && mode === 'multi') renderTeam();
   pauseBtn.innerHTML = icon(v ? 'play' : 'pause');
   pauseBtn.setAttribute('aria-label', v ? 'Continuar' : 'Pausar');
@@ -828,7 +895,7 @@ function flushEvents() {
   const at = (pid: string) => world.players.find((q) => q.id === pid) ?? self;
   const nameOf = (pid: string) => { const q = world.players.find((x) => x.id === pid); return q ? shownName(q) : names.get(pid) ?? 'Un jugador'; };
   for (const ev of world.events) {
-    const mine = !('pid' in ev) || ev.pid === myId;
+    const mine = !('pid' in ev) || ev.pid === myId || mode === 'local'; // en local los dos juegan aquí
     const p = 'pid' in ev && ev.pid ? at(ev.pid) : self;
     switch (ev.kind) {
       case 'shoot': {
@@ -845,7 +912,7 @@ function flushEvents() {
       case 'enemyShoot': sfx.enemyShoot(); break;
       case 'hit': sfx.hit(); fx.sparks(ev.x, 0.8, ev.z, 0xffe7a0, 3, 4); break;
       case 'kill': {
-        const byMe = ev.pid === myId || (ev.pid === null && mode === 'solo');
+        const byMe = mode === 'local' || ev.pid === myId || (ev.pid === null && mode === 'solo');
         sfx.kill();
         if (byMe) { run.kills++; run.coins += ev.coins; }
         const c = ENEMY_COLOR[ev.type], big = ev.type === 'tank';
@@ -895,8 +962,9 @@ function flushEvents() {
       case 'gameover': sfx.gameover(); fx.debris(p.x, 1, p.z, 0x5d7a3e, 14, 6); fx.smoke(p.x, 0.5, p.z, 6); gameOver(); break;
       case 'down':
         fx.debris(p.x, 1, p.z, p.color, 10, 5); fx.smoke(p.x, 0.5, p.z, 4);
-        if (mode !== 'multi' || world.players.every((q) => !q.alive)) break; // en solitario cae y termina la partida
-        if (mine) { sfx.hurt(); banner('Has caído', 'Fuera de combate', 'Vuelves al terminar la oleada si tu equipo resiste'); }
+        if (mode === 'solo' || world.players.every((q) => !q.alive)) break; // en solitario cae y termina la partida
+        if (mode === 'local') toast(`${nameOf(ev.pid)} ha caído: vuelve al terminar la oleada`);
+        else if (ev.pid === myId) { sfx.hurt(); banner('Has caído', 'Fuera de combate', 'Vuelves al terminar la oleada si tu equipo resiste'); }
         else toast(`${nameOf(ev.pid)} ha caído`);
         break;
       case 'join': if (ev.pid !== myId && mode === 'multi') toast(`${nameOf(ev.pid)} se ha unido`); break;
@@ -936,7 +1004,7 @@ async function ensureConnected(): Promise<boolean> {
     setLobbyStatus('');
     return true;
   } catch {
-    setLobbyStatus('No se pudo conectar con el servidor. Comprueba tu conexión a internet.', true);
+    setLobbyStatus('El juego en línea no está disponible ahora. El cooperativo local de arriba funciona sin conexión.', true);
     return false;
   }
 }
@@ -969,7 +1037,7 @@ async function openLobby(message = '') {
   nickEl.value = readStr('shooter.nick');
   lobbyEl.hidden = false;
   setLobbyStatus(message, !!message);
-  (nickEl.value ? $('joinMain') : nickEl).focus({ preventScroll: true });
+  $('localBtn').focus({ preventScroll: true });
   lobbyEl.querySelector('.lobby-panel')!.scrollTop = 0;
   if (await ensureConnected()) { net.send({ t: 'list' }); if (message) setLobbyStatus(message, true); }
 }
@@ -985,6 +1053,9 @@ async function joinWith(target: { main?: boolean; room?: string; code?: string }
   net.send({ t: 'join', name, ...target });
 }
 $('multiBtn').addEventListener('click', () => void openLobby());
+$('localBtn').addEventListener('click', startLocal);
+function setShopPid(pid: string) { shopPid = pid; renderShop(); }
+for (const b of document.querySelectorAll<HTMLButtonElement>('#shopTabs [data-pid]')) b.addEventListener('click', () => setShopPid(b.dataset.pid!));
 $('lobbyClose').addEventListener('click', closeLobby);
 $('joinMain').addEventListener('click', () => void joinWith({ main: true }));
 $('roomsRefresh').addEventListener('click', async () => { if (await ensureConnected()) net.send({ t: 'list' }); });
@@ -1098,7 +1169,7 @@ function multiFrame(dt: number) {
 /** Lista compacta del equipo en el HUD. */
 let teamKey = '';
 function renderPlayers() {
-  const key = world.players.map((q) => `${q.id}:${q.hp}:${q.maxHp}:${q.alive}:${isBlocked(q.name)}`).join('|');
+  const key = world.players.map((q) => `${q.id}:${q.hp}:${q.maxHp}:${q.alive}:${q.coins}:${isBlocked(q.name)}`).join('|');
   if (key === teamKey) return;
   teamKey = key;
   playersHud.innerHTML = '';
@@ -1107,8 +1178,13 @@ function renderPlayers() {
     li.className = q.alive ? '' : 'down';
     li.style.setProperty('--pc', `#${q.color.toString(16).padStart(6, '0')}`);
     li.innerHTML = '<span class="dot"></span><span class="pn"></span><span class="ph"></span>';
-    li.querySelector('.pn')!.textContent = q.id === myId ? `${q.name} (tú)` : shownName(q);
+    li.querySelector('.pn')!.textContent = mode === 'local' ? q.name : q.id === myId ? `${q.name} (tú)` : shownName(q);
     li.querySelector('.ph')!.textContent = q.alive ? `${q.hp}/${q.maxHp}` : 'Caído';
+    if (mode === 'local') { // en local se ven las monedas de los dos
+      const c = document.createElement('span'); c.className = 'pc';
+      c.innerHTML = `${icon('coins')}<span></span>`; c.querySelector('span')!.textContent = String(q.coins);
+      li.appendChild(c);
+    }
     playersHud.appendChild(li);
   }
   if (!pauseEl.hidden) renderTeam();
@@ -1235,13 +1311,13 @@ const IDLE_INPUT: Input = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false };
 /** Jugador al que sigue la cámara: tú, o un compañero vivo si has caído. */
 function camTarget(): Player {
   const p = me();
-  if (p.alive || mode !== 'multi') return p;
+  if (p.alive || mode === 'solo') return p;
   return world.players.find((q) => q.alive) ?? p;
 }
 function frame(now: number) {
   const rawDt = (now - last) / 1000;
   // En solitario la pausa congela todo; en línea la partida sigue (no se puede parar a los demás).
-  const dt = paused && mode === 'solo' ? 0 : Math.min(0.05, rawDt);
+  const dt = paused && mode !== 'multi' ? 0 : Math.min(0.05, rawDt);
   last = now;
   const t = now / 1000;
   if (playing && !document.hidden && rawDt < 1) adaptQuality(rawDt);
@@ -1249,7 +1325,12 @@ function frame(now: number) {
   // En línea el tiempo real cuenta (el servidor no espera): la predicción usa el intervalo real.
   if (mode === 'multi' || waitingFirstSnap) multiFrame(Math.min(0.25, rawDt));
   else if (playing && !paused && !document.hidden && world.phase === 'fight') {
-    step(world, readInput(), dt);
+    if (mode === 'local') {
+      getPlayer(world, 'p1').input = readInput();
+      getPlayer(world, 'p2').input = readInputP2();
+      step(world, null, dt);
+      leash(world, LEASH);
+    } else step(world, readInput(), dt);
     flushEvents();
   }
   hud();
@@ -1377,8 +1458,20 @@ function frame(now: number) {
 
   // Cámara y sol siguen al jugador
   const portrait = camera.aspect < 1;
-  const h = (portrait ? 26 : 17) * ZOOM, back = (portrait ? 11 : 11.5) * ZOOM;
-  camGoal.set(p.x, h, p.z + back);
+  // Cooperativo local: la cámara se centra entre los jugadores y se aleja si se separan.
+  let cx = p.x, cz = p.z, spreadK = 1;
+  if (mode === 'local') {
+    const group = world.players.filter((q) => q.alive);
+    const g = group.length ? group : world.players;
+    cx = g.reduce((s, q) => s + q.x, 0) / g.length;
+    cz = g.reduce((s, q) => s + q.z, 0) / g.length;
+    let spread = 0;
+    for (const a of g) for (const b of g) spread = Math.max(spread, Math.hypot(a.x - b.x, a.z - b.z));
+    spreadK = 1 + Math.min(0.6, Math.max(0, spread - 8) / 26);
+  }
+  camZoom += (spreadK - camZoom) * (1 - Math.exp(-dt * 3));
+  const h = (portrait ? 26 : 17) * ZOOM * camZoom, back = (portrait ? 11 : 11.5) * ZOOM * camZoom;
+  camGoal.set(cx, h, cz + back);
   // El primer fotograma (y al empezar partida) coloca la cámara directamente; después la sigue con suavidad.
   if (snapCam) { camera.position.copy(camGoal); snapCam = false; } else camera.position.lerp(camGoal, 1 - Math.exp(-dt * 6));
   shake = Math.max(0, shake - dt * 2);
@@ -1394,7 +1487,7 @@ function frame(now: number) {
   if (!loaded) { loaded = true; const l = $('loading'); l.classList.add('done'); setTimeout(() => l.remove(), 450); }
   requestAnimationFrame(frame);
 }
-let loaded = false, snapCam = true;
+let loaded = false, snapCam = true, camZoom = 1;
 requestAnimationFrame(frame);
 
 // Para pruebas automatizadas

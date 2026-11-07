@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addPlayer, removePlayer, build, cannotBuild, woodReward, ARMOR_MAX, newWorld, step, spawnEnemy, waveSize, waveBonus, buy, cannotBuy, nextWave, useTool, selectWeapon, dronePos, type Input, type World } from './sim.ts';
+import { addPlayer, removePlayer, autoAim, leash, build, cannotBuild, woodReward, ARMOR_MAX, newWorld, step, spawnEnemy, waveSize, waveBonus, buy, cannotBuy, nextWave, useTool, selectWeapon, dronePos, type Input, type World } from './sim.ts';
 
 const idle: Input = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false };
 const seq = (vals: number[]) => { let i = 0; return () => vals[i++ % vals.length]; };
@@ -512,4 +512,35 @@ test('coop: la armadura bloquea golpes de cada jugador por separado', () => {
   }
   assert.ok(blocked / 300 > 0.18 && blocked / 300 < 0.42, `bloquea ~30% (${blocked / 300})`);
   assert.equal(w.players[0].hp, 5, 'el otro jugador no recibe nada');
+});
+
+test('cooperativo local: la puntería automática apunta al robot más cercano', () => {
+  const w = newWorld(() => 0.5, false);
+  const p = w.players[0];
+  p.x = 0; p.z = 0;
+  assert.equal(autoAim(w, p), null, 'sin robots no apunta');
+  spawnEnemy(w, 'chaser'); spawnEnemy(w, 'chaser');
+  const [near, far] = w.enemies;
+  near.x = 5; near.z = 0; far.x = -10; far.z = 0;
+  const a = autoAim(w, p)!;
+  assert.ok(a.aimX > 0 && Math.abs(a.aimZ) < 1e-9, 'apunta al cercano');
+  near.x = 40;
+  assert.ok(autoAim(w, p)!.aimX < 0, 'el lejano fuera de alcance no cuenta');
+  far.x = -30;
+  assert.equal(autoAim(w, p), null);
+});
+
+test('cooperativo local: los jugadores no se separan más que la correa', () => {
+  const w = newWorld(() => 0.5, false, [{ id: 'p1', name: 'Jugador 1' }, { id: 'p2', name: 'Jugador 2' }]);
+  const [a, b] = w.players;
+  a.x = -20; a.z = 0; b.x = 20; b.z = 0;
+  leash(w, 24);
+  assert.ok(Math.abs(Math.hypot(a.x - b.x, a.z - b.z) - 24) < 1e-6, 'quedan a 24');
+  assert.ok(Math.abs(a.x + b.x) < 1e-6, 'se acercan los dos por igual');
+  a.x = -3; b.x = 3;
+  leash(w, 24);
+  assert.equal(a.x, -3, 'cerca no se toca');
+  b.alive = false; b.x = 25; a.x = -25;
+  leash(w, 24);
+  assert.equal(a.x, -25, 'un jugador caído no tira del otro');
 });

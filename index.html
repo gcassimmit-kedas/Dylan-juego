@@ -51,7 +51,7 @@
   <div id="toolbar"><div id="weaponName"></div><div id="weapons"></div></div>
   <div id="tools" aria-label="Equipo"><button id="buildBtn" class="tool build" aria-label="Construir base" aria-expanded="false" title="Construir (V)"><span data-icon="hammer"></span></button></div>
   <div id="buildPanel" hidden role="menu" aria-label="Construir base">
-    <div class="bp-head"><span class="kicker">Construir</span><span class="bp-wood"><span data-icon="madera"></span><span id="bpWood">0</span></span></div>
+    <div class="bp-head"><span class="kicker" id="bpWho">Construir</span><span class="bp-wood"><span data-icon="madera"></span><span id="bpWood">0</span></span></div>
     <div id="bpList"></div>
     <p class="bp-hint">Se construye delante de ti. La madera se gana al superar oleadas.</p>
   </div>
@@ -66,6 +66,10 @@
           <p class="kicker" id="shopTitle">Oleada superada</p>
           <h2>Arsenal</h2>
           <p id="shopSub"></p>
+          <div id="shopTabs" class="seg shop-tabs" role="tablist" aria-label="Comprar para" hidden>
+            <button role="tab" data-pid="p1" aria-selected="true">Jugador 1</button>
+            <button role="tab" data-pid="p2" aria-selected="false">Jugador 2</button>
+          </div>
         </div>
         <div class="wallets">
         <div class="wallet" aria-label="Monedas disponibles"><span data-icon="coins"></span><span id="shopCoins">0</span></div>
@@ -141,19 +145,25 @@
     <div class="panel lobby-panel">
       <div class="head">
         <div>
-          <p class="kicker">Cooperativo en línea</p>
+          <p class="kicker">Juega en equipo</p>
           <h2 id="lobbyTitle">Multijugador</h2>
         </div>
         <button id="lobbyClose" class="btn" aria-label="Cerrar multijugador" data-icon="x"></button>
       </div>
       <div class="lobby-body">
+        <section class="lobby-local">
+          <h3>En este dispositivo</h3>
+          <button id="localBtn" class="primary big"><span data-icon="users"></span> Cooperativo local</button>
+          <p class="help">2 jugadores en esta pantalla, sin conexión. Jugador 1: WASD y ratón. Jugador 2: flechas e Intro para disparar (apunta solo). Con mandos, cada jugador el suyo.</p>
+        </section>
+        <h3 class="lobby-divider">En línea</h3>
         <label class="field">
           <span>Tu nombre de jugador</span>
           <input id="nick" maxlength="16" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Por ejemplo, Halcón" />
           <small id="nickMsg">Usa un apodo. No pongas tu nombre real.</small>
         </label>
         <p id="lobbyStatus" class="lobby-status" role="status" aria-live="polite"></p>
-        <button id="joinMain" class="primary big"><span data-icon="globe"></span> Entrar al servidor público</button>
+        <button id="joinMain" class="ghost big-ghost"><span data-icon="globe"></span> Entrar al servidor público</button>
 
         <section class="lobby-sec">
           <div class="sec-head">

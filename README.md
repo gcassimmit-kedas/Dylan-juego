@@ -65,6 +65,17 @@ Los robots no rodean tus estructuras: **las atacan** hasta romperlas (cada una m
 reales (pone sombras simples bajo los personajes) y baja la resolución. Se puede forzar con `index.html?calidad=alta`
 o `?calidad=baja`.
 
+### Cooperativo local (2 jugadores, sin conexión)
+
+Título > **Multijugador** > **Cooperativo local**. Dos jugadores en la misma pantalla, sin servidor ni internet:
+
+- **Jugador 1:** WASD, ratón para apuntar y clic para disparar (1-7 armas, V construir), o la pantalla táctil.
+- **Jugador 2:** flechas para moverse, Intro (o Mayús derecha) dispara apuntando solo al robot más cercano, coma y punto cambian de arma.
+- **Mandos:** con dos mandos, uno para cada jugador; con uno, es del jugador 2.
+
+Cada jugador tiene sus monedas, madera y armas (la tienda tiene una pestaña por jugador; con mando, LB/RB cambia de pestaña).
+La cámara se coloca entre los dos y se aleja si se separan; no pueden alejarse más de 24 metros.
+
 ### Multijugador cooperativo en línea
 
 Hasta 8 jugadores contra las mismas oleadas (Título > **Multijugador**):
