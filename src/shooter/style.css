@@ -271,9 +271,52 @@ body.playing #rapid { visibility: visible; }
   .wallet { font-size: 1.4rem; }
   .title { gap: 16px; }
 }
-@media (max-height: 520px) and (orientation: landscape) {
-  .title { flex-direction: row; flex-wrap: wrap; gap: 12px 36px; }
-  .title .records, .title .help { width: 100%; justify-content: center; }
+/* Teléfono en horizontal: poca altura, mucha anchura. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .title { flex-direction: row; flex-wrap: nowrap; align-items: center; gap: clamp(20px, 5vw, 56px); }
+  .title .brand { gap: 2px; }
+  .emblem { width: 52px; }
+  .title h1 .l1 { font-size: clamp(2.4rem, 9vh + 1rem, 3.6rem); }
+  .title h1 .l2 { font-size: clamp(1.1rem, 4vh + 0.4rem, 1.6rem); }
+  .tagline, .title .help, .version { display: none; }
+  .title .menu { width: min(44vw, 260px); gap: 7px; }
+  .title .records { position: absolute; left: calc(env(safe-area-inset-left) + 16px); bottom: calc(env(safe-area-inset-bottom) + 8px); gap: 18px; }
+  .records dd { font-size: 1.1rem; }
+  .primary.big { padding: 10px 20px; font-size: 1.1rem; }
+  .ghost { padding: 8px 16px; font-size: 0.9rem; }
+
+  .hpbar { min-width: 0; width: 34vw; max-width: 190px; padding: 6px 8px; gap: 6px; }
+  .stat { height: 36px; padding: 0 8px; font-size: 1rem; }
+  .stat .ic { width: 17px; height: 17px; }
+  .stat.score { display: none; }
+  .btn { width: 36px; height: 36px; }
+  .wave { padding: 1px 12px; }
+  .wave .n { font-size: 1.2rem; }
+  .remaining { font-size: 0.8rem; }
+  #rapid { top: calc(env(safe-area-inset-top) + 74px); font-size: 0.8rem; }
+  #toast { top: calc(env(safe-area-inset-top) + 102px); font-size: 0.85rem; }
+  #banner { top: 22%; }
+  #banner .title { font-size: clamp(2rem, 13vh, 3.2rem); }
+  #tools { top: calc(env(safe-area-inset-top) + 56px); transform: none; gap: 6px; }
+  .tool { width: 46px; height: 46px; }
+  .tool .ic { width: 24px; height: 24px; }
+  #toolbar { gap: 2px; bottom: calc(env(safe-area-inset-bottom) + 6px); }
+  #weaponName { font-size: 0.72rem; }
+  .wbtn { width: 42px; height: 38px; }
+  .wbtn .ic { width: 24px; height: 24px; }
+
+  .menu-panel { padding: 14px 18px; gap: 8px; max-height: 100%; overflow-y: auto; }
+  .menu-panel h2 { font-size: 1.5rem; margin-bottom: 2px; }
+  .menu-panel .help, .menu-panel .kicker:not(.danger) { display: none; }
+  .result { width: min(100%, 560px); }
+  .stats { grid-template-columns: repeat(4, 1fr); margin: 2px 0 4px; }
+  .stats div { padding: 6px; }
+  .stats dd { font-size: 1.3rem; }
+  .shop-head { padding-top: 10px; padding-bottom: 8px; }
+  .shop-head h2 { font-size: 1.5rem; }
+  .shop-foot { padding-top: 8px; padding-bottom: 10px; }
+  .shop-foot .primary.big { padding: 10px; }
 }
+
 @media (prefers-reduced-motion: reduce) { *, *::after { transition: none !important; animation: none !important; } }
 .records[hidden] { display: none; }

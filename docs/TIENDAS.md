@@ -16,13 +16,19 @@ debe verificarse en la documentación oficial justo antes de enviar.
 - [x] Áreas seguras (notch, barra de gestos) y diseño de móvil a escritorio.
 - [x] Icono (1024 px, sin transparencia para iOS), icono adaptativo de Android (primer plano + fondo) y pantallas de carga en `resources/`.
 - [x] Sin permisos del sistema.
+- [x] Identificador permanente: **`com.dylan.shooter2027`** (fijado el 7 de noviembre de 2026; ya no debe cambiarse).
+- [x] Proyectos nativos generados y versionados (`android/`, `ios/`) con iconos y pantallas de carga de todos los tamaños.
+- [x] Android: SDK objetivo 36, mínimo Android 7 (API 24); teléfonos, tabletas y Chromebooks; pantalla completa inmersiva.
+- [x] iOS: iPhone y iPad (iOS 15 o superior), todas las orientaciones, sin barra de estado, `ITSAppUsesNonExemptEncryption = NO`.
+- [x] Navegador (PC, Mac, Linux, Chromebook): instalable y jugable sin conexión tras la primera carga (service worker generado al compilar).
+- [x] Mandos (Xbox, PlayStation y genéricos) en PC, Android y iPad; se pausa si el mando se desconecta.
+- [x] Probado en 13 tamaños de pantalla, de un iPhone SE en horizontal (568×320) a un monitor de 2560×1440.
 - [x] Nombre de la app: **Shooter 2027** (decidido el 7 de noviembre de 2026). La app abre directamente el juego; Tres en Raya 3D va incluido como juego extra en "Otros juegos". "Shooter" es una palabra genérica muy usada en las tiendas: acompañarla de un subtítulo descriptivo en la ficha (por ejemplo, "oleadas de robots") para que se encuentre en las búsquedas.
 
 ## Decisiones pendientes (del propietario)
 
-1. **Identificador de la app.** Ahora es `com.dylan.tresenraya3d` (nombre heredado del primer juego). **No se puede cambiar después de publicar.** Hay que elegirlo antes del primer envío, normalmente con un dominio propio invertido (p. ej. `com.tuestudio.shooter2027`). El nombre visible (`appName`) ya es "Shooter 2027" en `capacitor.config.ts`.
-2. **Público objetivo.** Si el público incluye menores de 13 años, Google aplica la política de Familias y Apple la categoría Niños, con requisitos extra. Si no se apunta a niños, declararlo así en ambas tiendas.
-3. **Responsable y correo de contacto** para la política de privacidad (marcados en naranja en `privacidad.html`).
+1. **Público objetivo.** Si el público incluye menores de 13 años, Google aplica la política de Familias y Apple la categoría Niños, con requisitos extra. Si no se apunta a niños, declararlo así en ambas tiendas.
+2. **Responsable y correo de contacto** para la política de privacidad (marcados en naranja en `privacidad.html`).
 
 ## Cuentas y herramientas
 
@@ -32,18 +38,23 @@ debe verificarse en la documentación oficial justo antes de enviar.
 
 ## Pasos técnicos para generar las apps
 
+Los proyectos nativos ya existen en el repositorio. Cada vez que cambie el juego:
+
 ```bash
 npm install
 npm run build
-npx cap add android            # una vez
-npx cap add ios                # una vez, en macOS
-npx @capacitor/assets generate # iconos y pantallas de carga desde resources/
-npx cap sync
-npx cap open android           # o: npx cap open ios
+npx cap sync                   # copia el juego compilado a android/ e ios/
+npx cap open android           # Android Studio: Build > Generate Signed App Bundle (.aab)
+npx cap open ios               # Xcode (solo en macOS): Product > Archive
 ```
 
-- **Android:** comprobar que `targetSdkVersion` cumple el mínimo exigido por Google Play ese año **(comprobar)**; publicar como Android App Bundle (`.aab`).
-- **iOS:** en `Info.plist`, `ITSAppUsesNonExemptEncryption = NO` (la app no usa cifrado propio) para evitar la pregunta de exportación en cada envío.
+- Si cambian los iconos o la pantalla de carga: `node scripts/recursos.cjs` y después `npx @capacitor/assets generate --android --ios`.
+- Antes de cada envío, subir la versión: `versionCode`/`versionName` en `android/app/build.gradle` y `MARKETING_VERSION`/`CURRENT_PROJECT_VERSION` en Xcode.
+- Este entorno no tiene el SDK de Android ni Xcode: los proyectos están generados y configurados, pero **la primera compilación nativa debe hacerse en un equipo con Android Studio y en un Mac con Xcode**.
+
+## Dispositivos no compatibles
+
+PlayStation, Xbox, Nintendo Switch y televisores inteligentes no son posibles con esta tecnología: cada uno exige su propio motor, kits de desarrollo con licencia del fabricante y una certificación aparte.
 
 ## Formularios de las tiendas (respuestas según el estado actual)
 

@@ -89,6 +89,13 @@ El juego va empaquetado dentro de la app (no carga una URL remota). Eso es neces
 - `src/tres/main.ts`: escena 3D del tres en raya.
 - `src/**/*.test.ts`: tests (`npm test`).
 
+## Dispositivos
+
+- **Android** (teléfonos, tabletas, Chromebooks) e **iOS** (iPhone y iPad): proyectos nativos en `android/` e `ios/` (identificador `com.dylan.shooter2027`).
+- **Navegador** en PC, Mac y Linux: instalable y jugable sin conexión tras la primera carga.
+- **Controles:** táctil (dos joysticks), teclado y ratón, y **mando** (Xbox, PlayStation, genéricos): stick izquierdo para moverte, stick derecho o RT para disparar, LB/RB para cambiar de arma, X torreta, Y escudo, B mina, LT barricada, Start pausa.
+- Vertical y horizontal, de 320 px de ancho a monitores de 2560 px.
+
 ## Publicación en tiendas
 
 Normas del proyecto (sin emojis, iconos SVG, cumplimiento de tiendas) en `CLAUDE.md`.

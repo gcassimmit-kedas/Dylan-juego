@@ -9,6 +9,7 @@ import { MAT, makeSoldier, animateSoldier, showWeapon, makeRobot, animateRobot, 
 import { Effects, SOFT } from './fx.ts';
 import { icon, ITEM_ICON, hydrateIcons } from '../ui/icons.ts';
 import { settings, type Quality } from './settings.ts';
+import '../ui/pwa.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>('scene');
@@ -385,8 +386,62 @@ function readInput(): Input {
     if (ray.ray.intersectPlane(groundPlane, hitPt)) { inp.aimX = hitPt.x - world.player.x; inp.aimZ = hitPt.z - world.player.z; }
     inp.fire = mouse.down || keys.has('Space');
   } else inp.fire = keys.has('Space');
+  padInput(inp);
   return inp;
 }
+
+// ---------- Mandos (Xbox, PlayStation y genéricos; API estándar del navegador) ----------
+// Distribución estándar: 0 A/Cruz, 1 B/Círculo, 2 X/Cuadrado, 3 Y/Triángulo, 4 LB, 5 RB, 6 LT, 7 RT, 9 Start/Options.
+const DEAD = 0.22;
+const dz = (v: number | undefined) => (v === undefined || Math.abs(v) < DEAD ? 0 : v);
+let padPrev: boolean[] = [];
+function activePad(): Gamepad | null {
+  const pads = navigator.getGamepads?.() ?? [];
+  for (const g of pads) if (g && g.connected) return g;
+  return null;
+}
+function padInput(inp: Input) {
+  const g = activePad();
+  if (!g) return;
+  const lx = dz(g.axes[0]), ly = dz(g.axes[1]), rx = dz(g.axes[2]), ry = dz(g.axes[3]);
+  if (lx || ly) { inp.moveX = lx; inp.moveZ = ly; }
+  const aiming = Math.hypot(rx, ry) > 0.35;
+  if (aiming) { inp.aimX = rx; inp.aimZ = ry; }
+  if (aiming || (g.buttons[7]?.value ?? 0) > 0.3) inp.fire = true; // stick derecho (como en táctil) o gatillo derecho
+}
+/** Botones con efecto al pulsar (no al mantener): menús, pausa, armas y equipo. */
+function pollPad() {
+  const g = activePad();
+  if (!g) return;
+  const now = g.buttons.map((b) => b.pressed);
+  const prev = padPrev; // copia del fotograma anterior (hay que guardarla antes de sobrescribir)
+  const hit = (i: number) => now[i] && !prev[i];
+  padPrev = now;
+  const visible = (id: string) => !$(id).hidden;
+  if (visible('settings')) { if (hit(1) || hit(9)) $('settingsClose').click(); return; }
+  if (!overlay.hidden) { if (hit(0) || hit(9)) start(); return; }
+  if (!gameoverEl.hidden) { if (hit(0) || hit(9)) start(); else if (hit(1)) toTitle(); return; }
+  if (!shopEl.hidden) { if (hit(9)) $<HTMLButtonElement>('nextWave').click(); return; }
+  if (paused) { if (hit(0) || hit(9) || hit(1)) setPaused(false); return; }
+  if (!playing) return;
+  if (hit(9)) { setPaused(true); return; }
+  const own = WEAPON_ORDER.filter((w) => world.player.owned.includes(w));
+  const i = own.indexOf(world.player.weapon);
+  if (hit(5)) pickWeapon(own[(i + 1) % own.length]);
+  if (hit(4)) pickWeapon(own[(i + own.length - 1) % own.length]);
+  if (hit(2)) tool('torreta');
+  if (hit(3)) tool('escudo');
+  if (hit(1)) tool('mina');
+  if (hit(6)) tool('barricada');
+}
+const PAD_HELP = 'Mando: stick izquierdo para moverte, stick derecho o RT para disparar, LB/RB para cambiar de arma, X torreta, Y escudo, B mina, LT barricada, Start pausa.';
+addEventListener('gamepadconnected', () => {
+  $('help').textContent = PAD_HELP;
+  if (playing) toast('Mando conectado');
+});
+addEventListener('gamepaddisconnected', () => {
+  if (playing && !paused && world.phase === 'fight') setPaused(true); // si se desconecta el mando, se pausa
+});
 
 // ---------- HUD ----------
 const readNum = (k: string) => { try { return Number(localStorage.getItem(k)) || 0; } catch { return 0; } };
@@ -711,6 +766,7 @@ function frame(now: number) {
   last = now;
   const t = now / 1000;
   if (playing && !document.hidden && rawDt < 1) adaptQuality(rawDt);
+  pollPad();
   if (playing && !paused && !document.hidden && world.phase === 'fight') {
     step(world, readInput(), dt);
     flushEvents();
