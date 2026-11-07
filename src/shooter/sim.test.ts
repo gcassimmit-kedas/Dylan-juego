@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { newWorld, step, spawnEnemy, waveSize, waveBonus, buy, cannotBuy, nextWave, useTool, selectWeapon, dronePos, type Input, type World } from './sim.ts';
+import { build, cannotBuild, woodReward, ARMOR_MAX, newWorld, step, spawnEnemy, waveSize, waveBonus, buy, cannotBuy, nextWave, useTool, selectWeapon, dronePos, type Input, type World } from './sim.ts';
 
 const idle: Input = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false };
 const seq = (vals: number[]) => { let i = 0; return () => vals[i++ % vals.length]; };
@@ -244,4 +244,165 @@ test('todos los objetos de la tienda se pueden comprar', () => {
   for (const id of ['subfusil', 'escopeta', 'lanzallamas', 'francotirador', 'granadas', 'cohetes', 'botiquin', 'armadura', 'botas',
     'municion', 'iman', 'regeneracion', 'dron', 'torreta', 'mina', 'escudo', 'barricada'] as const) assert.ok(buy(w, id), id);
   assert.equal(w.player.owned.length, 7);
+});
+
+// ---------- Armadura, madera y base ----------
+
+test('armadura al máximo: bloquea golpes al azar (30%) y sin ella siempre duele', () => {
+  const hits = (armor: number) => {
+    let blocked = 0;
+    for (let i = 0; i < 400; i++) {
+      let r = i * 7919 % 1000;
+      const w = newWorld(() => ((r = (r * 16807 + 11) % 1000) / 1000), false);
+      w.wave = 1; w.toSpawn = 1; w.spawnTimer = 999;
+      w.player.armorLvl = armor; w.player.invuln = 0;
+      w.bullets.push({ id: 1, kind: 'enemiga', x: w.player.x, z: w.player.z, vx: 0, vz: 0, life: 1, maxLife: 1, enemy: true, dmg: 1, blast: 0, pierce: 0, hits: [] });
+      step(w, idle, 1 / 60);
+      if (w.player.hp === 5) blocked++;
+    }
+    return blocked / 400;
+  };
+  assert.equal(hits(0), 0, 'sin armadura no bloquea nunca');
+  assert.equal(hits(ARMOR_MAX - 1), 0, 'por debajo del máximo tampoco');
+  const rate = hits(ARMOR_MAX);
+  assert.ok(rate > 0.2 && rate < 0.4, `al máximo bloquea ~30% (salió ${rate})`);
+});
+
+test('se gana madera al superar una oleada', () => {
+  const w = arena();
+  w.toSpawn = 0;
+  step(w, idle, 1 / 60);
+  assert.equal(w.phase, 'shop');
+  assert.equal(w.player.wood, woodReward(1));
+});
+
+test('construir: cuesta madera, se coloca delante y no se solapa', () => {
+  const w = arena();
+  assert.equal(cannotBuild(w, 'muro'), 'Falta madera');
+  w.player.wood = 100; w.player.angle = 0;
+  assert.ok(build(w, 'muro'));
+  assert.equal(w.player.wood, 96);
+  const walls = w.obstacles.filter((o) => o.kind === 'wall');
+  assert.equal(walls.length, 3);
+  assert.ok(walls.every((o) => o.z > 2), 'delante del jugador');
+  assert.equal(cannotBuild(w, 'muro'), 'No hay sitio', 'no se construye encima de otro muro');
+  w.phase = 'shop';
+  w.player.angle = Math.PI;
+  assert.ok(build(w, 'medico'), 'también entre oleadas');
+});
+
+test('los robots atacan y destruyen los muros; tus balas los atraviesan', () => {
+  const w = arena();
+  w.player.wood = 10; w.player.angle = 0;
+  build(w, 'muro');
+  const t = spawnEnemy(w, 'tank', 0, 12);
+  w.player.invuln = 999;
+  run(w, idle, 60 * 12);
+  assert.ok(w.obstacles.filter((o) => o.kind === 'wall').length < 3, 'el tanque rompe algún tramo');
+  const w2 = arena();
+  w2.player.wood = 10; w2.player.angle = 0;
+  build(w2, 'muro');
+  const e = spawnEnemy(w2, 'tank', 0, 6); e.speed = 0;
+  run(w2, { ...idle, aimZ: 1, fire: true }, 20);
+  assert.ok(e.hp < e.maxHp, 'tus balas pasan por tu muro');
+  void t;
+});
+
+test('pinchos: dañan y frenan a los robots', () => {
+  const w = arena();
+  w.player.wood = 10; w.player.angle = 0;
+  build(w, 'pinchos');
+  const trap = w.traps[0];
+  const e = spawnEnemy(w, 'tank', trap.x, trap.z); e.speed = 0;
+  run(w, idle, 60);
+  assert.ok(e.hp < e.maxHp);
+});
+
+test('torre de guardia: dispara sola y desaparece si destruyen la estructura', () => {
+  const w = arena();
+  w.player.wood = 20; w.player.angle = 0;
+  build(w, 'torre');
+  assert.equal(w.turrets.length, 1);
+  const e = spawnEnemy(w, 'tank', 8, 8); e.speed = 0;
+  run(w, idle, 90);
+  assert.ok(e.hp < e.maxHp);
+  w.obstacles.find((o) => o.kind === 'tower')!.hp = 0;
+  run(w, idle, 2);
+  assert.equal(w.turrets.length, 0);
+});
+
+test('puesto médico: cura si estás cerca', () => {
+  const w = arena();
+  w.player.wood = 20; w.player.angle = 0; w.player.hp = 3;
+  build(w, 'medico');
+  run(w, idle, 60 * 6.5);
+  assert.equal(w.player.hp, 4);
+});
+
+// ---------- Armas nuevas ----------
+
+test('cañón Tesla: el rayo salta a robots cercanos', () => {
+  const w = arena();
+  w.player.owned.push('tesla'); selectWeapon(w, 'tesla');
+  const es = [[0, 6], [2, 8], [-2, 9]].map(([x, z]) => { const e = spawnEnemy(w, 'tank', x, z); e.speed = 0; return e; });
+  run(w, { ...idle, aimZ: 1, fire: true }, 10);
+  assert.ok(es.every((e) => e.hp < e.maxHp), 'los tres reciben daño');
+});
+
+test('ametralladora: dispara muy rápido pero frena al jugador', () => {
+  const a = arena(), b = arena();
+  a.player.owned.push('ametralladora'); selectWeapon(a, 'ametralladora');
+  run(a, { ...idle, moveX: 1, aimZ: -1, fire: true }, 60);
+  run(b, { ...idle, moveX: 1, aimZ: -1, fire: true }, 60);
+  assert.ok(a.player.x < b.player.x * 0.75, 'se mueve más despacio');
+});
+
+test('fusil de asalto: se puede comprar y equipar', () => {
+  const w = arena();
+  w.coins = 500;
+  assert.ok(buy(w, 'fusil'));
+  assert.equal(w.player.weapon, 'fusil');
+});
+
+// ---------- Equipo nuevo ----------
+
+test('ataque aéreo: bombardea en línea tras un aviso', () => {
+  const w = arena();
+  w.player.tools.aereo = 1; w.player.angle = 0;
+  const e = spawnEnemy(w, 'tank', 0, 10); e.speed = 0;
+  assert.ok(useTool(w, 'aereo'));
+  run(w, idle, 30);
+  assert.equal(e.hp, e.maxHp, 'aún no ha caído');
+  run(w, idle, 90);
+  assert.ok(e.hp < e.maxHp, 'tras el aviso, impacta');
+});
+
+test('pulso EMP: paraliza a los robots cercanos', () => {
+  const w = arena();
+  w.player.tools.emp = 1;
+  const e = spawnEnemy(w, 'chaser', 0, 6);
+  useTool(w, 'emp');
+  const z = e.z;
+  run(w, idle, 60);
+  assert.equal(e.z, z, 'no se mueve durante el aturdimiento');
+  run(w, idle, 150);
+  assert.ok(e.z < z, 'después vuelve a moverse');
+});
+
+test('señuelo: los robots van a por él', () => {
+  const w = arena();
+  w.player.tools.senuelo = 1; w.player.angle = Math.PI / 2; // mira a +x
+  useTool(w, 'senuelo');
+  const dc = w.decoys[0];
+  const e = spawnEnemy(w, 'chaser', dc.x + 8, dc.z + 3);
+  w.player.x = -6;
+  run(w, idle, 60);
+  assert.ok(Math.hypot(e.x - dc.x, e.z - dc.z) < Math.hypot(e.x - w.player.x, e.z - w.player.z), 'se acerca al señuelo');
+});
+
+test('todas las armas y herramientas nuevas están en la tienda', () => {
+  const w = arena();
+  w.coins = 99999;
+  for (const id of ['fusil', 'ametralladora', 'tesla', 'aereo', 'emp', 'senuelo'] as const) assert.ok(buy(w, id), id);
+  assert.equal(w.player.owned.length, 4);
 });

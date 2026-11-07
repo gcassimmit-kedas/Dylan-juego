@@ -32,6 +32,14 @@ import info from 'lucide-static/icons/info.svg?raw';
 import crosshair from 'lucide-static/icons/crosshair.svg?raw';
 import grid from 'lucide-static/icons/grid-3x3.svg?raw';
 import rotateCcw from 'lucide-static/icons/rotate-ccw.svg?raw';
+import hammer from 'lucide-static/icons/hammer.svg?raw';
+import fence from 'lucide-static/icons/fence.svg?raw';
+import castle from 'lucide-static/icons/castle.svg?raw';
+import hospital from 'lucide-static/icons/hospital.svg?raw';
+import plane from 'lucide-static/icons/plane.svg?raw';
+import zapOff from 'lucide-static/icons/zap-off.svg?raw';
+import userRound from 'lucide-static/icons/user-round.svg?raw';
+import shieldOff from 'lucide-static/icons/shield-off.svg?raw';
 
 /** Extrae solo el contenido interior de un SVG de Lucide (sin comentario de licencia ni atributos). */
 const inner = (svg: string) => svg.replace(/<!--[\s\S]*?-->/g, '').replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '').trim();
@@ -54,6 +62,16 @@ const CUSTOM = {
   torreta: '<rect x="6" y="5" width="9" height="6" rx="1"/><path d="M15 7h6"/><path d="M15 9h6"/><path d="M10.5 11v3"/><path d="M10.5 14 5 21"/><path d="M10.5 14 16 21"/><path d="M10.5 14v7"/>',
   // Mina terrestre con luz
   mina: '<ellipse cx="12" cy="15" rx="8" ry="3"/><path d="M4 15v2c0 1.7 3.6 3 8 3s8-1.3 8-3v-2"/><path d="M10 12.2V10h4v2.2"/><path d="M12 7V5"/><path d="M8.5 6.5l1 1.2"/><path d="M15.5 6.5l-1 1.2"/>',
+  // Fusil de asalto: cargador curvo, culata y cañón medio
+  fusil: '<path d="M2 11h3l1-2h14v3H11"/><path d="M20 10h2"/><path d="M2 11v3l2 1 4-3"/><path d="M13 12c0 2 .5 4 1.5 5.5h2c-1-1.5-1.5-3.5-1.5-5.5"/><path d="M9 12v1.5a1.5 1.5 0 0 0 1.5 1.5"/>',
+  // Ametralladora: haz de cañones y cinta de munición
+  ametralladora: '<rect x="3" y="8" width="8" height="6" rx="1"/><path d="M11 9h10"/><path d="M11 11h11"/><path d="M11 13h10"/><path d="M6 14v3"/><path d="M6 17l-2 3"/><path d="M6 17l2 3"/><path d="M4 8V6h3"/>',
+  // Cañón Tesla: bobina con rayo
+  tesla: '<rect x="2" y="9" width="7" height="6" rx="1"/><path d="M9 10.5h4"/><path d="M9 13.5h4"/><circle cx="15" cy="12" r="2"/><path d="M17 12l2-2 1 2 2-2"/><path d="M5 15v3"/>',
+  // Madera: troncos apilados
+  madera: '<circle cx="7" cy="16" r="3"/><circle cx="17" cy="16" r="3"/><circle cx="12" cy="9" r="3"/><circle cx="7" cy="16" r=".5"/><circle cx="17" cy="16" r=".5"/><circle cx="12" cy="9" r=".5"/>',
+  // Pinchos: tabla con púas
+  pinchos: '<path d="M3 19h18"/><path d="M4 19l2-9 2 9"/><path d="M9 19l3-13 3 13"/><path d="M16 19l2-9 2 9"/>',
   // Menú hamburguesa (no usamos glifos de texto)
   menu: '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>',
 };
@@ -61,7 +79,7 @@ const CUSTOM = {
 const LUCIDE = {
   pause, play, volumeOn, volumeOff, house, coins, heart, heartPulse, zap, flame, bomb, rocket,
   briefcaseMedical, footprints, magnet, drone, shieldCheck, brickWall, settings, x, chevronRight, arrowLeft,
-  trophy, check, fileText, info, crosshair, grid, rotateCcw,
+  trophy, check, fileText, info, crosshair, grid, rotateCcw, hammer, fence, castle, hospital, plane, zapOff, userRound, shieldOff,
 };
 
 export type IconName = keyof typeof LUCIDE | keyof typeof CUSTOM;
@@ -77,11 +95,13 @@ export function icon(name: IconName, cls = 'ic'): string {
 
 /** Icono de cada objeto de la tienda / arma / herramienta del shooter. */
 export const ITEM_ICON: Record<string, IconName> = {
-  pistola: 'pistola', subfusil: 'subfusil', escopeta: 'escopeta', lanzallamas: 'flame', francotirador: 'francotirador',
+  pistola: 'pistola', subfusil: 'subfusil', fusil: 'fusil', escopeta: 'escopeta', ametralladora: 'ametralladora', lanzallamas: 'flame',
+  francotirador: 'francotirador', tesla: 'tesla',
   granadas: 'bomb', cohetes: 'rocket',
   botiquin: 'briefcaseMedical', armadura: 'armadura', botas: 'footprints', municion: 'municion', iman: 'magnet',
   regeneracion: 'heartPulse', dron: 'drone',
-  torreta: 'torreta', mina: 'mina', escudo: 'shieldCheck', barricada: 'brickWall',
+  torreta: 'torreta', mina: 'mina', escudo: 'shieldCheck', barricada: 'brickWall', aereo: 'plane', emp: 'zapOff', senuelo: 'userRound',
+  muro: 'fence', pinchos: 'pinchos', medico: 'hospital', torre: 'castle',
 };
 
 /** Rellena todos los elementos con data-icon="nombre" (para iconos escritos en el HTML). */

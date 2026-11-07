@@ -21,8 +21,8 @@ npm run build    # genera dist/ para publicar en cualquier hosting estático
 
 **Controles**
 - Móvil: el pulgar izquierdo mueve y el derecho apunta y dispara. Abajo está la barra de armas y a la derecha el equipo.
-- PC: WASD para moverte, el ratón para apuntar, clic para disparar, 1-7 o Q/E para cambiar de arma.
-  Equipo: T (torreta), G (mina), F (escudo), B (barricada).
+- PC: WASD para moverte, el ratón para apuntar, clic para disparar, 1-9 y 0 o Q/E para cambiar de arma.
+  Equipo: T (torreta), G (mina), F (escudo), B (barricada), Z (ataque aéreo), X (pulso EMP), C (señuelo). V abre el menú de construir.
 - Pausa: botón de pausa arriba a la derecha (o P / Esc en PC). El juego también se pausa solo si cambias de app o de pestaña.
 
 **Personajes:** tu soldado (casco, chaleco, mochila, piernas animadas; el arma cambia en la mano) contra tres robots:
@@ -38,12 +38,28 @@ El mapa cambia en cada partida.
 | Armas | Precio | Mejoras | Precio | Equipo (botón) | Precio |
 |---|---|---|---|---|---|
 | Subfusil | 60 | Botiquín (+2 vida) | 20 | Torreta (dispara sola 30 s) | 50 |
-| Escopeta | 90 | Armadura (+1 vida máx., ×3) | 50 | Mina (explota al pasar un robot) | 25 |
-| Lanzallamas | 120 | Botas (+12% velocidad, ×2) | 40 | Escudo (5 s invulnerable) | 45 |
-| Francotirador (atraviesa) | 140 | Munición pesada (+30% daño, ×2) | 70 | Barricada (muro que para balas enemigas) | 30 |
-| Lanzagranadas | 160 | Imán (atrae monedas) | 40 | | |
-| Lanzacohetes | 220 | Regeneración (+1 vida/15 s) | 80 | | |
-| | | Dron escolta (×2) | 90 | | |
+| Fusil de asalto | 100 | Armadura (+1 vida máx., ×3) | 50 | Mina (explota al pasar un robot) | 25 |
+| Escopeta | 90 | Botas (+12% velocidad, ×2) | 40 | Escudo (5 s invulnerable) | 45 |
+| Ametralladora (te frena al disparar) | 180 | Munición pesada (+30% daño, ×2) | 70 | Barricada (muro que para balas enemigas) | 30 |
+| Lanzallamas | 120 | Imán (atrae monedas) | 40 | Ataque aéreo (5 bombas en línea) | 80 |
+| Francotirador (atraviesa) | 140 | Regeneración (+1 vida/15 s) | 80 | Pulso EMP (paraliza 3 s) | 60 |
+| Cañón Tesla (salta a 3 robots) | 200 | Dron escolta (×2) | 90 | Señuelo (atrae a los robots 8 s) | 35 |
+| Lanzagranadas | 160 | | | | |
+| Lanzacohetes | 220 | | | | |
+
+**Armadura:** cada nivel suma 1 de vida máxima; **al nivel máximo (3), cada golpe tiene un 30% de probabilidad de no hacer daño** (aparece "Bloqueado").
+
+**Base (madera):** al superar cada oleada ganas madera (3 + número de oleada). Con el botón del martillo (o V, o la cruceta
+abajo del mando), y también desde la tienda entre oleadas, construyes delante de ti:
+
+| Estructura | Madera | Qué hace |
+|---|---|---|
+| Muro de madera | 4 | Tres tramos que frenan a los robots y paran sus balas (tus balas sí pasan) |
+| Pinchos | 5 | Dañan y frenan a los robots que los pisan |
+| Puesto médico | 10 | Cura 1 de vida cada 6 s si estás cerca |
+| Torre de guardia | 12 | Ametralladora permanente que dispara sola |
+
+Los robots no rodean tus estructuras: **las atacan** hasta romperlas (cada una muestra su barra de vida al dañarse).
 
 **Gráficos y rendimiento:** si el dispositivo no llega a 40 FPS en los primeros segundos, el juego quita las sombras
 reales (pone sombras simples bajo los personajes) y baja la resolución. Se puede forzar con `index.html?calidad=alta`

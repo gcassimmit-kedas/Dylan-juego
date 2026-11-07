@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import {
-  newWorld, step, buy, cannotBuy, owns, nextWave, useTool, selectWeapon, dronePos,
-  SHOP, WEAPONS, WEAPON_ORDER, TOOL_ORDER,
-  type World, type Input, type Bullet, type Pickup, type EnemyType, type WeaponId, type ToolId, type ShopItem, type ShopKind,
+  newWorld, step, buy, cannotBuy, owns, nextWave, useTool, selectWeapon, dronePos, build, cannotBuild,
+  SHOP, WEAPONS, WEAPON_ORDER, TOOL_ORDER, BUILDS,
+  type World, type Input, type Bullet, type Pickup, type EnemyType, type WeaponId, type ToolId, type ShopItem, type ShopKind, type BuildId, type BuildItem,
 } from './sim.ts';
 import { sfx, unlock, isMuted, setMuted } from './audio.ts';
-import { MAT, makeSoldier, animateSoldier, showWeapon, makeRobot, animateRobot, makeTurret, makeDrone, makeMine, makeObstacle, type Robot } from './models.ts';
+import { MAT, makeSoldier, animateSoldier, showWeapon, makeRobot, animateRobot, makeTurret, makeDrone, makeMine, makeObstacle, makeSpikes, type Robot } from './models.ts';
 import { Effects, SOFT } from './fx.ts';
 import { icon, ITEM_ICON, hydrateIcons } from '../ui/icons.ts';
 import { settings, type Quality } from './settings.ts';
@@ -23,7 +23,7 @@ $('help').textContent = isTouch
   : 'WASD: moverte · Ratón: apuntar · Clic: disparar · 1-7: armas · T G F B: equipo. Escóndete detrás de rocas y sacos.';
 
 hydrateIcons();
-const TOOL_KEY: Record<ToolId, string> = { torreta: 'T', mina: 'G', escudo: 'F', barricada: 'B' };
+const TOOL_KEY: Record<ToolId, string> = { torreta: 'T', mina: 'G', escudo: 'F', barricada: 'B', aereo: 'Z', emp: 'X', senuelo: 'C' };
 
 // ---------- Render ----------
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -229,7 +229,10 @@ function makeBar(): Bar {
 
 const robots = new Map<number, Robot & { bar: Bar }>();
 const objs = { bullets: new Map<number, THREE.Object3D>(), pickups: new Map<number, THREE.Object3D>(), obstacles: new Map<number, THREE.Object3D>(),
-  turrets: new Map<number, THREE.Object3D>(), mines: new Map<number, THREE.Object3D>() };
+  turrets: new Map<number, THREE.Object3D>(), mines: new Map<number, THREE.Object3D>(), traps: new Map<number, THREE.Object3D>(),
+  decoys: new Map<number, THREE.Object3D>() };
+/** Barras de vida de las estructuras de la base (aparecen cuando están dañadas). */
+const structBars = new Map<number, Bar>();
 const drones: THREE.Group[] = [];
 
 function sync<T extends { id: number }>(map: Map<number, THREE.Object3D>, list: T[], make: (t: T) => THREE.Object3D, place: (m: THREE.Object3D, t: T) => void) {
@@ -256,6 +259,7 @@ const PM = {
   fireHot: new THREE.SpriteMaterial({ map: SOFT, color: 0xffd23a, transparent: true, opacity: 0.95, depthWrite: false }),
   fire: new THREE.SpriteMaterial({ map: SOFT, color: 0xff7a1a, transparent: true, opacity: 0.85, depthWrite: false }),
   fireOld: new THREE.SpriteMaterial({ map: SOFT, color: 0xc8361a, transparent: true, opacity: 0.6, depthWrite: false }),
+  glowTesla: new THREE.SpriteMaterial({ map: SOFT, color: 0x6fe6ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }),
   glowRed: new THREE.SpriteMaterial({ map: SOFT, color: 0xff3a1a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }),
   glowJet: new THREE.SpriteMaterial({ map: SOFT, color: 0xffa040, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }),
 };
@@ -263,6 +267,7 @@ function makeBullet(b: Bullet): THREE.Object3D {
   const yaw = Math.atan2(b.vx, b.vz);
   switch (b.kind) {
     case 'fuego': return new THREE.Sprite(PM.fireHot);
+    case 'tesla': { const g = new THREE.Group(); const glow = new THREE.Sprite(PM.glowTesla); glow.scale.setScalar(1.1); g.add(new THREE.Mesh(PG.orb, PM.orb), glow); return g; }
     case 'granada': { const m = new THREE.Mesh(PG.grenade, PM.grenade); m.castShadow = true; return m; }
     case 'cohete': {
       const g = new THREE.Group();
@@ -315,7 +320,8 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Space') e.preventDefault();
   if (!playing || world.phase !== 'fight') return;
   const n = Number(e.key);
-  if (n >= 1 && n <= 7) pickWeapon(WEAPON_ORDER[n - 1]);
+  if (e.key >= '0' && e.key <= '9') pickWeapon(WEAPON_ORDER[n === 0 ? 9 : n - 1]);
+  if (e.code === 'KeyV') toggleBuild();
   if (e.code === 'KeyQ' || e.code === 'KeyE') {
     const own = WEAPON_ORDER.filter((w) => world.player.owned.includes(w));
     const i = own.indexOf(world.player.weapon);
@@ -433,8 +439,19 @@ function pollPad() {
   if (hit(3)) tool('escudo');
   if (hit(1)) tool('mina');
   if (hit(6)) tool('barricada');
+  if (!buildPanel.hidden) {
+    // Con el menú de construir abierto: cruceta izquierda/derecha elige, A construye, B o cruceta abajo cierra
+    if (hit(14) || hit(15)) { buildSel = (buildSel + (hit(15) ? 1 : BUILDS.length - 1)) % BUILDS.length; renderBuild(); }
+    if (hit(0)) doBuild(BUILDS[buildSel].id);
+    if (hit(1) || hit(13)) toggleBuild(false);
+    return;
+  }
+  if (hit(12)) tool('aereo');
+  if (hit(15)) tool('emp');
+  if (hit(14)) tool('senuelo');
+  if (hit(13)) toggleBuild(true);
 }
-const PAD_HELP = 'Mando: stick izquierdo para moverte, stick derecho o RT para disparar, LB/RB para cambiar de arma, X torreta, Y escudo, B mina, LT barricada, Start pausa.';
+const PAD_HELP = 'Mando: stick izquierdo para moverte, stick derecho o RT para disparar, LB/RB arma, X torreta, Y escudo, B mina, LT barricada, cruceta: arriba ataque aéreo, derecha EMP, izquierda señuelo, abajo construir. Start pausa.';
 addEventListener('gamepadconnected', () => {
   $('help').textContent = PAD_HELP;
   if (playing) toast('Mando conectado');
@@ -454,7 +471,7 @@ function hud() {
   const p = world.player;
   rapidEl.hidden = p.rapid <= 0;
   const left = world.toSpawn + world.enemies.length;
-  const key = [p.hp, p.maxHp, world.score, world.wave, left, world.coins, p.weapon, p.owned.length, ...TOOL_ORDER.map((t) => p.tools[t]), p.shield > 0].join('|');
+  const key = [p.hp, p.maxHp, world.score, world.wave, left, world.coins, p.wood, p.weapon, p.owned.length, ...TOOL_ORDER.map((t) => p.tools[t]), p.shield > 0].join('|');
   if (key === hudKey) return;
   hudKey = key;
   hpEl.style.setProperty('--n', String(p.maxHp));
@@ -467,6 +484,8 @@ function hud() {
   enemiesN.textContent = String(left);
   weaponNameEl.textContent = WEAPONS[p.weapon].name;
   coinsN.textContent = String(world.coins);
+  $('woodN').textContent = String(p.wood);
+  if (!buildPanel.hidden) renderBuild();
   if (world.coins > prevCoins) { coinsEl.classList.add('pulse'); setTimeout(() => coinsEl.classList.remove('pulse'), 150); }
   prevCoins = world.coins;
 
@@ -493,6 +512,7 @@ function hud() {
     b.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); tool(t); });
     toolsEl.appendChild(b);
   }
+  toolsEl.prepend(buildBtn); // construir siempre disponible, encima del equipo
   showWeapon(soldier, p.weapon);
 }
 function pickWeapon(id: WeaponId) { selectWeapon(world, id); hud(); }
@@ -542,8 +562,23 @@ function card(item: ShopItem) {
   el.appendChild(b);
   return el;
 }
+function buildCard(item: BuildItem) {
+  const reason = cannotBuild(world, item.id);
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.innerHTML = `<div class="art">${icon(ITEM_ICON[item.id])}</div><div class="info"><div class="t">${item.name}</div><div class="d">${item.desc}</div></div>`;
+  const b = document.createElement('button');
+  if (reason && reason !== 'Falta madera') b.textContent = reason;
+  else { b.innerHTML = `${icon('madera')}<span>${item.wood}</span>`; b.setAttribute('aria-label', `Construir por ${item.wood} de madera`); }
+  b.disabled = !!reason;
+  b.className = 'wood';
+  b.addEventListener('click', () => { if (doBuild(item.id)) renderShop(); });
+  el.appendChild(b);
+  return el;
+}
 function renderShop() {
   $('shopCoins').textContent = String(world.coins);
+  $('shopWood').textContent = String(world.player.wood);
   const body = $('shopBody');
   body.innerHTML = '';
   for (const sec of SECTIONS) {
@@ -552,11 +587,47 @@ function renderShop() {
     for (const item of SHOP) if (item.kind === sec.kind) grid.appendChild(card(item));
     body.append(h, grid);
   }
+  const h = document.createElement('h3'); h.textContent = 'Base (se paga con madera y se construye delante de ti)';
+  const grid = document.createElement('div'); grid.className = 'grid';
+  for (const item of BUILDS) grid.appendChild(buildCard(item));
+  body.append(h, grid);
 }
-function openShop(bonus: number) {
+
+// ---------- Construir la base (durante la partida) ----------
+const buildPanel = $('buildPanel'), buildBtn = $('buildBtn');
+let buildSel = 0;
+function renderBuild() {
+  $('bpWood').textContent = String(world.player.wood);
+  const list = $('bpList');
+  list.innerHTML = '';
+  BUILDS.forEach((item, i) => {
+    const reason = cannotBuild(world, item.id);
+    const b = document.createElement('button');
+    b.className = `bp-item${i === buildSel ? ' sel' : ''}`;
+    b.setAttribute('role', 'menuitem');
+    b.disabled = !!reason;
+    b.innerHTML = `${icon(ITEM_ICON[item.id])}<span class="n">${item.name}</span><span class="c">${icon('madera')}${item.wood}</span>`;
+    if (reason) b.title = reason;
+    b.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); buildSel = i; if (doBuild(item.id)) toggleBuild(false); });
+    list.appendChild(b);
+  });
+}
+function toggleBuild(open = buildPanel.hidden) {
+  if (open && (!playing || paused)) return;
+  buildPanel.hidden = !open;
+  buildBtn.setAttribute('aria-expanded', String(open));
+  if (open) renderBuild();
+}
+function doBuild(id: BuildId): boolean {
+  if (!build(world, id)) { sfx.hit(); return false; }
+  flushEvents(); hud();
+  return true;
+}
+buildBtn.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); toggleBuild(); });
+function openShop(bonus: number, wood: number) {
   releaseStick('L'); releaseStick('R'); mouse.down = false;
   $('shopTitle').textContent = `Oleada ${world.wave} superada`;
-  $('shopSub').textContent = `+${bonus} monedas de bonificación`;
+  $('shopSub').textContent = `+${bonus} monedas y +${wood} de madera por superar la oleada`;
   renderShop();
   setTimeout(() => { shopEl.hidden = false; $('shopBody').scrollTop = 0; }, 900);
 }
@@ -641,7 +712,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 const muzzlePos = new THREE.Vector3();
-const MUZZLE_COLOR: Partial<Record<WeaponId, number>> = { lanzallamas: 0xff6a1a, francotirador: 0xc8f6ff, cohetes: 0xffa040 };
+const MUZZLE_COLOR: Partial<Record<WeaponId, number>> = { lanzallamas: 0xff6a1a, francotirador: 0xc8f6ff, cohetes: 0xffa040, tesla: 0x9ff0ff };
 function flushEvents() {
   const p = world.player;
   for (const ev of world.events) {
@@ -681,13 +752,25 @@ function flushEvents() {
       case 'explosion': sfx.kill(); fx.explosion(ev.x, ev.z, ev.r); shake = Math.max(shake, 0.25 + ev.r * 0.08); break;
       case 'crate': sfx.hit(); fx.debris(ev.x, 0.6, ev.z, 0xa7783f, 14, 6, 0.25); fx.smoke(ev.x, 0.4, ev.z, 3, 0xb79f78, 1, 1); break;
       case 'blocked': fx.sparks(ev.x, 0.9, ev.z, 0xffd0a0, 3, 3); break;
+      case 'armorBlock': sfx.hit(); fx.sparks(p.x, 1.1, p.z, 0x9fd8ff, 10, 5); fx.text(p.x, 2.3, p.z, 'Bloqueado', '#9fd8ff'); break;
+      case 'chain': fx.lightning(ev.points); break;
+      case 'emp': sfx.wave(); fx.ring(ev.x, ev.z, ev.r, 0x6fd3ff, 0.6, true); fx.sparks(ev.x, 1, ev.z, 0x6fd3ff, 16, 9); shake = Math.max(shake, 0.25); break;
+      case 'strikeMark': fx.ring(ev.x, ev.z, 2.6, 0xff4d3d, 1.3, false); break;
+      case 'build': {
+        sfx.pickup();
+        fx.smoke(ev.x, 0.3, ev.z, 5, 0xb79f78, 1.6, 0.7);
+        toast(`${BUILDS.find((b) => b.id === ev.what)!.name} construido`);
+        break;
+      }
+      case 'structureLost': sfx.kill(); fx.debris(ev.x, 0.8, ev.z, 0x8a6236, 16, 6, 0.25); fx.smoke(ev.x, 0.4, ev.z, 4, 0x8a7a60, 1.4, 1); toast('Estructura destruida'); break;
       case 'tool':
         sfx.pickup();
-        toast({ torreta: 'Torreta desplegada', mina: 'Mina colocada', escudo: 'Escudo activado', barricada: 'Barricada levantada' }[ev.tool]);
+        toast({ torreta: 'Torreta desplegada', mina: 'Mina colocada', escudo: 'Escudo activado', barricada: 'Barricada levantada',
+          aereo: 'Ataque aéreo en camino', emp: 'Pulso EMP', senuelo: 'Señuelo desplegado' }[ev.tool]);
         if (ev.tool === 'barricada') fx.smoke(p.x + Math.sin(p.angle) * 2.4, 0.3, p.z + Math.cos(p.angle) * 2.4, 4, 0xb79f78, 1.5, 0.6);
         break;
       case 'regen': fx.text(p.x, 2.2, p.z, '+1', '#8aff9a', 'heart'); break;
-      case 'waveCleared': sfx.wave(); run.coins += ev.bonus; banner('Oleada superada', `Oleada ${world.wave}`, `+${ev.bonus} monedas de bonificación`); openShop(ev.bonus); break;
+      case 'waveCleared': sfx.wave(); run.coins += ev.bonus; toggleBuild(false); banner('Oleada superada', `Oleada ${world.wave}`, `+${ev.bonus} monedas · +${ev.wood} de madera`); openShop(ev.bonus, ev.wood); break;
       case 'gameover': sfx.gameover(); fx.debris(p.x, 1, p.z, 0x5d7a3e, 14, 6); fx.smoke(p.x, 0.5, p.z, 6); gameOver(); break;
     }
   }
@@ -797,7 +880,7 @@ function frame(now: number) {
       robots.set(e.id, r);
       scene.add(r.root, r.bar.g);
     }
-    animateRobot(r, e.x, e.z, p.x, p.z, dt, t, e.flash > 0);
+    animateRobot(r, e.x, e.z, p.x, p.z, dt, t, e.flash > 0, e.stun > 0);
     const hurtK = e.hp / e.maxHp;
     r.bar.g.visible = hurtK < 1;
     if (hurtK < 1) {
@@ -813,6 +896,25 @@ function frame(now: number) {
     m.position.set(o.x, 0, o.z);
     if (o.kind === 'crate') m.scale.setScalar(0.85 + 0.15 * (o.hp / 4));
     if (o.kind === 'barricade') m.scale.y = 0.6 + 0.4 * (o.hp / 18);
+  });
+  // Barras de vida de la base
+  const liveStructs = new Set<number>();
+  for (const o of world.obstacles) {
+    if (!o.maxHp || o.hp >= o.maxHp) continue;
+    liveStructs.add(o.id);
+    let bar = structBars.get(o.id);
+    if (!bar) { bar = makeBar(); structBars.set(o.id, bar); scene.add(bar.g); }
+    const k = Math.max(0, o.hp / o.maxHp);
+    bar.g.position.set(o.x, o.kind === 'tower' ? 3.4 : 2, o.z);
+    bar.g.quaternion.copy(camera.quaternion);
+    bar.fg.scale.x = Math.max(0.001, k); bar.fg.position.x = -(1 - k) / 2;
+  }
+  for (const [id, bar] of structBars) if (!liveStructs.has(id)) { scene.remove(bar.g); structBars.delete(id); }
+  sync(objs.traps, world.traps, (tr) => makeSpikes(tr.r, tr.rot), (m, tr) => m.position.set(tr.x, 0, tr.z));
+  sync(objs.decoys, world.decoys, () => { const s = makeSoldier(0x8a8f96); setBlobs(s.root); return s.root; }, (m, d) => {
+    m.position.set(d.x, 0, d.z);
+    m.rotation.y = Math.sin(now / 400 + d.id) * 0.6;
+    m.visible = d.life > 2 || Math.floor(now / 120) % 2 === 0;
   });
   sync(objs.bullets, world.bullets, makeBullet, (m, b) => {
     let y = 1.05;
@@ -835,7 +937,7 @@ function frame(now: number) {
     m.visible = k.life > 2.5 || Math.floor(now / 120) % 2 === 0;
   });
   sync(objs.turrets, world.turrets, () => setBlobs(makeTurret()), (m, tr) => {
-    m.position.set(tr.x, 0, tr.z);
+    m.position.set(tr.x, tr.tower !== undefined ? 2.06 : 0, tr.z); // la de la torre va sobre la plataforma
     m.getObjectByName('head')!.rotation.y = tr.angle;
     m.visible = tr.life > 4 || Math.floor(now / 150) % 2 === 0;
   });
@@ -878,4 +980,5 @@ let loaded = false, snapCam = true;
 requestAnimationFrame(frame);
 
 // Para pruebas automatizadas
-Object.assign(window, { __world: () => world, __lowQuality: () => lowQuality, __flush: flushEvents });
+Object.assign(window, { __world: () => world, __lowQuality: () => lowQuality, __flush: flushEvents,
+  __step: () => { step(world, { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false }, 1 / 60); flushEvents(); } });

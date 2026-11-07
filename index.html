@@ -37,6 +37,7 @@
     </div>
     <div class="right">
       <div id="coins" class="stat" aria-label="Monedas"><span data-icon="coins"></span><span id="coinsN">0</span></div>
+      <div id="wood" class="stat wood" aria-label="Madera"><span data-icon="madera"></span><span id="woodN">0</span></div>
       <div id="score" class="stat score" aria-label="Puntuación"><span data-icon="trophy"></span><span id="scoreN">0</span></div>
       <button id="pauseBtn" class="btn" aria-label="Pausar" title="Pausar (P)"></button>
       <button id="mute" class="btn" aria-label="Silenciar"></button>
@@ -46,7 +47,12 @@
   <div id="banner" aria-live="polite"><div class="kicker" id="bannerKicker"></div><div class="title" id="bannerTitle"></div><div class="sub" id="bannerSub"></div></div>
   <div id="toast" aria-live="polite"></div>
   <div id="toolbar"><div id="weaponName"></div><div id="weapons"></div></div>
-  <div id="tools" aria-label="Equipo"></div>
+  <div id="tools" aria-label="Equipo"><button id="buildBtn" class="tool build" aria-label="Construir base" aria-expanded="false" title="Construir (V)"><span data-icon="hammer"></span></button></div>
+  <div id="buildPanel" hidden role="menu" aria-label="Construir base">
+    <div class="bp-head"><span class="kicker">Construir</span><span class="bp-wood"><span data-icon="madera"></span><span id="bpWood">0</span></span></div>
+    <div id="bpList"></div>
+    <p class="bp-hint">Se construye delante de ti. La madera se gana al superar oleadas.</p>
+  </div>
   <div class="stick" id="stickL"><div class="knob"></div></div>
   <div class="stick" id="stickR"><div class="knob"></div></div>
 
@@ -59,7 +65,10 @@
           <h2>Arsenal</h2>
           <p id="shopSub"></p>
         </div>
+        <div class="wallets">
         <div class="wallet" aria-label="Monedas disponibles"><span data-icon="coins"></span><span id="shopCoins">0</span></div>
+        <div class="wallet wood" aria-label="Madera disponible"><span data-icon="madera"></span><span id="shopWood">0</span></div>
+      </div>
       </header>
       <div id="shopBody"></div>
       <footer class="shop-foot">

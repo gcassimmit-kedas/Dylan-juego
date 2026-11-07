@@ -320,3 +320,79 @@ body.playing #rapid { visibility: visible; }
 
 @media (prefers-reduced-motion: reduce) { *, *::after { transition: none !important; animation: none !important; } }
 .records[hidden] { display: none; }
+
+/* ---------- Madera y construcción de la base ---------- */
+:root { --wood: #d9a066; }
+.stat.wood .ic, .wallet.wood, .wallet.wood .ic { color: var(--wood); }
+.wallets { display: flex; gap: 18px; align-items: center; }
+.card button.wood { background: var(--wood); color: #2a1a08; }
+.card button.wood:disabled { background: rgba(255, 255, 255, 0.06); color: var(--muted); }
+.tool.build { color: var(--wood); border-color: rgba(217, 160, 102, 0.5); }
+.tool.build[aria-expanded="true"] { background: rgba(217, 160, 102, 0.25); }
+#buildPanel { position: fixed; right: calc(env(safe-area-inset-right) + 80px); top: 50%; transform: translateY(-50%); width: 270px;
+  background: var(--panel-solid); border: 1px solid var(--line-strong); padding: 12px; display: flex; flex-direction: column; gap: 6px; touch-action: none;
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)); }
+#buildPanel[hidden] { display: none; }
+body:not(.playing) #buildPanel { display: none; }
+.bp-head { display: flex; justify-content: space-between; align-items: center; }
+.bp-wood { display: inline-flex; gap: 6px; align-items: center; font-family: var(--display); font-weight: 700; font-size: 1.2rem; color: var(--wood); }
+.bp-wood .ic { width: 20px; height: 20px; }
+#bpList { display: flex; flex-direction: column; gap: 4px; }
+.bp-item { display: flex; align-items: center; gap: 10px; width: 100%; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--line); color: var(--text);
+  padding: 8px 10px; cursor: pointer; text-align: left; }
+.bp-item .ic { width: 24px; height: 24px; color: var(--wood); }
+.bp-item .n { flex: 1; font-family: var(--display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.bp-item .c { display: inline-flex; gap: 4px; align-items: center; font-family: var(--display); font-weight: 600; color: var(--wood); }
+.bp-item .c .ic { width: 16px; height: 16px; }
+.bp-item.sel { border-color: var(--wood); }
+.bp-item:disabled { opacity: 0.45; cursor: default; }
+.bp-hint { margin: 2px 0 0; color: var(--muted); font-size: 0.75rem; line-height: 1.4; }
+
+/* Diez armas: en pantallas estrechas la barra se desplaza con el dedo */
+#weapons { max-width: calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)); overflow-x: auto; scrollbar-width: none; touch-action: pan-x; }
+#weapons::-webkit-scrollbar { display: none; }
+.wbtn { flex: none; }
+
+@media (max-width: 560px) {
+  #buildPanel { right: calc(env(safe-area-inset-right) + 70px); width: min(66vw, 260px); }
+  .wallets { gap: 12px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  /* Mucho equipo y poca altura: la columna crece hacia la izquierda en una segunda columna */
+  #tools { flex-flow: column wrap-reverse; max-height: calc(100vh - 56px - 64px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); align-content: flex-start; }
+  #buildPanel { top: calc(env(safe-area-inset-top) + 56px); transform: none; max-height: calc(100vh - 70px); overflow-y: auto; right: calc(env(safe-area-inset-right) + 120px); }
+}
+
+/* ---------- Mucho equipo y pantallas estrechas ---------- */
+/* La columna de equipo nunca invade la barra de armas: si no cabe, abre una segunda columna hacia la izquierda. */
+@media (min-height: 501px) {
+  #tools { flex-flow: column wrap-reverse; align-content: flex-start;
+    max-height: calc(100vh - 250px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+}
+#rapid, #toast { white-space: nowrap; }
+@media (max-width: 820px) {
+  .stat.score { display: none; } /* la puntuación se ve en la pantalla final */
+}
+@media (max-width: 400px) {
+  #hud .right { gap: 4px; }
+  .hpbar .val { display: none; }
+  .hpbar { padding: 7px 8px; }
+  .stat { padding: 0 6px; gap: 4px; }
+  #mute { display: none; } /* el sonido sigue en Pausa > Ajustes */
+}
+@media (max-width: 560px) and (orientation: portrait) {
+  /* Avisos a la izquierda, bajo la barra de vida: el centro y la derecha los ocupa el equipo */
+  #rapid { left: calc(env(safe-area-inset-left) + 8px); transform: none; top: calc(env(safe-area-inset-top) + 124px); font-size: 0.75rem; padding: 2px 8px; }
+  #toast { left: calc(env(safe-area-inset-left) + 8px); transform: translate(0, -6px); top: calc(env(safe-area-inset-top) + 152px); font-size: 0.8rem; }
+  #toast.show { transform: translate(0, 0); }
+}
+
+/* El equipo y las armas quedan siempre por encima del anuncio de oleada (que no se puede pulsar) */
+#tools, #toolbar, #buildPanel { z-index: 2; }
+#banner { z-index: 1; }
+@media (max-height: 500px) and (orientation: landscape) {
+  #banner { top: 36%; } /* deja libre la franja de avisos bajo el indicador de oleada */
+}
+/* Las pantallas (título, tienda, pausa, final) siempre por encima de todo el HUD */
+.screen { z-index: 5; }
+#settings { z-index: 10; }

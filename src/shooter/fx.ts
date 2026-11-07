@@ -50,6 +50,7 @@ interface P {
 const cubeGeo = new THREE.BoxGeometry(1, 1, 1);
 const scorchGeo = new THREE.CircleGeometry(1, 24);
 const flashGeo = new THREE.SphereGeometry(1, 16, 12);
+const ringGeo = new THREE.RingGeometry(0.86, 1, 40);
 
 export class Effects {
   private ps: P[] = [];
@@ -147,25 +148,58 @@ export class Effects {
     let tex = this.textTex.get(key);
     if (!tex) {
       const c = document.createElement('canvas');
-      c.width = 256; c.height = 96;
-      const g = c.getContext('2d')!;
-      g.font = '900 64px system-ui, sans-serif';
-      g.textAlign = 'center'; g.textBaseline = 'middle';
+      const font = '900 64px system-ui, sans-serif';
       const iconSize = iconKind ? 56 : 0, gap = iconKind ? 8 : 0;
-      const tw = g.measureText(str).width, total = tw + iconSize + gap;
-      const tx = 128 - total / 2 + tw / 2;
+      // El ancho del lienzo se adapta al texto (si no, palabras largas como "Bloqueado" se cortan)
+      const probe = c.getContext('2d')!;
+      probe.font = font;
+      const tw = probe.measureText(str).width, total = tw + iconSize + gap;
+      c.width = Math.max(256, Math.ceil(total + 40)); c.height = 96;
+      const g = c.getContext('2d')!;
+      g.font = font;
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      const tx = c.width / 2 - total / 2 + tw / 2;
       g.lineWidth = 10; g.strokeStyle = 'rgba(0,0,0,0.75)'; g.strokeText(str, tx, 50);
       g.fillStyle = color; g.fillText(str, tx, 50);
       if (iconKind) drawIcon(g, iconKind, tx + tw / 2 + gap, 22, iconSize, color);
       tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
+      tex.userData.wk = c.width / 256;
       this.textTex.set(key, tex);
     }
     const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false });
     const s = new THREE.Sprite(mat);
+    s.userData.wk = tex.userData.wk;
     s.position.set(x, y, z);
     s.renderOrder = 10;
     this.add({ o: s, mat, vx: 0, vy: 2.2, vz: 0, life: 0.9, max: 0.9, gravity: 2, grow: 0, size: 1.6, fade: 0.4, spin: 0, floor: -99 });
+  }
+
+  /** Rayo del cañón Tesla: tramos quebrados entre los robots alcanzados. */
+  lightning(points: [number, number][], y = 1) {
+    for (let i = 0; i + 1 < points.length; i++) {
+      const [x1, z1] = points[i], [x2, z2] = points[i + 1];
+      // Dos tramos con un punto intermedio desplazado: aspecto de descarga eléctrica
+      const mx = (x1 + x2) / 2 + (Math.random() - 0.5) * 0.9, mz = (z1 + z2) / 2 + (Math.random() - 0.5) * 0.9;
+      for (const [ax, az, bx, bz] of [[x1, z1, mx, mz], [mx, mz, x2, z2]]) {
+        const len = Math.hypot(bx - ax, bz - az);
+        const mat = new THREE.MeshBasicMaterial({ color: 0xbff6ff, transparent: true, opacity: 1, depthWrite: false });
+        const seg = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, len), mat);
+        seg.position.set((ax + bx) / 2, y, (az + bz) / 2);
+        seg.rotation.y = Math.atan2(bx - ax, bz - az);
+        this.add({ o: seg, mat, vx: 0, vy: 0, vz: 0, life: 0.18, max: 0.18, gravity: 0, grow: 0, size: 1, fade: 1, spin: 0, floor: -99 });
+      }
+      this.sparks(x2, y, z2, 0x9ff0ff, 4, 3);
+    }
+  }
+
+  /** Anillo en el suelo: onda del pulso EMP (se expande) o aviso de bombardeo (fijo). */
+  ring(x: number, z: number, r: number, color: number, life: number, expand: boolean) {
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide });
+    const m = new THREE.Mesh(ringGeo, mat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, 0.05, z);
+    this.add({ o: m, mat, vx: 0, vy: 0, vz: 0, life, max: life, gravity: 0, grow: expand ? r : 0, size: expand ? r * 0.15 : r, fade: expand ? 1 : 0.3, spin: 0, floor: -99 });
   }
 
   update(dt: number) {
@@ -186,7 +220,7 @@ export class Effects {
       const fadeK = Math.min(1, k / p.fade);
       let s = Math.max(0.01, p.size + p.grow * (1 - k));
       if (!p.mat) s *= fadeK; // los sólidos encogen en vez de volverse transparentes
-      if (p.o instanceof THREE.Sprite) p.o.scale.set(s, p.o.material.map === SOFT ? s : s * 0.375, 1); // el texto es 256×96
+      if (p.o instanceof THREE.Sprite) p.o.scale.set(p.o.material.map === SOFT ? s : s * (p.o.userData.wk ?? 1), p.o.material.map === SOFT ? s : s * 0.375, 1); // texto: alto fijo, ancho según el texto
       else p.o.scale.setScalar(s);
       if (p.mat) p.mat.opacity = fadeK * (p.mat.userData.base ?? (p.mat.userData.base = p.mat.opacity));
     }
