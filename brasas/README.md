@@ -1,10 +1,10 @@
 # Brasas en Cloudflare
 
-El juego Brasas (`public/index.html`, un solo archivo con Three.js r128) desplegado como **un único Worker de Cloudflare**:
+El juego Brasas (`../public/brasas/index.html`, un solo archivo con Three.js r128) desplegado como **un único Worker de Cloudflare**:
 
 | Pieza | Para qué |
 |---|---|
-| Static Assets (`public/`) | sirve el juego y `claude-shim.js` |
+| Static Assets (`../public/brasas/`) | sirve el juego, `claude-shim.js` y `three.min.js` (r128, incluido para no depender de un CDN) |
 | Durable Object `Sala` (`src/worker.js`) | una instancia por sala: `lobby`, `bosque-1`..`bosque-4`, `pinar-1`, `pinar-2`, `cueva-1`, `cueva-2`. WebSockets con hibernación; la presencia de cada jugador se reenvía a los demás y quien entra recibe el estado completo |
 | D1 (`brasas`) | cuentas sin registro (solo el hash del token) y documentos JSON del guardado |
 
@@ -12,11 +12,12 @@ No se usa Cloudflare Pages: un proyecto de Pages no puede definir clases de Dura
 
 ## Cómo encaja con el juego
 
-El juego se escribió para la API `window.claude.use('room' | 'db' | 'user')`. `public/claude-shim.js` la implementa sobre este Worker, así que la lógica del juego no se ha tocado. Cambios en `index.html` respecto al original (`terreno-3d.original.html`):
+El juego se escribió para la API `window.claude.use('room' | 'db' | 'user')`. `../public/brasas/claude-shim.js` la implementa sobre este Worker, así que la lógica del juego no se ha tocado. Cambios en `index.html` respecto al original (`terreno-3d.original.html`):
 
-1. `<script src="claude-shim.js">` antes de Three.js.
+1. `<script src="claude-shim.js">` antes de Three.js, y Three.js r128 servido desde la propia carpeta en lugar de cdnjs.
 2. El texto "abre el juego desde su enlace de Claude" pasa a "No se pudo conectar con los servidores...".
-3. En el panel Servidores, el **código de jugador**: se copia en un aparato y se pega en otro ("Usar otro código") para recuperar la misma cuenta y las mismas cosas.
+3. El botón de ayuda usa un icono SVG en lugar del carácter "?", y en la app aparece "Más juegos" para volver al menú.
+4. En el panel Servidores, el **código de jugador**: se copia en un aparato y se pega en otro ("Usar otro código") para recuperar la misma cuenta y las mismas cosas.
 
 ### API del shim
 
@@ -73,6 +74,6 @@ Qué tiene que tener tu cuenta de Cloudflare:
 
 ## Pendiente o a tener en cuenta
 
-- Three.js se sigue cargando desde cdnjs, como en el original. Sin conexión a cdnjs el juego no arranca. Para que funcione sin depender de terceros, hay que copiar `three.min.js` (r128) a `public/` y cambiar la etiqueta `<script>`.
+- Los archivos del juego están en `public/brasas/` del repositorio, la misma carpeta que empaqueta la app de Shooter 2027 (menú "Más juegos"). En la app no hay servidor de Brasas, así que allí se juega solo; el multijugador funciona en el despliegue de Cloudflare.
 - El código de jugador funciona como una contraseña: quien lo tenga juega con esa cuenta. El panel lo avisa.
 - El token viaja en la URL del WebSocket, porque los navegadores no permiten cabeceras en WebSocket. Va cifrado con WSS, pero puede quedar en los registros de tu propia cuenta de Cloudflare.

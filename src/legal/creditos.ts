@@ -7,7 +7,7 @@ import inter from '../../node_modules/@fontsource/inter/LICENSE?raw';
 import ws from '../../node_modules/ws/LICENSE?raw';
 
 const LIBS = [
-  { name: 'three.js', use: 'Motor gráfico 3D', license: 'MIT', text: three },
+  { name: 'three.js', use: 'Motor gráfico 3D (Brasas incluye la versión r128)', license: 'MIT', text: three },
   { name: 'Lucide', use: 'Iconos de la interfaz', license: 'ISC (y MIT para los iconos derivados de Feather)', text: lucide },
   { name: 'Capacitor', use: 'Empaquetado como app para Android e iOS', license: 'MIT', text: capacitor },
   { name: 'Oswald', use: 'Tipografía de títulos y cifras', license: 'SIL Open Font License 1.1', text: oswald },

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Brasas</title>
+<meta name="theme-color" content="#0E1626">
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0E1626; color: #fff;
                font-family: system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-user-select: none; user-select: none; }
@@ -217,6 +218,7 @@
     <div id="pjDesc"></div>
     <button class="btn" id="btnJugar">Jugar</button>
     <button class="btn sec" id="btnPersonajes">Personajes</button>
+    <a class="btn sec" id="btnOtrosJuegos" href="../juegos.html" hidden style="text-align:center;text-decoration:none;box-sizing:border-box">Más juegos</a>
   </div>
   <div id="tienda">
     <div class="tHead"><b>Personajes</b><button id="btnCerrar">Cerrar</button></div>
@@ -260,7 +262,7 @@
     <div class="fondo"><div id="vidaFill"></div></div>
     <span id="vidaTxt">100</span>
   </div>
-  <div id="ayudaBtn" aria-label="Ayuda">?</div>
+  <div id="ayudaBtn" role="button" aria-label="Ayuda"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></div>
   <div id="fijar"><b>Haz clic para jugar</b><br><span>El mouse mueve la cámara. Esc lo suelta.</span></div>
   <div id="hint">Junta carbón y madera para el fuego; si se apaga, entran los lobos. Usa la mesa de crafteo junto al fuego. Hay un niño en cada una de las 4 cuevas, vigiladas por lobos. De noche, apunta la linterna al ciervo gigante.<br><br><b>Táctil:</b> joystick para caminar, arrastra para mirar, toca el inventario.<br><b>Computadora:</b> haz clic para fijar el mouse. WASD moverse, Shift correr, clic izquierdo atacar, disparar o colocar (mantenlo para talar), clic derecho o E interactuar, rueda cambiar de arma, L linterna, 1 a 0 inventario, Esc soltar el mouse.</div>
   <div id="joy"><div id="knob"></div></div>
@@ -300,7 +302,7 @@
 </div>
 
 <script src="claude-shim.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="three.min.js"></script>
 <script>
 // El mapa se genera con una semilla fija para que todos los jugadores vean el mismo mundo.
 // Al terminar de generarlo se vuelve al azar normal (botín, lobos, etc.).
@@ -2807,6 +2809,9 @@ $('apodo').addEventListener('change', () => {
 pintarServidores();
 
 requestAnimationFrame(loop);
+
+// Dentro de la app de Shooter 2027 (carpeta /brasas/), botón para volver al menú de juegos
+if (/\/brasas\/(index\.html)?$/.test(location.pathname)) $('btnOtrosJuegos').hidden = false;
 
 // Código de jugador: lo da claude-shim.js (window.brasasCuenta). Sirve para recuperar la misma cuenta en otro aparato.
 (async () => {
