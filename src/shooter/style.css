@@ -572,3 +572,32 @@ body.boss #toast { top: calc(env(safe-area-inset-top) + 160px); }
 .lobby-status.error { color: #ff8a8d; }
 .team h3 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 0.85rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
 .team li.empty { display: block; color: var(--muted); font-size: 0.9rem; text-align: center; padding: 12px; }
+
+/* ---------- 2 jugadores en el mismo dispositivo ---------- */
+.tb-row { display: flex; align-items: stretch; gap: 6px; }
+.gear-who { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; min-height: 54px; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--line); color: var(--text);
+  font-family: var(--display); font-weight: 600; font-size: 1rem; letter-spacing: 0.06em;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+.gear-who[hidden] { display: none; }
+.gear-who .dot { width: 11px; height: 11px; background: var(--pc, var(--accent)); transform: rotate(45deg); flex: none; }
+.gear-who .ic { width: 16px; height: 16px; color: var(--muted); }
+.gear-who:active { transform: scale(0.96); }
+.shop-tabs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-top: 10px; max-width: 360px; }
+.shop-tabs[hidden] { display: none; }
+.shop-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.shop-tabs button[aria-selected="true"] { background: var(--accent); color: #241a00; }
+.shop-tabs .tc { display: inline-flex; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; }
+.shop-tabs .tc .ic { width: 14px; height: 14px; }
+.players-hud .pc { display: inline-flex; align-items: center; gap: 3px; font-family: var(--display); font-variant-numeric: tabular-nums; color: var(--accent); }
+.players-hud .pc .ic { width: 13px; height: 13px; }
+@media (max-width: 560px) and (orientation: portrait) {
+  .players-hud .pc { display: none; } /* en móvil vertical, las monedas de cada uno se ven en la tienda */
+  body.local #rapid { top: calc(env(safe-area-inset-top) + 210px); }
+  body.local #toast { top: calc(env(safe-area-inset-top) + 238px); }
+  .gear-who { min-height: 46px; padding: 0 8px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  body.local .players-hud { display: flex; } /* con 2 jugadores la vida de los dos debe verse siempre */
+  body.local .players-hud li { font-size: 0.68rem; padding: 1px 5px; }
+}
