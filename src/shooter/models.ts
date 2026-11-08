@@ -22,6 +22,13 @@ export const MAT = {
   teal: std(0x2f8f8a, { roughness: 0.45, metalness: 0.5 }), tealDark: std(0x1d5a57, { roughness: 0.5, metalness: 0.5 }),
   boss: std(0x3a3f46, { roughness: 0.45, metalness: 0.65 }), bossDark: std(0x22262b, { roughness: 0.5, metalness: 0.6 }),
   bossRed: std(0xb3261e, { roughness: 0.4, metalness: 0.5 }),
+  swarm: std(0x8e44d8, { roughness: 0.45, metalness: 0.35 }), swarmDark: std(0x55248a, { roughness: 0.5, metalness: 0.35 }),
+  steelBlue: std(0x4a6a8a, { roughness: 0.45, metalness: 0.55 }), steelBlueDark: std(0x2f465e, { roughness: 0.5, metalness: 0.5 }),
+  riot: std(0x9fb3c4, { roughness: 0.3, metalness: 0.4 }), riotStripe: std(0xf2c230, { roughness: 0.5 }),
+  sniperBody: std(0x5a5f52, { roughness: 0.6, metalness: 0.45 }), sniperDark: std(0x353a30, { roughness: 0.6, metalness: 0.45 }),
+  medicBody: std(0xdfe6e1, { roughness: 0.35, metalness: 0.3 }), medicGreen: std(0x3fae5a, { roughness: 0.5 }),
+  laser: new THREE.MeshBasicMaterial({ color: 0xff2a1a, transparent: true, opacity: 0.75, depthWrite: false }),
+  eyeGreen: new THREE.MeshBasicMaterial({ color: 0x6dff8a }),
   flash: new THREE.MeshBasicMaterial({ color: 0xffffff }),
   stun: new THREE.MeshBasicMaterial({ color: 0x6fd3ff }),
   plank: std(0x8a6236, { roughness: 0.9 }), plankDark: std(0x6b4a28, { roughness: 0.95 }), rope: std(0xc9b48a),
@@ -255,17 +262,17 @@ export interface Robot { root: THREE.Group; type: EnemyType; parts: THREE.Mesh[]
 
 function robotParts(g: THREE.Object3D) {
   const parts: THREE.Mesh[] = [];
-  const eyes = [MAT.eyeRed, MAT.eyeYellow, MAT.eyeCyan, MAT.eyeOrange];
+  const eyes = [MAT.eyeRed, MAT.eyeYellow, MAT.eyeCyan, MAT.eyeOrange, MAT.eyeGreen, MAT.laser];
   g.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh && m.name !== 'blob' && !eyes.includes(m.material as THREE.MeshBasicMaterial)) { m.userData.base = m.material; parts.push(m); } });
   return parts;
 }
 
-/** Araña: robot pequeño y rápido con 4 patas. */
-function makeSpider(): Robot {
+/** Araña: robot pequeño y rápido con 4 patas. El enjambre es una versión diminuta y morada. */
+function makeSpider(type: EnemyType = 'chaser', shellMat: THREE.Material = MAT.red, darkMat: THREE.Material = MAT.redDark): Robot {
   const root = new THREE.Group(), legs: THREE.Object3D[] = [];
   const body = new THREE.Group(); body.position.y = 0.6; root.add(body, blobShadow(0.75));
-  const shell = sph(0.42, MAT.red, 14, 10); shell.scale.set(1, 0.65, 1.15);
-  body.add(shell, at(box(0.5, 0.12, 0.6, MAT.redDark), 0, -0.12, 0), at(sph(0.09, MAT.eyeRed, 8, 6), -0.13, 0.08, 0.42), at(sph(0.09, MAT.eyeRed, 8, 6), 0.13, 0.08, 0.42),
+  const shell = sph(0.42, shellMat, 14, 10); shell.scale.set(1, 0.65, 1.15);
+  body.add(shell, at(box(0.5, 0.12, 0.6, darkMat), 0, -0.12, 0), at(sph(0.09, MAT.eyeRed, 8, 6), -0.13, 0.08, 0.42), at(sph(0.09, MAT.eyeRed, 8, 6), 0.13, 0.08, 0.42),
     at(box(0.06, 0.3, 0.06, MAT.metal), 0, 0.35, -0.15));
   for (const [x, z] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) {
     const leg = new THREE.Group(); leg.position.set(x * 0.32, 0, z * 0.25);
@@ -274,7 +281,64 @@ function makeSpider(): Robot {
     leg.add(upper, lower); leg.userData.side = x * z;
     body.add(leg); legs.push(leg);
   }
-  return { root, type: 'chaser', parts: robotParts(root), legs, walk: Math.random() * 6, px: 0, pz: 0 };
+  return { root, type, parts: robotParts(root), legs, walk: Math.random() * 6, px: 0, pz: 0 };
+}
+
+/** Escudero: bípedo acorazado con un gran escudo antidisturbios por delante (se rompe con el daño). */
+function makeShieldbearer(): Robot {
+  const root = new THREE.Group(), legs: THREE.Object3D[] = [];
+  root.add(blobShadow(0.9));
+  for (const x of [-0.28, 0.28]) {
+    const leg = new THREE.Group(); leg.position.set(x, 0.8, 0);
+    leg.add(at(box(0.22, 0.45, 0.24, MAT.steelBlueDark), 0, -0.22, 0), at(box(0.18, 0.4, 0.18, MAT.metal), 0, -0.58, 0.02), at(box(0.3, 0.1, 0.4, MAT.metal), 0, -0.78, 0.06));
+    root.add(leg); legs.push(leg);
+  }
+  const torso = new THREE.Group(); torso.position.y = 0.85;
+  torso.add(at(box(0.8, 0.6, 0.55, MAT.steelBlue), 0, 0.32, 0), at(box(0.55, 0.25, 0.45, MAT.steelBlueDark), 0, 0.72, 0),
+    at(box(0.4, 0.08, 0.05, MAT.eyeYellow), 0, 0.74, 0.24), at(box(0.2, 0.5, 0.2, MAT.steelBlueDark), 0.5, 0.25, 0));
+  const shield = new THREE.Group(); shield.name = 'shield'; shield.position.set(-0.05, 0.35, 0.62);
+  shield.add(at(box(1.15, 1.25, 0.08, MAT.riot), 0, 0, 0), at(box(1.15, 0.12, 0.09, MAT.riotStripe), 0, 0.35, 0.01), at(box(1.15, 0.12, 0.09, MAT.riotStripe), 0, -0.35, 0.01),
+    at(box(0.5, 0.14, 0.03, MAT.visor), 0, 0.12, 0.05));
+  torso.add(shield);
+  root.add(torso);
+  return { root, type: 'escudero', parts: robotParts(root), legs, head: torso, walk: 0, px: 0, pz: 0 };
+}
+
+/** Tirador: robot alto y delgado con un fusil largo y una mira roja; apunta con un láser antes de disparar. */
+function makeSniperBot(): Robot {
+  const root = new THREE.Group(), legs: THREE.Object3D[] = [];
+  root.add(blobShadow(0.7));
+  for (const x of [-0.2, 0.2]) {
+    const leg = new THREE.Group(); leg.position.set(x, 1.05, 0);
+    leg.add(at(box(0.12, 0.6, 0.14, MAT.sniperDark), 0, -0.3, 0), at(box(0.1, 0.5, 0.1, MAT.metal), 0, -0.8, 0.03), at(box(0.2, 0.08, 0.32, MAT.metal), 0, -1.02, 0.06));
+    root.add(leg); legs.push(leg);
+  }
+  const torso = new THREE.Group(); torso.position.y = 1.1;
+  torso.add(at(box(0.45, 0.55, 0.38, MAT.sniperBody), 0, 0.28, 0), at(box(0.32, 0.22, 0.3, MAT.sniperDark), 0, 0.66, 0),
+    at(sph(0.08, MAT.eyeRed, 8, 6), 0.06, 0.68, 0.16), at(box(0.06, 0.06, 1.5, MAT.metal), 0.25, 0.4, 0.55),
+    at(box(0.1, 0.1, 0.3, MAT.sniperDark), 0.25, 0.5, 0.25), at(cyl(0.02, 0.02, 0.5, MAT.metal), -0.12, 0.95, -0.08));
+  root.add(torso);
+  const laser = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1), MAT.laser);
+  laser.name = 'laser'; laser.visible = false; laser.position.set(0.25, 1.5, 0);
+  root.add(laser);
+  return { root, type: 'tirador', parts: robotParts(root), legs, head: torso, walk: 0, px: 0, pz: 0 };
+}
+
+/** Reparador: robot flotante blanco con una cruz verde y brazos de soldadura. */
+function makeRepairBot(): Robot {
+  const root = new THREE.Group(), legs: THREE.Object3D[] = [];
+  root.add(blobShadow(0.7));
+  const body = new THREE.Group(); body.position.y = 1; root.add(body);
+  const shell = sph(0.45, MAT.medicBody, 16, 12); shell.scale.set(1, 0.8, 1);
+  body.add(shell, at(box(0.36, 0.1, 0.05, MAT.medicGreen), 0, 0.12, 0.42), at(box(0.1, 0.36, 0.05, MAT.medicGreen), 0, 0.12, 0.42),
+    at(box(0.3, 0.06, 0.05, MAT.eyeGreen), 0, -0.1, 0.41), at(cyl(0.3, 0.42, 0.12, MAT.metal, 14), 0, -0.34, 0),
+    at(cyl(0.02, 0.02, 0.4, MAT.metal), 0.15, 0.5, -0.1), at(sph(0.05, MAT.eyeGreen, 6, 4), 0.15, 0.72, -0.1));
+  for (const x of [-1, 1]) {
+    const arm = new THREE.Group(); arm.position.set(x * 0.5, 0, 0.1);
+    arm.add(at(box(0.08, 0.08, 0.4, MAT.metal), 0, 0, 0.15), at(cyl(0.05, 0.03, 0.12, MAT.eyeGreen, 6), 0, 0, 0.38).rotateX(Math.PI / 2));
+    body.add(arm); legs.push(arm);
+  }
+  return { root, type: 'reparador', parts: robotParts(root), legs, head: body, walk: 0, px: 0, pz: 0 };
 }
 
 /** Tanque: orugas, casco y torreta que apunta al jugador. */
@@ -369,7 +433,9 @@ function makeBoss(): Robot {
 
 export function makeRobot(type: EnemyType): Robot {
   const r = type === 'chaser' ? makeSpider() : type === 'tank' ? makeTank() : type === 'gunner' ? makeWalker()
-    : type === 'kamikaze' ? makeKamikaze() : type === 'dron' ? makeEnemyDrone() : makeBoss();
+    : type === 'kamikaze' ? makeKamikaze() : type === 'dron' ? makeEnemyDrone() : type === 'enjambre' ? makeSpider('enjambre', MAT.swarm, MAT.swarmDark)
+    : type === 'escudero' ? makeShieldbearer() : type === 'tirador' ? makeSniperBot() : type === 'reparador' ? makeRepairBot() : makeBoss();
+  if (type === 'enjambre') r.root.scale.setScalar(0.55);
   castShadows(r.root);
   return r;
 }
@@ -380,9 +446,9 @@ export function animateRobot(r: Robot, x: number, z: number, faceX: number, face
   const heading = moved > 0.001 ? Math.atan2(x - r.px, z - r.pz) : r.root.rotation.y;
   r.px = x; r.pz = z;
   r.root.position.set(x, 0, z);
-  r.walk += speed * dt * (r.type === 'chaser' ? 4 : 2.2);
+  r.walk += speed * dt * (r.type === 'chaser' || r.type === 'enjambre' ? 4 : 2.2);
   const aim = Math.atan2(faceX - x, faceZ - z);
-  if (r.type === 'chaser') {
+  if (r.type === 'chaser' || r.type === 'enjambre') {
     r.root.rotation.y = aim;
     r.legs.forEach((leg, i) => { leg.rotation.x = Math.sin(r.walk + i * Math.PI * 0.5) * 0.5; leg.position.y = Math.max(0, Math.sin(r.walk + i * Math.PI * 0.5)) * 0.08; });
     r.root.children[0].position.y = 0.6 + Math.sin(r.walk * 2) * 0.04;
@@ -399,6 +465,10 @@ export function animateRobot(r: Robot, x: number, z: number, faceX: number, face
     r.head!.rotation.z = Math.sin(t * 20) * 0.04; // tiembla: va a explotar
     const light = r.head!.getObjectByName('light');
     if (light) light.visible = Math.floor(t * 8) % 2 === 0;
+  } else if (r.type === 'reparador') {
+    r.root.rotation.y = aim;
+    r.head!.position.y = 1 + Math.sin(t * 2.5 + r.px) * 0.12; // flota
+    r.legs.forEach((arm, i) => (arm.rotation.x = Math.sin(t * 6 + i) * 0.4));
   } else if (r.type === 'dron') {
     r.root.rotation.y = aim;
     r.head!.position.y = 1.7 + Math.sin(t * 3 + r.px) * 0.15;
@@ -408,7 +478,7 @@ export function animateRobot(r: Robot, x: number, z: number, faceX: number, face
     r.root.rotation.y = aim;
     const k = Math.min(1, speed / (r.type === 'jefe' ? 1.5 : 3));
     r.legs[0].rotation.x = Math.sin(r.walk) * 0.6 * k; r.legs[1].rotation.x = -Math.sin(r.walk) * 0.6 * k;
-    const baseY = r.type === 'jefe' ? 1.55 : 0.85;
+    const baseY = r.type === 'jefe' ? 1.55 : r.type === 'tirador' ? 1.1 : 0.85;
     r.head!.position.y = baseY + Math.abs(Math.cos(r.walk)) * 0.05 * k + Math.sin(t * 3) * 0.01;
   }
   // Aturdido por el EMP: azul y parpadeando; si no, destello blanco al recibir daño

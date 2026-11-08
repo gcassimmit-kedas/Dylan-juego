@@ -2,7 +2,7 @@
 // La misma lógica corre en el navegador (un jugador) y en el servidor (cooperativo en línea).
 // world.player y world.coins son atajos al primer jugador, para el modo de un jugador.
 
-export type EnemyType = 'chaser' | 'tank' | 'gunner' | 'kamikaze' | 'dron' | 'jefe';
+export type EnemyType = 'chaser' | 'tank' | 'gunner' | 'kamikaze' | 'dron' | 'jefe' | 'enjambre' | 'escudero' | 'tirador' | 'reparador';
 export type PickupType = 'health' | 'rapid' | 'coins';
 export type WeaponId = 'pistola' | 'subfusil' | 'fusil' | 'escopeta' | 'ametralladora' | 'lanzallamas' | 'francotirador' | 'tesla' | 'granadas' | 'cohetes';
 export type ToolId = 'torreta' | 'mina' | 'escudo' | 'barricada' | 'aereo' | 'emp' | 'senuelo';
@@ -42,7 +42,11 @@ export interface Bullet {
   enemy: boolean; dmg: number; blast: number; pierce: number; hits: number[]; owner: string | null;
 }
 export interface Mine { id: number; x: number; z: number; arm: number; owner: string }
-export interface Enemy { id: number; type: EnemyType; x: number; z: number; hp: number; maxHp: number; speed: number; r: number; cooldown: number; flash: number; side: number; sideT: number; ax: number; az: number; stuckT: number; stun: number }
+export interface Enemy { id: number; type: EnemyType; x: number; z: number; hp: number; maxHp: number; speed: number; r: number; cooldown: number; flash: number; side: number; sideT: number; ax: number; az: number; stuckT: number; stun: number;
+  /** Hacia dónde mira (radianes) y, en el tirador, tiempo que le queda apuntando antes de disparar. */
+  face: number; charge: number;
+  /** Escudero: daño que aún aguanta su escudo (0 = roto). */
+  guard: number }
 export interface Pickup { id: number; type: PickupType; x: number; z: number; life: number }
 export interface Obstacle { id: number; kind: ObstacleKind; x: number; z: number; r: number; hp: number; rot: number; maxHp?: number; timer?: number }
 /** Trampa de pinchos: daña y frena a los robots que la pisan. Sin colisión. */
@@ -62,7 +66,7 @@ export type GameEvent =
   | { kind: 'tool'; pid: string; tool: ToolId } | { kind: 'regen'; pid: string } | { kind: 'blocked'; x: number; z: number }
   | { kind: 'armorBlock'; pid: string } | { kind: 'chain'; points: [number, number][] } | { kind: 'emp'; x: number; z: number; r: number }
   | { kind: 'strikeMark'; x: number; z: number } | { kind: 'build'; pid: string; what: BuildId; x: number; z: number } | { kind: 'structureLost'; x: number; z: number }
-  | { kind: 'down'; pid: string } | { kind: 'join'; pid: string } | { kind: 'leave'; pid: string } | { kind: 'boss'; wave: number };
+  | { kind: 'down'; pid: string } | { kind: 'join'; pid: string } | { kind: 'leave'; pid: string } | { kind: 'boss'; wave: number } | { kind: 'repair'; x: number; z: number } | { kind: 'guardBroken'; x: number; z: number };
 
 export interface World {
   arena: number; // medio lado del campo cuadrado
@@ -121,7 +125,7 @@ export const BUILDS: BuildItem[] = [
 export const woodReward = (wave: number) => 3 + wave;
 const STRUCTURE_HP: Partial<Record<ObstacleKind, number>> = { wall: 40, tower: 35, medic: 30 };
 /** Daño por segundo que hace cada robot al empujar contra una estructura de la base. */
-const SIEGE_DPS: Record<EnemyType, number> = { chaser: 3, gunner: 2, tank: 8, kamikaze: 0, dron: 0, jefe: 16 }; // kamikaze explota; el dron vuela por encima
+const SIEGE_DPS: Record<EnemyType, number> = { chaser: 3, gunner: 2, tank: 8, kamikaze: 0, dron: 0, jefe: 16, enjambre: 1, escudero: 5, tirador: 1, reparador: 1 }; // kamikaze explota; el dron vuela por encima
 
 export type ShopKind = 'arma' | 'mejora' | 'equipo';
 export interface ShopItem { id: ItemId; name: string; desc: string; price: number; max?: number; kind: ShopKind }
@@ -157,6 +161,10 @@ const STATS: Record<EnemyType, { hp: number; speed: number; r: number; score: nu
   kamikaze: { hp: 2, speed: 6.5, r: 0.55, score: 15, coins: 4 },
   dron: { hp: 3, speed: 5.5, r: 0.6, score: 20, coins: 5 },
   jefe: { hp: 60, speed: 1.9, r: 1.6, score: 250, coins: 50 },
+  enjambre: { hp: 1, speed: 7.5, r: 0.4, score: 5, coins: 1 },
+  escudero: { hp: 8, speed: 3, r: 0.8, score: 30, coins: 9 },
+  tirador: { hp: 4, speed: 3.2, r: 0.65, score: 35, coins: 10 },
+  reparador: { hp: 5, speed: 3.6, r: 0.65, score: 40, coins: 12 },
 };
 
 export const PLAYER_COLORS = [0x5d7a3e, 0x3e6ea8, 0xb5532f, 0x8a4fae, 0x2f9a8f, 0xc9a227, 0xb03a6a, 0x6b6b6b];
@@ -250,13 +258,31 @@ export const ENEMY_RADIUS = Object.fromEntries(Object.entries(STATS).map(([k, v]
 export const BOSS_EVERY = 5;
 export const KAMIKAZE_BLAST = 2.6;
 
+/** Enjambre: llegan de 4 en 4. */
+export const SWARM_SIZE = 4;
+/** El escudero para las balas que le llegan de frente (dentro de este ángulo a cada lado). */
+export const SHIELD_ARC = Math.PI / 3;
+/** El escudero gira despacio (radianes por segundo): rodeándolo se le da por la espalda. */
+export const SHIELD_TURN = 1.6;
+/** Daño que aguanta el escudo antes de romperse. */
+export const shieldGuard = (wave: number) => 12 + wave;
+/** El tirador apunta este tiempo (con láser visible) antes de disparar. */
+export const SNIPER_AIM = 1.1;
+export const SNIPER_BULLET_SPEED = 28;
+/** El reparador cura a los robots a esta distancia cada REPAIR_EVERY segundos. */
+export const REPAIR_RANGE = 6, REPAIR_EVERY = 2, REPAIR_AMOUNT = 2;
+
 function pickType(w: World): EnemyType {
   const r = w.rand();
   if (w.wave >= 3 && r < 0.2) return 'gunner';
   if (w.wave >= 2 && r < 0.4) return 'tank';
-  // Parte de las arañas se cambian por robots nuevos a partir de la oleada 3 (kamikaze) y 4 (dron).
+  // Parte de las arañas se cambian por robots nuevos según avanzan las oleadas.
   if (w.wave >= 4 && r > 0.88) return 'dron';
   if (w.wave >= 3 && r > 0.74) return 'kamikaze';
+  if (w.wave >= 2 && r < 0.48) return 'enjambre';
+  if (w.wave >= 5 && r < 0.56) return 'escudero';
+  if (w.wave >= 6 && r < 0.62) return 'tirador';
+  if (w.wave >= 7 && r < 0.67) return 'reparador';
   return 'chaser';
 }
 
@@ -270,7 +296,7 @@ export function spawnEnemy(w: World, type: EnemyType, x?: number, z?: number): E
   const hp = type === 'jefe'
     ? Math.round((s.hp + w.wave * 10) * (1 + 0.5 * (Math.max(1, w.players.length) - 1))) // más vida con más jugadores
     : s.hp + (type === 'tank' ? Math.floor(w.wave / 3) * 3 : 0) + Math.floor(w.wave / 4);
-  const en: Enemy = { id: w.nextId++, type, x, z, hp, maxHp: hp, speed, r: s.r, cooldown: 1 + w.rand() * 1.5, flash: 0, side: 0, sideT: 0, ax: x, az: z, stuckT: 0, stun: 0 };
+  const en: Enemy = { id: w.nextId++, type, x, z, hp, maxHp: hp, speed, r: s.r, cooldown: 1 + w.rand() * 1.5, flash: 0, side: 0, sideT: 0, ax: x, az: z, stuckT: 0, stun: 0, face: Math.atan2(-x, -z), charge: 0, guard: type === 'escudero' ? shieldGuard(w.wave) : 0 };
   w.enemies.push(en);
   return en;
 }
@@ -624,7 +650,9 @@ export function step(w: World, input: Input | null, dt: number): void {
   w.spawnTimer -= dt;
   if (w.wave === 0 && w.spawnTimer <= 0) nextWave(w);
   else if (w.toSpawn > 0 && w.spawnTimer <= 0) {
-    spawnEnemy(w, pickType(w));
+    const type = pickType(w);
+    const first = spawnEnemy(w, type);
+    if (type === 'enjambre') for (let k = 1; k < SWARM_SIZE; k++) spawnEnemy(w, 'enjambre', clamp(first.x + (k % 2 ? 1 : -1) * 0.9 * k, -w.arena + 1, w.arena - 1), clamp(first.z + (k > 1 ? 0.9 : -0.9), -w.arena + 1, w.arena - 1));
     w.toSpawn--;
     w.spawnTimer = Math.max(0.3, 1.2 - w.wave * 0.08);
   }
@@ -649,6 +677,41 @@ export function step(w: World, input: Input | null, dt: number): void {
     let spike = 1, trapOwner: string | null = null;
     for (const t of w.traps) if (Math.hypot(t.x - e.x, t.z - e.z) < t.r + e.r * 0.5) { spike = 0.5; e.hp -= 4 * dt; e.flash = 0.03; trapOwner = t.owner; }
     if (e.hp <= 0) { kill(w, e, trapOwner); continue; }
+    // Mira a su objetivo. El escudero gira despacio: rodeándolo se le puede dar por la espalda.
+    const want = Math.atan2(dx, dz);
+    if (e.type === 'escudero') {
+      const diff = Math.atan2(Math.sin(want - e.face), Math.cos(want - e.face));
+      e.face += Math.sign(diff) * Math.min(Math.abs(diff), SHIELD_TURN * dt);
+    } else e.face = want;
+    if (e.type === 'tirador') {
+      // Tirador: se queda lejos y, si te ve, se planta, apunta con láser y dispara una bala muy rápida.
+      const sees = lineOfSight(w, e.x, e.z, tx, tz);
+      if (e.charge > 0) {
+        dir = 0;
+        e.charge -= dt;
+        if (e.charge <= 0) {
+          e.charge = 0; e.cooldown = 2.6;
+          w.bullets.push({ id: w.nextId++, kind: 'enemiga', x: e.x, z: e.z, vx: (dx / d) * SNIPER_BULLET_SPEED, vz: (dz / d) * SNIPER_BULLET_SPEED,
+            life: 1.2, maxLife: 1.2, enemy: true, dmg: 1, blast: 0, pierce: 0, hits: [], owner: null });
+          w.events.push({ kind: 'enemyShoot' });
+        }
+      } else {
+        dir = d > 22 || !sees ? 1 : d < 15 ? -1 : 0;
+        e.cooldown -= dt;
+        if (e.cooldown <= 0 && sees && d < 26) { e.charge = SNIPER_AIM; dir = 0; }
+      }
+    }
+    if (e.type === 'reparador') {
+      // Reparador: no ataca; se queda detrás y repara a los robots de alrededor.
+      dir = d > 13 ? 1 : d < 9 ? -1 : 0;
+      e.cooldown -= dt;
+      if (e.cooldown <= 0) {
+        e.cooldown = REPAIR_EVERY;
+        let healed = false;
+        for (const o of w.enemies) if (o !== e && o.hp > 0 && o.hp < o.maxHp && Math.hypot(o.x - e.x, o.z - e.z) < REPAIR_RANGE) { o.hp = Math.min(o.maxHp, o.hp + REPAIR_AMOUNT); healed = true; }
+        if (healed) w.events.push({ kind: 'repair', x: e.x, z: e.z });
+      }
+    }
     if (e.type === 'jefe') {
       // Jefe: avanza siempre y dispara un abanico de 7 balas.
       e.cooldown -= dt;
@@ -757,6 +820,17 @@ export function step(w: World, input: Input | null, dt: number): void {
     for (const e of w.enemies) {
       if (e.hp <= 0 || b.hits.includes(e.id) || Math.hypot(b.x - e.x, b.z - e.z) > e.r + 0.2) continue;
       if (b.blast) { b.life = 0; explode(w, b); break; }
+      // Escudero: las balas que le llegan de frente rebotan en el escudo (el fuego y el rayo Tesla lo rodean).
+      if (e.type === 'escudero' && e.guard > 0 && b.kind !== 'fuego' && b.kind !== 'tesla' && e.stun <= 0) {
+        const from = Math.atan2(-b.vx, -b.vz); // de dónde viene la bala
+        if (Math.abs(Math.atan2(Math.sin(from - e.face), Math.cos(from - e.face))) < SHIELD_ARC) {
+          b.life = 0;
+          e.guard -= b.dmg;
+          if (e.guard <= 0) { e.guard = 0; w.events.push({ kind: 'guardBroken', x: e.x, z: e.z }); } // el escudo salta en pedazos
+          else w.events.push({ kind: 'blocked', x: b.x, z: b.z });
+          break;
+        }
+      }
       b.hits.push(e.id);
       damageEnemy(w, e, b.dmg, b.owner, b.vx * 0.005, b.vz * 0.005);
       if (b.kind === 'tesla') { chainLightning(w, e, b.dmg, b.owner); b.life = 0; break; }

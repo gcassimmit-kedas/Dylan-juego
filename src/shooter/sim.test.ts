@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addPlayer, removePlayer, BOSS_EVERY, CHARACTERS, CHARACTER_ORDER, build, cannotBuild, woodReward, ARMOR_MAX, newWorld, step, spawnEnemy, waveSize, waveBonus, buy, cannotBuy, nextWave, useTool, selectWeapon, dronePos, type Input, type World } from './sim.ts';
+import { addPlayer, removePlayer, BOSS_EVERY, SWARM_SIZE, shieldGuard, SNIPER_AIM, REPAIR_EVERY, REPAIR_AMOUNT, CHARACTERS, CHARACTER_ORDER, build, cannotBuild, woodReward, ARMOR_MAX, newWorld, step, spawnEnemy, waveSize, waveBonus, buy, cannotBuy, nextWave, useTool, selectWeapon, dronePos, type Input, type World } from './sim.ts';
 
 const idle: Input = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false };
 const seq = (vals: number[]) => { let i = 0; return () => vals[i++ % vals.length]; };
@@ -646,4 +646,97 @@ test('al superar una oleada se recupera toda la vida', () => {
   assert.equal(b.alive, false, 'el caído sigue fuera hasta la siguiente oleada');
   nextWave(w);
   assert.equal(b.hp, b.maxHp, 'y vuelve con la vida completa');
+});
+
+test('enjambre: llegan de 4 en 4', () => {
+  const w = newWorld(() => 0.45, false); // 0,45 elige enjambre a partir de la oleada 2
+  w.wave = 2; w.toSpawn = 1; w.spawnTimer = 0;
+  step(w, null as unknown as Input, 1 / 60);
+  assert.equal(w.enemies.filter((e) => e.type === 'enjambre').length, SWARM_SIZE);
+  assert.equal(w.toSpawn, 0, 'cuentan como un solo turno de aparición');
+  const w1 = newWorld(() => 0.45, false); w1.wave = 1; w1.toSpawn = 1; w1.spawnTimer = 0;
+  step(w1, null as unknown as Input, 1 / 60);
+  assert.equal(w1.enemies[0].type, 'chaser', 'en la oleada 1 no hay enjambres');
+});
+
+test('escudero: para las balas de frente, no por la espalda ni las explosiones', () => {
+  const shoot = (fromBehind: boolean, kind: 'bala' | 'fuego' = 'bala') => {
+    const w = newWorld(() => 0.5, false);
+    w.wave = 5; w.toSpawn = 1; w.spawnTimer = 999;
+    const p = w.players[0]; p.x = 0; p.z = 0; p.invuln = 99;
+    const e = spawnEnemy(w, 'escudero', 0, 8); e.speed = 0;
+    step(w, null as unknown as Input, 1 / 60); // ya mira al jugador
+    const hp0 = e.hp;
+    const z = fromBehind ? 10 : 6, vz = fromBehind ? -30 : 30;
+    w.bullets.push({ id: 9000, kind, x: 0, z, vx: 0, vz, life: 1, maxLife: 1, enemy: false, dmg: 2, blast: 0, pierce: 0, hits: [], owner: 'p1' });
+    for (let i = 0; i < 10; i++) step(w, null as unknown as Input, 1 / 60);
+    return hp0 - e.hp;
+  };
+  assert.equal(shoot(false), 0, 'de frente rebota');
+  assert.ok(shoot(true) > 0, 'por la espalda sí le da');
+  assert.ok(shoot(false, 'fuego') > 0, 'el fuego lo rodea');
+  const w = newWorld(() => 0.5, false); w.wave = 5; w.toSpawn = 1; w.spawnTimer = 999;
+  const e = spawnEnemy(w, 'escudero', 0, 8); e.speed = 0;
+  step(w, null as unknown as Input, 1 / 60);
+  const hp0 = e.hp;
+  w.bullets.push({ id: 9001, kind: 'granada', x: 0, z: 6, vx: 0, vz: 30, life: 1, maxLife: 1, enemy: false, dmg: 4, blast: 2.5, pierce: 0, hits: [], owner: 'p1' });
+  for (let i = 0; i < 10; i++) step(w, null as unknown as Input, 1 / 60);
+  assert.ok(e.hp < hp0, 'las explosiones le dañan');
+});
+
+test('tirador: se planta, apunta con láser y dispara una bala muy rápida', () => {
+  const w = newWorld(() => 0.5, false);
+  w.wave = 6; w.toSpawn = 1; w.spawnTimer = 999;
+  const p = w.players[0]; p.x = 0; p.z = 0; p.invuln = 99;
+  const e = spawnEnemy(w, 'tirador', 0, 18); e.cooldown = 0;
+  step(w, null as unknown as Input, 1 / 60);
+  assert.ok(e.charge > 0, 'empieza a apuntar');
+  const x0 = e.x, z0 = e.z;
+  for (let i = 0; i < Math.floor(SNIPER_AIM * 60) - 5; i++) step(w, null as unknown as Input, 1 / 60);
+  assert.equal(w.bullets.filter((b) => b.enemy).length, 0, 'mientras apunta no dispara');
+  assert.ok(Math.hypot(e.x - x0, e.z - z0) < 0.01, 'quieto mientras apunta');
+  for (let i = 0; i < 10; i++) step(w, null as unknown as Input, 1 / 60);
+  const shot = w.bullets.find((b) => b.enemy);
+  assert.ok(shot && Math.hypot(shot.vx, shot.vz) > 25, 'bala muy rápida');
+});
+
+test('reparador: repara a los robots de alrededor, no a los lejanos', () => {
+  const w = newWorld(() => 0.5, false);
+  w.wave = 7; w.toSpawn = 1; w.spawnTimer = 999;
+  const p = w.players[0]; p.x = 0; p.z = 0; p.invuln = 99;
+  const m = spawnEnemy(w, 'reparador', 0, 11); m.speed = 0; m.cooldown = 0;
+  const near = spawnEnemy(w, 'tank', 2, 12); near.speed = 0; near.hp = 5;
+  const far = spawnEnemy(w, 'tank', 20, 20); far.speed = 0; far.hp = 5;
+  step(w, null as unknown as Input, 1 / 60);
+  assert.equal(near.hp, 5 + REPAIR_AMOUNT);
+  assert.equal(far.hp, 5);
+  for (let i = 0; i < REPAIR_EVERY * 60 * 20; i++) step(w, null as unknown as Input, 1 / 60);
+  assert.equal(near.hp, near.maxHp, 'nunca por encima de su vida máxima');
+});
+
+test('escudero: el escudo se rompe tras aguantar daño y gira despacio', () => {
+  const w = newWorld(() => 0.5, false);
+  w.wave = 5; w.toSpawn = 1; w.spawnTimer = 999;
+  const p = w.players[0]; p.x = 0; p.z = 0; p.invuln = 999;
+  const e = spawnEnemy(w, 'escudero', 0, 8); e.speed = 0;
+  for (let i = 0; i < 120; i++) step(w, null as unknown as Input, 1 / 60); // ya mira al jugador
+  const hp0 = e.hp;
+  let id = 9100;
+  for (let k = 0; k < shieldGuard(5); k++) {
+    w.bullets.push({ id: id++, kind: 'bala', x: 0, z: 6, vx: 0, vz: 30, life: 1, maxLife: 1, enemy: false, dmg: 1, blast: 0, pierce: 0, hits: [], owner: 'p1' });
+    for (let i = 0; i < 6; i++) step(w, null as unknown as Input, 1 / 60);
+  }
+  assert.equal(e.guard, 0, 'escudo roto');
+  assert.equal(e.hp, hp0, 'el escudo se llevó todo el daño');
+  w.bullets.push({ id: id++, kind: 'bala', x: 0, z: 6, vx: 0, vz: 30, life: 1, maxLife: 1, enemy: false, dmg: 1, blast: 0, pierce: 0, hits: [], owner: 'p1' });
+  for (let i = 0; i < 6; i++) step(w, null as unknown as Input, 1 / 60);
+  assert.ok(e.hp < hp0, 'sin escudo ya recibe daño de frente');
+  // Gira despacio: si el jugador se pone detrás de golpe, tarda en encararlo
+  const w2 = newWorld(() => 0.5, false); w2.wave = 5; w2.toSpawn = 1; w2.spawnTimer = 999;
+  const p2 = w2.players[0]; p2.x = 0; p2.z = 0; p2.invuln = 999;
+  const e2 = spawnEnemy(w2, 'escudero', 0, 8); e2.speed = 0;
+  for (let i = 0; i < 120; i++) step(w2, null as unknown as Input, 1 / 60);
+  p2.z = 16; // ahora el jugador está detrás
+  step(w2, null as unknown as Input, 1 / 60);
+  assert.ok(Math.abs(Math.cos(e2.face)) > 0.9 && Math.cos(e2.face) < 0, 'sigue mirando hacia donde estaba');
 });

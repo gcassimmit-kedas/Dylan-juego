@@ -252,9 +252,10 @@ function removeSoldier(id: string) {
   soldiers.delete(id);
 }
 
-const ENEMY_COLOR: Record<EnemyType, number> = { chaser: 0xc8342f, tank: 0x5b4f7a, gunner: 0xe39a26, kamikaze: 0xf2c230, dron: 0x2f8f8a, jefe: 0x3a3f46 };
+const ENEMY_COLOR: Record<EnemyType, number> = { chaser: 0xc8342f, tank: 0x5b4f7a, gunner: 0xe39a26, kamikaze: 0xf2c230, dron: 0x2f8f8a, jefe: 0x3a3f46,
+  enjambre: 0x8e44d8, escudero: 0x4a6a8a, tirador: 0x5a5f52, reparador: 0xdfe6e1 };
 /** Altura de la barra de vida sobre cada robot. */
-const BAR_Y: Record<EnemyType, number> = { chaser: 1.9, tank: 2.1, gunner: 1.9, kamikaze: 1.5, dron: 2.6, jefe: 4.4 };
+const BAR_Y: Record<EnemyType, number> = { chaser: 1.9, tank: 2.1, gunner: 1.9, kamikaze: 1.5, dron: 2.6, jefe: 4.4, enjambre: 1.1, escudero: 2.2, tirador: 2.5, reparador: 2.1 };
 
 interface Bar { g: THREE.Group; fg: THREE.Mesh }
 const barGeo = new THREE.PlaneGeometry(1, 0.14);
@@ -900,6 +901,8 @@ function flushEvents() {
         break;
       }
       case 'enemyShoot': sfx.enemyShoot(); break;
+      case 'repair': fx.ring(ev.x, ev.z, 6, 0x6dff8a, 0.6, false); fx.sparks(ev.x, 1.2, ev.z, 0x6dff8a, 6, 3); break;
+      case 'guardBroken': sfx.kill(); fx.debris(ev.x, 1.2, ev.z, 0x9fb3c4, 14, 7, 0.22); fx.sparks(ev.x, 1.2, ev.z, 0xffe7a0, 10, 6); fx.text(ev.x, 2.6, ev.z, 'Escudo roto', '#9fd8ff'); break;
       case 'boss': sfx.wave(); shake = Math.max(shake, 0.5); banner('¡Llega el jefe!', `Oleada ${ev.wave}`, 'Un coloso blindado entra por el norte'); break;
       case 'hit': sfx.hit(); fx.sparks(ev.x, 0.8, ev.z, 0xffe7a0, 3, 4); break;
       case 'kill': {
@@ -1430,7 +1433,20 @@ function frame(now: number) {
       if (d < bd) { bd = d; tx = q.x; tz = q.z; }
     }
     // El jefe recibe balas sin parar: su destello es más corto para que se le vea el color.
+    // El escudero lleva el escudo hacia donde mira (gira despacio): se dibuja con su orientación real.
+    if (e.type === 'escudero') { tx = e.x + Math.sin(e.face); tz = e.z + Math.cos(e.face); }
     animateRobot(r, e.x, e.z, tx, tz, dt, t, e.flash > (e.type === 'jefe' ? 0.04 : 0), e.stun > 0);
+    if (e.type === 'escudero') r.root.getObjectByName('shield')!.visible = e.guard > 0;
+    if (e.type === 'tirador') {
+      // Láser de aviso mientras apunta: va del fusil al jugador más cercano
+      const laser = r.root.getObjectByName('laser')!;
+      laser.visible = e.charge > 0 && bd < Infinity;
+      if (laser.visible) {
+        const len = Math.sqrt(bd);
+        laser.scale.z = len; laser.position.z = len / 2;
+        laser.visible = Math.floor(t * 12) % 3 !== 0; // parpadea
+      }
+    }
     const hurtK = e.hp / e.maxHp;
     r.bar.g.visible = hurtK < 1;
     if (hurtK < 1) {

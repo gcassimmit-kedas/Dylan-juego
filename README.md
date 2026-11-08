@@ -41,6 +41,10 @@ npm run build    # genera dist/ para publicar en cualquier hosting estático
 - **Artillero** (naranja, bípedo con cañón; dispara si te ve y te busca si te escondes).
 - **Kamikaze** (amarillo y negro, desde la oleada 3): rueda hacia ti y explota al tocarte a ti o a tu base. Si lo derribas antes, la explosión daña a los robots de alrededor.
 - **Dron** (verde azulado, desde la oleada 4): vuela por encima de rocas, muros y barricadas.
+- **Enjambre** (violeta, desde la oleada 2): robots diminutos y muy rápidos que llegan de 4 en 4.
+- **Escudero** (azul acero, desde la oleada 5): su escudo antidisturbios para las balas de frente. Gira despacio, así que rodeándolo se le da por la espalda; el fuego, el rayo Tesla y las explosiones lo atraviesan, y el escudo se rompe tras aguantar bastante daño.
+- **Tirador** (gris, desde la oleada 6): se queda lejos, apunta un segundo con un láser rojo visible y dispara una bala muy rápida. Cuando veas el láser, muévete.
+- **Reparador** (blanco con cruz verde, desde la oleada 7): no ataca; repara a los robots de su alrededor. Conviene ir a por él primero.
 - **Jefe** (cada 5 oleadas): coloso blindado con mucha vida (más con más jugadores) que dispara abanicos de 7 balas. Su vida se ve arriba en el HUD y al caer suelta botiquines y monedas.
 
 **Campo de batalla:** de día, con cielo, sombras de nubes en movimiento, caminos de tierra, hierba y flores.

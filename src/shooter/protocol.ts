@@ -73,7 +73,7 @@ export type ServerMsg =
   | { t: 'notice'; msg: string }
   | { t: 'kicked'; msg: string };
 
-const ENEMY_T: EnemyType[] = ['chaser', 'tank', 'gunner', 'kamikaze', 'dron', 'jefe'];
+const ENEMY_T: EnemyType[] = ['chaser', 'tank', 'gunner', 'kamikaze', 'dron', 'jefe', 'enjambre', 'escudero', 'tirador', 'reparador'];
 const BULLET_K: BulletKind[] = ['bala', 'perdigon', 'fuego', 'rayo', 'tesla', 'granada', 'cohete', 'enemiga'];
 const PICKUP_T: PickupType[] = ['health', 'rapid', 'coins'];
 const OBST_K: ObstacleKind[] = ['rock', 'tree', 'crate', 'sandbag', 'barricade', 'wall', 'tower', 'medic'];
@@ -101,7 +101,7 @@ export function encode(w: World, tick: number, extra: { ready: Set<string>; shop
     magnet: p.magnet, regen: p.regen, drones: p.drones, shield: r1(p.shield), moving: p.moving, ready: extra.ready.has(p.id),
   }));
   const E: number[] = [];
-  for (const e of w.enemies) E.push(e.id, ENEMY_T.indexOf(e.type), r2(e.x), r2(e.z), r1(e.hp), e.maxHp, e.flash > 0 ? 1 : 0, e.stun > 0 ? 1 : 0);
+  for (const e of w.enemies) E.push(e.id, ENEMY_T.indexOf(e.type), r2(e.x), r2(e.z), r1(e.hp), e.maxHp, e.flash > 0 ? 1 : 0, e.stun > 0 ? 1 : 0, e.charge > 0 ? 1 : 0, e.guard > 0 ? 1 : 0, r2(e.face));
   const B: number[] = [];
   for (const b of w.bullets) B.push(b.id, BULLET_K.indexOf(b.kind), r2(b.x), r2(b.z), r1(b.vx), r1(b.vz), r2(b.life), r2(b.maxLife));
   const K: number[] = [];
@@ -134,9 +134,9 @@ const idle = (): Input => ({ moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false }
 export function decode(s: Snapshot, prev: World | null): World {
   const players: Player[] = s.P.map((p) => ({ ...p, input: idle(), cooldown: 0, regenT: 0, droneCd: 0 }));
   const enemies: Enemy[] = [];
-  for (let i = 0; i < s.E.length; i += 8) {
+  for (let i = 0; i < s.E.length; i += 11) {
     const type = ENEMY_T[s.E[i + 1]];
-    enemies.push({ id: s.E[i], type, x: s.E[i + 2], z: s.E[i + 3], hp: s.E[i + 4], maxHp: s.E[i + 5], flash: s.E[i + 6] ? 0.05 : 0, stun: s.E[i + 7] ? 1 : 0,
+    enemies.push({ id: s.E[i], type, x: s.E[i + 2], z: s.E[i + 3], hp: s.E[i + 4], maxHp: s.E[i + 5], flash: s.E[i + 6] ? 0.05 : 0, stun: s.E[i + 7] ? 1 : 0, charge: s.E[i + 8] ? 0.5 : 0, guard: s.E[i + 9], face: s.E[i + 10],
       speed: 0, r: ENEMY_RADIUS[type], cooldown: 0, side: 0, sideT: 0, ax: 0, az: 0, stuckT: 0 });
   }
   const bullets: Bullet[] = [];

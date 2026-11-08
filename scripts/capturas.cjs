@@ -64,10 +64,12 @@ async function stage(p, extra) {
     const w = window.__world();
     for (const q of w.players) { q.invuln = 999; q.owned = ['pistola', 'subfusil', 'fusil', 'escopeta', 'lanzallamas', 'cohetes']; q.weapon = 'fusil'; q.tools = { torreta: 2, mina: 3, escudo: 1, barricada: 1, aereo: 1, emp: 1, senuelo: 0 }; q.wood = 14; q.coins = 380; }
     const p0 = w.players[0];
-    const base = { speed: 0, cooldown: 99, flash: 0, side: 0, sideT: 0, ax: 0, az: 0, stuckT: 0, stun: 0 };
+    const base = { speed: 0, cooldown: 99, flash: 0, side: 0, sideT: 0, ax: 0, az: 0, stuckT: 0, stun: 0, face: 0, charge: 0, guard: 0 };
     const add = (type, dx, dz, hp, r) => w.enemies.push({ ...base, id: 80000 + w.enemies.length, type, x: p0.x + dx, z: p0.z + dz, hp: hp * 0.7, maxHp: hp, r });
     add('chaser', -4, -6, 4, 0.6); add('chaser', 3.5, -5, 4, 0.6); add('kamikaze', -2.5, -3.5, 2, 0.55);
     add('dron', 4.5, -2.5, 3, 0.6); add('gunner', -5, -9, 6, 0.7); add('tank', 5, -10, 17, 1.05);
+    add('escudero', -6.5, -5.5, 8, 0.8); add('tirador', 7, -7, 4, 0.65); add('reparador', -1.5, -12.5, 5, 0.65);
+    for (const e of w.enemies) { e.face = Math.atan2(p0.x - e.x, p0.z - e.z); e.charge = e.type === 'tirador' ? 99 : 0; e.guard = e.type === 'escudero' ? 10 : 0; }
     if (extra.boss) { const b = w.enemies.find((e) => e.type === 'jefe'); if (b) { b.x = p0.x; b.z = p0.z - 8.5; b.speed = 0; b.cooldown = 0.2; b.hp = b.maxHp * 0.62; } }
     w.toSpawn = 0; w.spawnTimer = 999;
   }, extra);
