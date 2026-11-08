@@ -1,0 +1,15 @@
+{
+  "name": "brasas",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Brasas en Cloudflare: Worker con Static Assets, Durable Objects (salas) y D1 (guardado).",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 migrations apply brasas --local",
+    "db:remoto": "wrangler d1 migrations apply brasas --remote"
+  },
+  "devDependencies": {
+    "wrangler": "4.158.0"
+  }
+}
