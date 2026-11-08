@@ -19,11 +19,30 @@ const DEVICES = [
 
 const wait = (p, ms) => p.waitForTimeout(ms);
 
-async function open(browser, dev) {
+/** Partidas públicas de ejemplo para la captura de la lista: 3 servidores con 5, 3 y 1 jugadores. */
+async function exampleServers() {
+  const WebSocket = require('ws');
+  const url = BASE.replace(/^http/, 'ws') + '/ws';
+  const connect = () => new Promise((ok) => { const ws = new WebSocket(url); ws.on('open', () => ok(ws)); });
+  const all = [];
+  for (const n of [5, 3, 1]) {
+    const host = await connect(); all.push(host);
+    const id = await new Promise((ok) => {
+      host.on('message', (d) => { const m = JSON.parse(String(d)); if (m.t === 'joined') ok(m.room.id); });
+      host.send(JSON.stringify({ t: 'host', character: 'coloso' }));
+    });
+    for (let k = 1; k < n; k++) { const ws = await connect(); ws.send(JSON.stringify({ t: 'join', room: id, character: 'halcon' })); all.push(ws); }
+  }
+  await new Promise((r) => setTimeout(r, 2500)); // que empiece la batalla
+  return all;
+}
+
+/** Abre el juego. Las escenas de juego van sin conexión (se montan en el propio navegador); la lista de servidores, con el servidor real. */
+async function open(browser, dev, online = false) {
   const ctx = await browser.newContext({ ...dev, id: undefined });
   const p = await ctx.newPage();
   await p.addInitScript(() => { try { localStorage.setItem('shooter.personaje', 'sargento'); } catch { /* sin almacenamiento */ } });
-  await p.goto(BASE + '/');
+  await p.goto(BASE + (online ? '/' : '/?servidor=ws://localhost:9/ws'));
   await p.waitForSelector('#loading', { state: 'detached', timeout: 60000 });
   return p;
 }
@@ -86,12 +105,14 @@ async function shoot(browser, dev) {
   await p.screenshot({ path: path.join(OUT, `${dev.id}-3-soldados.png`) });
   await p.context().close();
 
-  // 5. Lista de servidores (con el servidor en marcha)
-  p = await open(browser, dev);
+  // 5. Lista de servidores públicos: unas partidas de ejemplo con jugadores (bots que solo se conectan)
+  const bots = await exampleServers();
+  p = await open(browser, dev, true);
   await p.click('#multiBtn');
   await p.waitForSelector('#roomsList .server', { timeout: 30000 });
   await wait(p, 900);
   await p.screenshot({ path: path.join(OUT, `${dev.id}-5-servidores.png`) });
+  for (const b of bots) b.close();
   await p.context().close();
 }
 

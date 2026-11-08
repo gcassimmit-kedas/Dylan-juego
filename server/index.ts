@@ -1,7 +1,8 @@
 // Servidor del modo cooperativo en línea de Shooter 2027.
 // - Sirve la web compilada (dist/) y un WebSocket en /ws.
 // - Cada sala ejecuta la MISMA simulación que el modo de un jugador (src/shooter/sim.ts): el servidor manda.
-// - Servidores: una lista fija (Alfa, Bravo...) de hasta MAX_PLAYERS jugadores cada uno; se entra tocando uno.
+// - Servidores públicos: cada partida que alguien empieza con conexión es un servidor con nombre aleatorio
+//   ("Halcón Dorado 27"), de hasta MAX_PLAYERS jugadores; los demás lo ven en la lista y entran tocándolo.
 // - Los jugadores no escriben nada: el nombre es automático (su soldado y un número).
 // - Denuncias guardadas 30 días como máximo (sin identidad ni IP del denunciante) y retirada automática
 //   tras varias denuncias de jugadores distintos.
@@ -19,7 +20,7 @@ import {
   SHOP, WEAPON_ORDER, TOOL_ORDER, BUILDS, type World, type GameEvent,
 } from '../src/shooter/sim.ts';
 import {
-  encode, clampInput, roomState, MAX_PLAYERS, SIM_HZ, SNAPSHOT_EVERY, SHOP_SECONDS, RESTART_SECONDS, reportsToKick,
+  encode, clampInput, roomState, roomPaused, randomServerName, MAX_PLAYERS, SIM_HZ, SNAPSHOT_EVERY, SHOP_SECONDS, RESTART_SECONDS, reportsToKick,
   type ClientMsg, type ServerMsg, type RoomInfo,
 } from '../src/shooter/protocol.ts';
 
@@ -30,7 +31,7 @@ const REPORT_TTL_MS = 30 * 24 * 3600 * 1000; // la política de privacidad prome
 
 // ---------------- Salas ----------------
 
-interface Client { ws: WebSocket; pid: string; name: string; character: CharacterId; room: Room | null; msgs: number; lastInput: number }
+interface Client { ws: WebSocket; pid: string; name: string; character: CharacterId; room: Room | null; msgs: number; lastInput: number; paused: boolean }
 interface Room {
   id: string; name: string;
   world: World; clients: Map<string, Client>; ready: Set<string>;
@@ -43,18 +44,21 @@ interface Room {
 const rooms = new Map<string, Room>();
 const makeId = () => randomBytes(6).toString('hex');
 
-/** Lista fija de servidores (SERVERS=Alfa,Bravo,... para cambiarla). */
-const SERVER_NAMES = (process.env.SERVERS || 'Alfa,Bravo,Charlie,Delta,Eco,Foxtrot').split(',').map((n) => n.trim()).filter(Boolean).slice(0, 20);
-for (const name of SERVER_NAMES) {
-  const id = name.toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '');
-  rooms.set(id, {
-    id, name: `Servidor ${name}`, world: newWorld(Math.random, true, []), clients: new Map(), ready: new Set(),
+const MAX_ROOMS = 300;
+
+/** Nuevo servidor público con nombre aleatorio. */
+function createRoom(): Room {
+  const name = randomServerName(Math.random, new Set([...rooms.values()].map((r) => r.name)));
+  const room: Room = {
+    id: makeId(), name, world: newWorld(Math.random, true, []), clients: new Map(), ready: new Set(),
     tick: 0, events: [], shopLeft: 0, restartLeft: 0, obstacleSig: '', lastObstacleSend: 0, reports: new Map(),
-  });
+  };
+  rooms.set(room.id, room);
+  return room;
 }
 
 const roomInfo = (r: Room): RoomInfo => ({ id: r.id, name: r.name, players: r.clients.size, max: MAX_PLAYERS, wave: r.world.wave, state: roomState(r.clients.size, r.world) });
-const serverList = () => [...rooms.values()].map(roomInfo);
+const serverList = () => [...rooms.values()].filter((r) => r.clients.size > 0).map(roomInfo).sort((a, b) => b.players - a.players);
 
 /** Nombre automático: el soldado y el primer número libre en la sala ("Coloso 2"). */
 function autoName(room: Room, character: CharacterId): string {
@@ -88,6 +92,8 @@ function leaveRoom(c: Client) {
   removePlayer(room.world, c.pid);
   room.events.push(...room.world.events.splice(0));
   c.room = null;
+  c.paused = false;
+  if (room.clients.size === 0) rooms.delete(room.id); // nadie juega: el servidor desaparece de la lista
 }
 
 function resetRoom(room: Room) {
@@ -144,6 +150,7 @@ async function report(c: Client, targetPid: string, reason: string) {
 const DT = 1 / SIM_HZ;
 function tickRoom(room: Room) {
   if (room.clients.size === 0) return;
+  if (roomPaused([...room.clients.values()].map((x) => x.paused))) return; // todos en pausa (o fuera de la app)
   const w = room.world;
   room.tick++;
   if (w.over) {
@@ -199,10 +206,16 @@ function onMessage(c: Client, raw: string) {
   const room = c.room, w = room?.world;
   switch (m.t) {
     case 'list': return send(c, { t: 'rooms', rooms: serverList() });
+    case 'host': {
+      c.character = isCharacter(m.character) ? m.character : 'sargento'; // nunca confiar en el cliente
+      if (rooms.size >= MAX_ROOMS) return send(c, { t: 'error', msg: 'No hay sitio para más servidores ahora.' });
+      return joinRoom(c, createRoom());
+    }
+    case 'pause': c.paused = !!m.v; return;
     case 'join': {
       c.character = isCharacter(m.character) ? m.character : 'sargento'; // nunca confiar en el cliente
       const target = rooms.get(String(m.room));
-      if (!target) return send(c, { t: 'error', msg: 'Ese servidor no existe.' });
+      if (!target) return send(c, { t: 'error', msg: 'Esa partida ya ha terminado. Elige otra de la lista.' });
       if (c.room === target) return;
       return joinRoom(c, target);
     }
@@ -250,7 +263,7 @@ const http = createServer((req, res) => { void serveStatic(req, res); });
 const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 4096 });
 
 wss.on('connection', (ws) => {
-  const c: Client = { ws, pid: makeId(), name: 'Soldado', character: 'sargento', room: null, msgs: 0, lastInput: 0 };
+  const c: Client = { ws, pid: makeId(), name: 'Soldado', character: 'sargento', room: null, msgs: 0, lastInput: 0, paused: false };
   const reset = setInterval(() => (c.msgs = 0), 1000);
   ws.on('message', (data) => onMessage(c, data.toString()));
   ws.on('close', () => { clearInterval(reset); leaveRoom(c); });

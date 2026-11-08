@@ -468,10 +468,10 @@ function pollOnePad(g: Gamepad) {
   }
   if (!lobbyEl.hidden) {
     // Mando en la lista de servidores: cruceta arriba/abajo elige, A entra, B cierra
-    const opts = [...lobbyEl.querySelectorAll<HTMLButtonElement>('#lobbyChar, .server:not([disabled])')];
+    const opts = [...lobbyEl.querySelectorAll<HTMLButtonElement>('.server:not([disabled])')];
     const cur = opts.indexOf(document.activeElement as HTMLButtonElement);
     if (hit(12) || hit(13)) opts[cur < 0 ? 0 : (cur + (hit(13) ? 1 : opts.length - 1)) % opts.length]?.focus();
-    if (hit(0)) (cur >= 0 ? opts[cur] : opts.find((o) => o.classList.contains('server')))?.click();
+    if (hit(0)) (cur >= 0 ? opts[cur] : opts[0])?.click();
     if (hit(1)) closeLobby();
     return;
   }
@@ -755,6 +755,7 @@ function start() {
 function gameOver() {
   if (mode === 'multi') {
     // En línea la sala empieza otra partida sola: se muestran los resultados del equipo.
+    setPaused(false); // si alguien tenía el menú abierto, se cierra: no se apilan pantallas
     const fmt = (n: number) => n.toLocaleString('es-ES');
     $('goWave').textContent = String(world.wave);
     $('goScore').textContent = fmt(world.score);
@@ -762,6 +763,8 @@ function gameOver() {
     $('goCoins').textContent = fmt(run.coins);
     $('goBest').textContent = [...world.players].sort((a, b) => b.score - a.score).map((q) => shownName(q))[0] ?? '';
     $('goBestLabel').textContent = 'Mejor del equipo';
+    if (world.score > best) { best = world.score; writeNum('shooter.best', best); }
+    if (world.wave > bestWave) { bestWave = world.wave; writeNum('shooter.bestWave', bestWave); }
     $('goRecord').hidden = true;
     $('retry').hidden = true;
     $('goAuto').hidden = false;
@@ -802,8 +805,34 @@ function renderRecords() {
   $('records').hidden = best === 0;
 }
 renderRecords();
-playBtn.addEventListener('click', () => openCharSelect(() => start()));
-$('retry').addEventListener('click', () => start());
+/**
+ * Jugar: con conexión, la partida es un servidor público con nombre aleatorio al que pueden unirse otros (hasta 7).
+ * Sin conexión (o si el servidor no responde enseguida), se juega solo en el dispositivo.
+ */
+let hosting = false;
+async function play() {
+  unlock();
+  playBtn.disabled = true;
+  const online = await connectQuick();
+  playBtn.disabled = false;
+  if (!online) { start(); return; }
+  hosting = true;
+  net.send({ t: 'host', character: savedChar() });
+}
+/** Conecta con el servidor sin hacer esperar: si no responde en 3,5 s, se juega sin conexión. */
+async function connectQuick(): Promise<boolean> {
+  if (net.connected) return true;
+  let timer = 0;
+  const ok = await Promise.race([
+    net.connect().then(() => true, () => false),
+    new Promise<boolean>((r) => { timer = window.setTimeout(() => r(false), 3500); }),
+  ]);
+  clearTimeout(timer);
+  if (!ok) { netClosing = true; net.close(); netClosing = false; }
+  return ok;
+}
+playBtn.addEventListener('click', () => openCharSelect(() => void play()));
+$('retry').addEventListener('click', () => void play());
 $('goMenu').addEventListener('click', toTitle);
 
 
@@ -817,10 +846,13 @@ function setPaused(v: boolean) {
   paused = v;
   pauseEl.hidden = !v;
   // En línea no se puede detener la partida de los demás: es un menú, no una pausa.
-  $('pauseKicker').textContent = mode === 'multi' ? 'La partida sigue en marcha' : 'Partida en pausa';
-  $('pauseTitle').textContent = mode === 'multi' ? 'Menú' : 'Pausa';
+  // En línea, la partida solo se detiene si todos los jugadores la pausan.
+  const shared = mode === 'multi' && world.players.length > 1;
+  if (mode === 'multi') net.send({ t: 'pause', v });
+  $('pauseKicker').textContent = shared ? 'La partida sigue en marcha' : 'Partida en pausa';
+  $('pauseTitle').textContent = shared ? 'Menú' : 'Pausa';
   $('pausePlayers').hidden = mode !== 'multi';
-  $('pauseHelp').textContent = mode === 'multi' ? 'En línea los demás siguen jugando: tu soldado se queda quieto mientras estás en el menú.'
+  $('pauseHelp').textContent = shared ? 'Los demás siguen jugando: tu soldado se queda quieto mientras estás en el menú.'
     : pauseHelpSolo;
   if (v && mode === 'multi') renderTeam();
   pauseBtn.innerHTML = icon(v ? 'play' : 'pause');
@@ -837,8 +869,8 @@ $('quit').addEventListener('click', () => { setPaused(false); toTitle(); });
 document.addEventListener('visibilitychange', () => {
   last = performance.now();
   if (mode === 'multi') {
-    // En línea no se puede pausar: al salir de la app tu soldado se queda quieto y deja de disparar.
-    if (document.hidden) net.send({ t: 'in', i: [0, 0, 0, 0, 0] });
+    // Al salir de la app tu soldado se queda quieto; si estás solo en la partida, se detiene.
+    if (document.hidden) { net.send({ t: 'in', i: [0, 0, 0, 0, 0] }); net.send({ t: 'pause', v: true }); }
     else if (playing && !paused) setPaused(true);
     return;
   }
@@ -960,21 +992,25 @@ async function ensureConnected(): Promise<boolean> {
     return false;
   }
 }
-/** Lista de servidores: nombre, jugadores conectados (de 7) y qué están haciendo. */
+/** Lista de servidores públicos: nombre, jugadores conectados (de 7) y qué están haciendo. */
 const STATE_TEXT = (r: RoomInfo) => r.players >= r.max ? 'Lleno' : ({
   vacio: 'Vacío', empezando: 'Empezando la partida', batalla: `En batalla · Oleada ${r.wave}`, tienda: `En la tienda · Oleada ${r.wave}`, reiniciando: 'Empezando otra partida',
 } as const)[r.state];
 function renderRooms(rooms: RoomInfo[] | null) {
   const list = $('roomsList');
-  if (!rooms) {
+  const message = (iconName: 'wifiOff' | 'users', text: string) => {
     list.innerHTML = '';
     const li = document.createElement('li'); li.className = 'empty';
-    li.innerHTML = `${icon('wifiOff')}<span>Sin conexión con los servidores</span>`;
+    li.innerHTML = `${icon(iconName)}<span></span>`;
+    li.querySelector('span')!.textContent = text;
     list.appendChild(li);
-    return;
-  }
-  if (list.querySelector('.empty')) list.innerHTML = '';
+  };
+  if (!rooms) { message('wifiOff', 'Sin conexión con los servidores'); return; }
+  if (!rooms.length) { message('users', 'Ahora no hay nadie jugando. Pulsa Jugar y tu partida aparecerá aquí para los demás.'); return; }
+  list.querySelector('.empty')?.remove();
   // Se actualizan los botones que ya existen (no se sustituyen): así no se pierde un toque ni el foco.
+  const ids = new Set(rooms.map((r) => r.id));
+  for (const old of list.querySelectorAll<HTMLButtonElement>('.server')) if (!ids.has(old.dataset.id!)) old.parentElement!.remove();
   for (const r of rooms) {
     let b = list.querySelector<HTMLButtonElement>(`.server[data-id="${r.id}"]`);
     if (!b) {
@@ -994,10 +1030,10 @@ function renderRooms(rooms: RoomInfo[] | null) {
     b.classList.toggle('full', full);
     b.classList.toggle('busy', r.players > 0);
     b.disabled = full;
-    b.querySelector('.sv-state')!.textContent = state;
+    b.querySelector('.sv-state')!.textContent = `Servidor público · ${state}`;
     b.querySelector('.sv-n')!.textContent = `${r.players}/${r.max}`;
     b.querySelector('.sv-dots')!.innerHTML = Array.from({ length: r.max }, (_, k) => `<i class="${k < r.players ? 'on' : ''}"></i>`).join('');
-    b.setAttribute('aria-label', `${r.name}: ${r.players} de ${r.max} jugadores. ${state}`);
+    b.setAttribute('aria-label', `${r.name}, servidor público: ${r.players} de ${r.max} jugadores. ${state}`);
   }
 }
 async function openLobby(message = '') {
@@ -1028,7 +1064,10 @@ async function joinServer(id: string, name: string) {
 $('multiBtn').addEventListener('click', () => void openLobby());
 $('lobbyClose').addEventListener('click', closeLobby);
 net.onRooms = (r) => renderRooms(r);
-net.onError = (msg) => { if (!lobbyEl.hidden) setLobbyStatus(msg, true); else toast(msg); };
+net.onError = (msg) => {
+  if (hosting && mode !== 'multi') { hosting = false; start(); return; } // no se pudo crear el servidor: se juega sin conexión
+  if (!lobbyEl.hidden) setLobbyStatus(msg, true); else toast(msg);
+};
 net.onNotice = (msg) => toast(msg);
 net.onJoined = (room) => {
   joinedRoom = room;
@@ -1063,7 +1102,8 @@ function beginMulti() {
   roomChip.querySelector('span')!.textContent = r.name;
   roomChip.setAttribute('aria-label', r.name);
   playersHud.hidden = false;
-  banner(r.name, 'Cooperativo en línea', `Juegas como ${me()?.name ?? ''}`);
+  banner(r.name, 'Servidor público', hosting ? 'Otros jugadores pueden unirse a tu partida' : `Juegas como ${me()?.name ?? ''}`);
+  hosting = false;
 }
 
 /** Sale del modo en línea (si estaba) y deja un mundo local para la pantalla de título. */
@@ -1253,7 +1293,6 @@ function moveCharSel(dir: 1 | -1) {
 $('csGo').addEventListener('click', () => {
   writeStr('shooter.personaje', csSel);
   charSelEl.hidden = true;
-  renderLobbyChar();
   csDone();
 });
 $('csBack').addEventListener('click', () => { charSelEl.hidden = true; csBack(); });
@@ -1262,13 +1301,6 @@ charSelEl.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); moveCharSel(-1); }
   if (e.key === 'Escape') $('csBack').click();
 });
-/** Personaje elegido para jugar en línea (en el vestíbulo). */
-function renderLobbyChar() {
-  const c = savedChar();
-  $('lobbyCharName').textContent = `${CHARACTERS[c].name} · ${CHARACTERS[c].role}`;
-}
-$('lobbyChar').addEventListener('click', () => openCharSelect(() => $('lobbyChar').focus(), 'Tu soldado en línea'));
-renderLobbyChar();
 
 // ---------- Calidad gráfica ----------
 // Automática: mide los FPS de los primeros segundos y baja la calidad si no llega a 40.
@@ -1346,13 +1378,13 @@ function camTarget(): Player {
 function frame(now: number) {
   const rawDt = (now - last) / 1000;
   // En solitario la pausa congela todo; en línea la partida sigue (no se puede parar a los demás).
-  const dt = paused && mode !== 'multi' ? 0 : Math.min(0.05, rawDt);
+  const dt = paused && (mode !== 'multi' || world.players.length <= 1) ? 0 : Math.min(0.05, rawDt);
   last = now;
   const t = now / 1000;
   if (playing && !document.hidden && rawDt < 1) adaptQuality(rawDt);
   pollPad();
   // En línea el tiempo real cuenta (el servidor no espera): la predicción usa el intervalo real.
-  if (mode === 'multi' || waitingFirstSnap) multiFrame(Math.min(0.25, rawDt));
+  if (mode === 'multi' || waitingFirstSnap) multiFrame(paused && world.players.length <= 1 ? 0 : Math.min(0.25, rawDt));
   else if (playing && !paused && !document.hidden && world.phase === 'fight') {
     step(world, readInput(), dt);
     flushEvents();

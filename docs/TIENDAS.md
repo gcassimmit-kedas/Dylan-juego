@@ -58,7 +58,7 @@ PlayStation, Xbox, Nintendo Switch y televisores inteligentes no son posibles co
 
 ## Modo en línea (cooperativo)
 
-Lista fija de servidores (Alfa, Bravo, Charlie, Delta, Eco y Foxtrot; se cambian con la variable `SERVERS`), hasta **7 jugadores** cada uno. La lista muestra en vivo cuántos juegan y qué están haciendo; se entra tocando un servidor, aunque estén en plena batalla.
+Con conexión, **Jugar** crea un **servidor público** en el servidor de partidas con un nombre aleatorio ("Halcón Dorado 27"), de hasta **7 jugadores**. **Multijugador** muestra solo la lista de esas partidas en marcha, con cuántos juegan y qué están haciendo; se entra tocando una, aunque estén en plena batalla. El servidor desaparece de la lista cuando se va el último jugador. Sin conexión (o si el servidor no responde en 3,5 s) se juega solo en el dispositivo, como siempre. La pausa detiene la partida si todos los que están en ella la pausan.
 
 **Los jugadores no escriben nada**: el nombre es automático (su soldado y un número, como "Coloso 2"), no hay salas creadas por jugadores ni chat. Por eso no hay contenido generado por usuarios (norma 1.2 de Apple). Aun así:
 

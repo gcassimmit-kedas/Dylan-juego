@@ -48,7 +48,7 @@ ENEMIGOS QUE TE PONEN A PRUEBA
 Arañas veloces, artilleros, tanques, kamikazes que explotan al tocarte, drones que vuelan por encima de tus muros y un jefe blindado cada 5 oleadas.
 
 JUEGA CON AMIGOS
-Elige un servidor de la lista, mira cuántos están jugando y únete a la batalla al momento, hasta 7 jugadores por servidor. Sin escribir nombres ni crear cuentas.
+Cada partida es un servidor público al que otros pueden unirse. Abre la lista, mira cuántos están jugando y únete a la batalla al momento, hasta 7 jugadores. Sin escribir nombres ni crear cuentas. Sin conexión, juegas solo.
 
 PENSADO PARA TODOS LOS DISPOSITIVOS
 Controles táctiles, teclado y ratón o mando. Funciona sin conexión en solitario. Sin anuncios, sin compras integradas y sin cuentas.
@@ -70,7 +70,7 @@ Orden recomendado: jefe (2), soldados (3), servidores (5), tienda (4), título (
 ## Notas para la revisión de Apple
 
 > Shooter 2027 no necesita cuenta. El modo de un jugador funciona sin conexión.
-> El modo en línea (Multijugador) muestra una lista de servidores con el número de jugadores conectados; basta con tocar uno para entrar. Para probar con dos dispositivos, elija el mismo servidor en ambos.
+> Con conexión, cada partida (botón Jugar) es un servidor público con nombre aleatorio. Para probar el modo en línea con dos dispositivos: pulse Jugar en uno; en el otro, abra Multijugador y toque la partida que aparece en la lista.
 > Los jugadores no escriben ningún texto: los nombres son automáticos y no hay chat. Desde el menú de la partida (botón de pausa) se puede bloquear y denunciar a otros jugadores.
 
 ## Antes de enviar (bloqueantes)

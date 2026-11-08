@@ -31,7 +31,7 @@ Reglas obligatorias para cualquier cambio en este repositorio. Si una petición 
 ## 3. Juego en línea (cooperativo)
 
 - El servidor (`server/index.ts`) manda: la simulación corre allí y el cliente solo envía su entrada. Nunca confiar en lo que llega del cliente.
-- Multijugador por lista fija de servidores (hasta 7 jugadores cada uno). Los jugadores no escriben nada: nombres automáticos y sin chat.
+- Con conexión, cada partida es un servidor público con nombre aleatorio (hasta 7 jugadores) que aparece en la lista de Multijugador; sin conexión se juega solo. Los jugadores no escriben nada: nombres automáticos y sin chat.
 - Si algún día se permite escribir (nombres, chat), debe pasar por `src/shooter/moderation.ts` en el servidor y actualizarse antes la política de privacidad.
 - Denunciar y bloquear jugadores deben seguir disponibles (norma 1.2 de Apple).
 - Producción solo con HTTPS/WSS.
