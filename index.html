@@ -28,7 +28,7 @@
         <div class="track"><div class="fill" id="hpFill"></div></div>
         <span class="val" id="hpVal">5/5</span>
       </div>
-      <button id="roomChip" class="room-chip" hidden aria-label="Copiar código de la sala"><span data-icon="lock"></span><span id="roomChipText"></span></button>
+      <div id="roomChip" class="room-chip" hidden><span data-icon="globe"></span><span></span></div>
       <ul id="playersHud" class="players-hud" hidden aria-label="Equipo"></ul>
     </div>
     <div class="center">
@@ -52,7 +52,7 @@
   <div id="toolbar"><div id="weaponName"></div><div id="weapons"></div></div>
   <div id="tools" aria-label="Equipo"><button id="buildBtn" class="tool build" aria-label="Construir base" aria-expanded="false" title="Construir (V)"><span data-icon="hammer"></span></button></div>
   <div id="buildPanel" hidden role="menu" aria-label="Construir base">
-    <div class="bp-head"><span class="kicker" id="bpWho">Construir</span><span class="bp-wood"><span data-icon="madera"></span><span id="bpWood">0</span></span></div>
+    <div class="bp-head"><span class="kicker">Construir</span><span class="bp-wood"><span data-icon="madera"></span><span id="bpWood">0</span></span></div>
     <div id="bpList"></div>
     <p class="bp-hint">Se construye delante de ti. La madera se gana al superar oleadas.</p>
   </div>
@@ -67,10 +67,6 @@
           <p class="kicker" id="shopTitle">Oleada superada</p>
           <h2>Arsenal</h2>
           <p id="shopSub"></p>
-          <div id="shopTabs" class="seg shop-tabs" role="tablist" aria-label="Comprar para" hidden>
-            <button role="tab" data-pid="p1" aria-selected="true">Jugador 1</button>
-            <button role="tab" data-pid="p2" aria-selected="false">Jugador 2</button>
-          </div>
         </div>
         <div class="wallets">
         <div class="wallet" aria-label="Monedas disponibles"><span data-icon="coins"></span><span id="shopCoins">0</span></div>
@@ -141,69 +137,21 @@
     <span class="version">v1.0.0</span>
   </div>
 
-  <!-- Multijugador: vestíbulo -->
+  <!-- Multijugador: lista de servidores -->
   <div id="lobby" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="lobbyTitle">
     <div class="panel lobby-panel">
       <div class="head">
         <div>
-          <p class="kicker">Juega en equipo</p>
-          <h2 id="lobbyTitle">Multijugador</h2>
+          <p class="kicker">Cooperativo en línea</p>
+          <h2 id="lobbyTitle">Servidores</h2>
         </div>
         <button id="lobbyClose" class="btn" aria-label="Cerrar multijugador" data-icon="x"></button>
       </div>
       <div class="lobby-body">
-        <section class="lobby-local">
-          <h3>En este dispositivo</h3>
-          <button id="localBtn" class="primary big"><span data-icon="users"></span> Cooperativo local</button>
-          <p class="help">2 jugadores en esta pantalla, sin conexión. Jugador 1: WASD y ratón. Jugador 2: flechas e Intro para disparar (apunta solo). Con mandos, cada jugador el suyo.</p>
-        </section>
-        <h3 class="lobby-divider">En línea</h3>
         <button id="lobbyChar" class="lobby-char" aria-label="Cambiar de soldado"><span data-icon="userRound"></span><span class="lc-txt"><small>Tu soldado</small><span id="lobbyCharName"></span></span><span class="lc-change">Cambiar</span></button>
-        <label class="field">
-          <span>Tu nombre de jugador</span>
-          <input id="nick" maxlength="16" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Por ejemplo, Halcón" />
-          <small id="nickMsg">Usa un apodo. No pongas tu nombre real.</small>
-        </label>
         <p id="lobbyStatus" class="lobby-status" role="status" aria-live="polite"></p>
-        <button id="joinMain" class="ghost big-ghost"><span data-icon="globe"></span> Entrar al servidor público</button>
-
-        <section class="lobby-sec">
-          <h3>Unirse a un amigo</h3>
-          <div class="row">
-            <input id="friendName" maxlength="16" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Nombre de tu amigo" aria-label="Nombre de tu amigo" />
-            <button id="findFriend" class="ghost"><span data-icon="search"></span> Buscar</button>
-          </div>
-          <p id="friendMsg" class="lobby-status" role="status" aria-live="polite"></p>
-          <ul id="friendResults" class="rooms" hidden aria-live="polite"></ul>
-          <p class="help">Entras en su sala aunque esté en plena batalla. Solo se encuentran jugadores en salas públicas; para una privada, pídele el código.</p>
-        </section>
-
-        <section class="lobby-sec">
-          <div class="sec-head">
-            <h3>Salas públicas</h3>
-            <button id="roomsRefresh" class="btn" aria-label="Actualizar salas" data-icon="refreshCw"></button>
-          </div>
-          <ul id="roomsList" class="rooms"></ul>
-        </section>
-
-        <section class="lobby-sec">
-          <h3>Crear sala</h3>
-          <div class="row">
-            <input id="roomName" maxlength="16" autocomplete="off" placeholder="Nombre de la sala" aria-label="Nombre de la sala" />
-            <button id="roomPrivate" class="switch" role="switch" aria-checked="false" aria-label="Sala privada"><span></span></button>
-            <span class="lbl" aria-hidden="true">Privada</span>
-          </div>
-          <button id="createRoom" class="ghost"><span data-icon="plus"></span> Crear sala</button>
-        </section>
-
-        <section class="lobby-sec">
-          <h3>Sala privada</h3>
-          <div class="row">
-            <input id="roomCode" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Código" aria-label="Código de la sala" />
-            <button id="joinCode" class="ghost"><span data-icon="keyRound"></span> Entrar</button>
-          </div>
-        </section>
-        <p class="help">Al jugar en línea se comparte tu nombre de jugador con los demás. <a href="./privacidad.html">Política de privacidad</a></p>
+        <ul id="roomsList" class="servers" aria-label="Servidores"></ul>
+        <p class="help">Toca un servidor para unirte, aunque estén en plena batalla. Hasta 7 jugadores por servidor. Tu nombre en la partida es tu soldado y un número.</p>
       </div>
     </div>
   </div>
@@ -228,9 +176,8 @@
     <div class="panel menu-panel">
       <p class="kicker danger">Moderación</p>
       <h2 id="reportTitle">Denunciar a <span id="reportName"></span></h2>
-      <p class="help">La denuncia es anónima. Con suficientes denuncias, se le retira de la sala.</p>
-      <button class="ghost" data-reason="nombre"><span data-icon="userRound"></span> Nombre ofensivo</button>
-      <button class="ghost" data-reason="conducta"><span data-icon="flag"></span> Mala conducta</button>
+      <p class="help">La denuncia es anónima. Con suficientes denuncias, se le retira del servidor.</p>
+      <button class="ghost" data-reason="conducta"><span data-icon="flag"></span> Denunciar mala conducta</button>
       <button id="reportCancel" class="ghost"><span data-icon="x"></span> Cancelar</button>
     </div>
   </div>

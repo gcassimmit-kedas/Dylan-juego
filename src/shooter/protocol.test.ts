@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { reportsToKick, findFriendRooms, type SearchableRoom } from './protocol.ts';
-import { nameKey } from './moderation.ts';
+import { reportsToKick, MAX_PLAYERS } from './protocol.ts';
 
 test('sala privada: bastan las denuncias de los demás si son pocos', () => {
   assert.equal(reportsToKick(2, false), 1);
@@ -17,13 +16,15 @@ test('sala pública: nunca basta una sola denuncia', () => {
   assert.equal(reportsToKick(8, true), 3);
 });
 
-test('buscar a un amigo: solo en salas públicas y por su nombre exacto', () => {
-  const room = (id: string, isPublic: boolean, names: string[]): SearchableRoom =>
-    ({ info: { id, name: id, players: names.length, max: 8, wave: 3, main: false }, isPublic, playerKeys: names.map(nameKey) });
-  const rooms = [room('principal', true, ['Halcón', 'Lince']), room('secreta', false, ['Halcón']), room('otra', true, ['Lobo', 'halcon'])];
-  assert.deepEqual(findFriendRooms(rooms, nameKey('HALCON')).map((r) => r.id), ['principal', 'otra'], 'sin mayúsculas ni tildes; dos salas');
-  assert.deepEqual(findFriendRooms(rooms, nameKey('  Lince ')).map((r) => r.id), ['principal']);
-  assert.deepEqual(findFriendRooms(rooms, nameKey('Halc')), [], 'nada de coincidencias parciales');
-  assert.equal(findFriendRooms(rooms, nameKey('Halcón')).some((r) => r.id === 'secreta'), false, 'las privadas nunca aparecen');
-  assert.deepEqual(findFriendRooms(rooms, ''), []);
+test('cada servidor admite 7 jugadores', () => {
+  assert.equal(MAX_PLAYERS, 7);
+});
+
+test('estado de cada servidor en la lista', async () => {
+  const { roomState } = await import('./protocol.ts');
+  assert.equal(roomState(0, { wave: 3, phase: 'fight', over: false }), 'vacio');
+  assert.equal(roomState(2, { wave: 0, phase: 'fight', over: false }), 'empezando');
+  assert.equal(roomState(2, { wave: 3, phase: 'fight', over: false }), 'batalla');
+  assert.equal(roomState(2, { wave: 3, phase: 'shop', over: false }), 'tienda');
+  assert.equal(roomState(2, { wave: 3, phase: 'fight', over: true }), 'reiniciando');
 });

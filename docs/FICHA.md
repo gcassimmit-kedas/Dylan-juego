@@ -26,7 +26,7 @@ Oleadas de robots en 3D
 Defiende la línea contra oleadas de robots, solo o en equipo con tus amigos.
 
 **Texto promocional (Apple, máx. 170):**
-Elige a tu soldado, construye tu base y resiste oleadas de robots cada vez más duras. Cada 5 oleadas llega un jefe. Juega solo, a dos en la misma pantalla o en línea.
+Elige a tu soldado, construye tu base y resiste oleadas de robots cada vez más duras. Cada 5 oleadas llega un jefe. Juega solo o en línea con hasta 7 jugadores.
 
 **Palabras clave (Apple, máx. 100, separadas por comas):**
 disparos,robots,oleadas,acción,cooperativo,multijugador,soldado,armas,base,defensa,arcade,3d
@@ -48,7 +48,7 @@ ENEMIGOS QUE TE PONEN A PRUEBA
 Arañas veloces, artilleros, tanques, kamikazes que explotan al tocarte, drones que vuelan por encima de tus muros y un jefe blindado cada 5 oleadas.
 
 JUEGA CON AMIGOS
-Cooperativo local para dos en la misma pantalla, sin conexión. Y en línea, hasta 8 jugadores: servidor público, salas públicas o privadas con código, y únete a un amigo buscando su nombre.
+Elige un servidor de la lista, mira cuántos están jugando y únete a la batalla al momento, hasta 7 jugadores por servidor. Sin escribir nombres ni crear cuentas.
 
 PENSADO PARA TODOS LOS DISPOSITIVOS
 Controles táctiles, teclado y ratón o mando. Funciona sin conexión en solitario. Sin anuncios, sin compras integradas y sin cuentas.
@@ -65,13 +65,13 @@ Se generan con `node scripts/capturas.cjs` (con el servidor en marcha) en `store
 | `google-play-destacada-1024x500.png` | Google Play, imagen destacada | 1024 x 500 |
 | `google-play-icono-512.png` | Google Play, icono | 512 x 512 |
 
-Orden recomendado: jefe (2), soldados (3), cooperativo (5), tienda (4), título (1).
+Orden recomendado: jefe (2), soldados (3), servidores (5), tienda (4), título (1).
 
 ## Notas para la revisión de Apple
 
-> Shooter 2027 no necesita cuenta. El modo solitario y el cooperativo local (Multijugador > Cooperativo local) funcionan sin conexión.
-> El modo en línea (Multijugador > En línea) conecta con nuestro servidor: escriba un apodo y pulse "Entrar al servidor público". Para probar con dos dispositivos: en uno, "Crear sala" con "Privada" activado; en el otro, escriba el código de 5 letras que aparece arriba a la izquierda.
-> Los nombres se filtran en el servidor. Desde el menú de la partida (botón de pausa) se puede bloquear y denunciar a otros jugadores. No hay chat.
+> Shooter 2027 no necesita cuenta. El modo de un jugador funciona sin conexión.
+> El modo en línea (Multijugador) muestra una lista de servidores con el número de jugadores conectados; basta con tocar uno para entrar. Para probar con dos dispositivos, elija el mismo servidor en ambos.
+> Los jugadores no escriben ningún texto: los nombres son automáticos y no hay chat. Desde el menú de la partida (botón de pausa) se puede bloquear y denunciar a otros jugadores.
 
 ## Antes de enviar (bloqueantes)
 

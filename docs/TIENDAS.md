@@ -58,15 +58,13 @@ PlayStation, Xbox, Nintendo Switch y televisores inteligentes no son posibles co
 
 ## Modo en línea (cooperativo)
 
-Hasta 8 jugadores contra las oleadas: servidor principal público (se reparte en varias salas si se llena), salas públicas que cualquiera crea y salas privadas con código de 5 caracteres.
+Lista fija de servidores (Alfa, Bravo, Charlie, Delta, Eco y Foxtrot; se cambian con la variable `SERVERS`), hasta **7 jugadores** cada uno. La lista muestra en vivo cuántos juegan y qué están haciendo; se entra tocando un servidor, aunque estén en plena batalla.
 
-Medidas para la norma 1.2 de Apple (contenido generado por usuarios) y la política de Google sobre contenido de usuarios:
+**Los jugadores no escriben nada**: el nombre es automático (su soldado y un número, como "Coloso 2"), no hay salas creadas por jugadores ni chat. Por eso no hay contenido generado por usuarios (norma 1.2 de Apple). Aun así:
 
-- [x] **Filtro de nombres** de jugador y de sala pública (español e inglés, detecta disfraces como `p3rr4` o `p.u.t.a`). Lo aplica el servidor; el cliente solo avisa antes.
-- [x] **Denunciar** a un jugador (nombre ofensivo o mala conducta) desde el menú de la partida. Con 3 denuncias de jugadores distintos se le retira de la sala y su nombre queda vetado en ella. En salas privadas pequeñas basta con que lo denuncien todos los demás; en salas públicas nunca basta una sola denuncia (con dos jugadores, queda bloquear y salir), para que nadie pueda echar a otro a solas.
-- [x] **Bloquear** a un jugador: deja de verse su nombre en ese dispositivo.
-- [x] Sin chat ni texto libre aparte del nombre.
-- [x] **Unirse a un amigo** por su nombre: solo encuentra jugadores en salas públicas (coincidencia exacta, una búsqueda por segundo como máximo); las privadas solo con código. La búsqueda no se guarda.
+- [x] **Denunciar** la conducta de un jugador desde el menú de la partida. Con 3 denuncias de jugadores distintos (o 2 en servidores con 3 jugadores) se le retira del servidor; con solo 2 jugadores no se puede echar a nadie.
+- [x] **Bloquear** a un jugador: solo afecta a lo que se ve en ese dispositivo.
+- [x] `src/shooter/moderation.ts` (filtro de palabras) queda listo por si algún día se permite escribir nombres: tendría que aplicarse en el servidor y actualizar antes la política de privacidad.
 - [x] Las denuncias se guardan como máximo 30 días, sin IP ni identidad de quien denuncia (`server/reports.jsonl`).
 - [ ] **Contacto para quejas** visible en la ficha y en la política (Apple exige poder contactar con el desarrollador): pendiente del correo del responsable.
 - [ ] Revisar las denuncias guardadas de forma periódica.
@@ -90,9 +88,9 @@ Plan gratuito: el servidor se duerme tras 15 minutos sin visitas y tarda alreded
 
 ## Formularios de las tiendas (respuestas según el estado actual)
 
-- **Apple, privacidad de la app:** "Datos recopilados": **Contenido del usuario > Otro contenido del usuario** (nombre de jugador y de sala), no vinculado a la identidad, no usado para rastreo, finalidad "Funcionalidad de la app". La dirección IP se usa solo para mantener la conexión y no se guarda **(comprobar si Apple pide declararla)**.
-- **Google, seguridad de los datos:** recopila **Actividad en la app > Otro contenido generado por el usuario** (nombre de jugador), tratado de forma efímera salvo en denuncias (30 días), no compartido, cifrado en tránsito (WSS), finalidad "Funciones de la app". No se puede pedir su eliminación por cuenta porque no hay cuentas: indicarlo y remitir al contacto de la política.
-- **Clasificación por edades:** violencia de fantasía/dibujos contra robots, sin sangre, sin compras, sin publicidad. **Marcar "los usuarios pueden interactuar"** (juego en línea con nombres visibles, sin chat). Resultado probable: 9+ en Apple y PEGI 7 en Google, con el aviso de interacción en línea **(se confirma al rellenar el cuestionario)**.
+- **Apple, privacidad de la app:** los jugadores no escriben nada y los nombres son automáticos, así que la respuesta probable es "Datos no recopilados". La dirección IP se usa solo para mantener la conexión y no se guarda **(comprobar si Apple pide declararla)**.
+- **Google, seguridad de los datos:** no recopila datos personales ni contenido de usuarios; los datos de la partida se tratan de forma efímera y cifrados en tránsito (WSS). Las denuncias guardan 30 días el nombre automático del jugador denunciado, sin identificar a nadie **(comprobar si Google pide declararlo)**.
+- **Clasificación por edades:** violencia de fantasía/dibujos contra robots, sin sangre, sin compras, sin publicidad. **Marcar "los usuarios pueden interactuar"** (juegan juntos en línea, aunque sin chat ni nombres escritos). Resultado probable: 9+ en Apple y PEGI 7 en Google, con el aviso de interacción en línea **(se confirma al rellenar el cuestionario)**.
 - **Anuncios:** no contiene anuncios. **Compras integradas:** no.
 
 ## Ficha de la tienda

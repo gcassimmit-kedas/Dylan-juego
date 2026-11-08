@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  newWorld, step, buy, cannotBuy, owns, nextWave, useTool, selectWeapon, dronePos, build, cannotBuild, getPlayer, autoAim, leash,
+  newWorld, step, buy, cannotBuy, owns, nextWave, useTool, selectWeapon, dronePos, build, cannotBuild, getPlayer,
   CHARACTERS, CHARACTER_ORDER, isCharacter, PLAYER_COLORS, type CharacterId,
   SHOP, WEAPONS, WEAPON_ORDER, TOOL_ORDER, BUILDS,
   type World, type Input, type Player, type Bullet, type Pickup, type EnemyType, type WeaponId, type ToolId, type ShopItem, type ShopKind, type BuildId, type BuildItem,
@@ -8,7 +8,7 @@ import {
 import { sfx, unlock, isMuted, setMuted } from './audio.ts';
 import { MAT, makeSoldier, animateSoldier, showWeapon, makeRobot, animateRobot, makeTurret, makeDrone, makeMine, makeObstacle, makeSpikes, makeLabel, type Robot, type Soldier } from './models.ts';
 import { NetSession } from './net.ts';
-import { checkName, normalizeForFilter } from './moderation.ts';
+import { normalizeForFilter } from './moderation.ts';
 import type { RoomInfo } from './protocol.ts';
 import { Effects, SOFT } from './fx.ts';
 import { icon, ITEM_ICON, hydrateIcons } from '../ui/icons.ts';
@@ -71,16 +71,8 @@ const SUN_OFFSET = SUN_DIR.clone().multiplyScalar(70);
 
 let world: World = newWorld();
 const A = world.arena;
-/**
- * solo: un jugador. local: cooperativo de 2 en la misma pantalla (sin conexión).
- * multi: cooperativo en línea (el mundo lo manda el servidor).
- */
-let mode: 'solo' | 'local' | 'multi' = 'solo';
-/** Cooperativo local: distancia máxima entre jugadores para que quepan en la cámara. */
-const LEASH = 24;
-/** Jugador al que se refieren la tienda y el menú de construir (en cooperativo local cambia). */
-let shopPid = 'p1', buildPid = 'p1';
-let lastLocal = false;
+/** solo: un jugador. multi: cooperativo en línea (el mundo lo manda el servidor). */
+let mode: 'solo' | 'multi' = 'solo';
 let myId = 'p1';
 const net = new NetSession();
 const me = (): Player => getPlayer(world, myId);
@@ -244,7 +236,7 @@ function soldierFor(q: Player): Soldier {
     scene.add(sd.root);
   }
   // Cartel con el nombre sobre los demás jugadores (en línea)
-  const text = mode === 'multi' && q.id !== myId ? shownName(q) : mode === 'local' ? q.name : '';
+  const text = mode === 'multi' && q.id !== myId ? shownName(q) : '';
   if (text !== sd.labelText) {
     if (sd.label) { scene.remove(sd.label); sd.label.material.map?.dispose(); sd.label.material.dispose(); sd.label = null; }
     sd.labelText = text;
@@ -369,11 +361,6 @@ addEventListener('keydown', (e) => {
   keys.add(e.code);
   if (e.code === 'Space') e.preventDefault();
   if (!playing || world.phase !== 'fight') return;
-  if (mode === 'local') {
-    // Jugador 2 con teclado: Intro dispara (no debe pulsar botones), coma y punto cambian de arma.
-    if (P2_FIRE.includes(e.code) || e.code.startsWith('Arrow')) e.preventDefault();
-    if ((e.code === 'Period' || e.code === 'Comma') && !padFor('p2')) cycleWeapon('p2', e.code === 'Period' ? 1 : -1);
-  }
   const n = Number(e.key);
   if (e.key >= '0' && e.key <= '9') pickWeapon(WEAPON_ORDER[n === 0 ? 9 : n - 1]);
   if (e.code === 'KeyV') toggleBuild();
@@ -429,11 +416,10 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 function readInput(): Input {
   const inp: Input = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false };
-  const arrows = mode !== 'local'; // en cooperativo local las flechas son del jugador 2
-  if (keys.has('KeyA') || (arrows && keys.has('ArrowLeft'))) inp.moveX -= 1;
-  if (keys.has('KeyD') || (arrows && keys.has('ArrowRight'))) inp.moveX += 1;
-  if (keys.has('KeyW') || (arrows && keys.has('ArrowUp'))) inp.moveZ -= 1;
-  if (keys.has('KeyS') || (arrows && keys.has('ArrowDown'))) inp.moveZ += 1;
+  if (keys.has('KeyA') || keys.has('ArrowLeft')) inp.moveX -= 1;
+  if (keys.has('KeyD') || keys.has('ArrowRight')) inp.moveX += 1;
+  if (keys.has('KeyW') || keys.has('ArrowUp')) inp.moveZ -= 1;
+  if (keys.has('KeyS') || keys.has('ArrowDown')) inp.moveZ += 1;
   if (sticks.L) { inp.moveX = sticks.L.dx; inp.moveZ = sticks.L.dy; }
   if (sticks.R) {
     inp.aimX = sticks.R.dx; inp.aimZ = sticks.R.dy;
@@ -444,22 +430,7 @@ function readInput(): Input {
     if (ray.ray.intersectPlane(groundPlane, hitPt)) { inp.aimX = hitPt.x - me().x; inp.aimZ = hitPt.z - me().z; }
     inp.fire = mouse.down || keys.has('Space');
   } else inp.fire = keys.has('Space');
-  padInput(inp, padFor(myId));
-  return inp;
-}
-/** Teclas de disparo del jugador 2 (apunta solo al robot más cercano). */
-const P2_FIRE = ['Enter', 'NumpadEnter', 'ShiftRight', 'ControlRight', 'Numpad0'];
-/** Cooperativo local: entrada del jugador 2 (su mando o, si no hay, flechas con puntería automática). */
-function readInputP2(): Input {
-  const inp: Input = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false };
-  const g = padFor('p2');
-  if (g) { padInput(inp, g); return inp; }
-  if (keys.has('ArrowLeft')) inp.moveX -= 1;
-  if (keys.has('ArrowRight')) inp.moveX += 1;
-  if (keys.has('ArrowUp')) inp.moveZ -= 1;
-  if (keys.has('ArrowDown')) inp.moveZ += 1;
-  inp.fire = P2_FIRE.some((k) => keys.has(k));
-  if (inp.fire) { const a = autoAim(world, getPlayer(world, 'p2')); if (a) { inp.aimX = a.aimX; inp.aimZ = a.aimZ; } }
+  padInput(inp, connectedPads()[0] ?? null);
   return inp;
 }
 
@@ -471,21 +442,6 @@ const padPrev = new Map<number, boolean[]>();
 function connectedPads(): Gamepad[] {
   return [...(navigator.getGamepads?.() ?? [])].filter((g): g is Gamepad => !!g && g.connected);
 }
-/**
- * Mando de cada jugador. Un jugador: el primero. Cooperativo local: con dos mandos, uno cada uno;
- * con uno solo, es del jugador 2 (el jugador 1 usa teclado y ratón o la pantalla táctil).
- */
-function padFor(pid: string): Gamepad | null {
-  const pads = connectedPads();
-  if (mode !== 'local') return pid === myId ? pads[0] ?? null : null;
-  if (pads.length >= 2) return pid === 'p1' ? pads[0] : pads[1];
-  return pads.length === 1 && pid === 'p2' ? pads[0] : null;
-}
-function padOwner(g: Gamepad): string {
-  if (mode !== 'local') return myId;
-  const pads = connectedPads();
-  return pads.length >= 2 && pads[0] === g ? 'p1' : 'p2';
-}
 function padInput(inp: Input, g: Gamepad | null) {
   if (!g) return;
   const lx = dz(g.axes[0]), ly = dz(g.axes[1]), rx = dz(g.axes[2]), ry = dz(g.axes[3]);
@@ -495,13 +451,14 @@ function padInput(inp: Input, g: Gamepad | null) {
   if (aiming || (g.buttons[7]?.value ?? 0) > 0.3) inp.fire = true; // stick derecho (como en táctil) o gatillo derecho
 }
 /** Botones con efecto al pulsar (no al mantener): menús, pausa, armas y equipo. */
+/** Botones del mando: vale cualquiera de los conectados. */
 function pollPad() { for (const g of connectedPads()) pollOnePad(g); }
 function pollOnePad(g: Gamepad) {
   const now = g.buttons.map((b) => b.pressed);
   const prev = padPrev.get(g.index) ?? []; // fotograma anterior (hay que leerlo antes de sobrescribir)
   const hit = (i: number) => now[i] && !prev[i];
   padPrev.set(g.index, now);
-  const pid = padOwner(g);
+  const pid = myId;
   const visible = (id: string) => !$(id).hidden;
   if (visible('settings')) { if (hit(1) || hit(9)) $('settingsClose').click(); return; }
   if (!charSelEl.hidden) {
@@ -509,12 +466,19 @@ function pollOnePad(g: Gamepad) {
     if (hit(0) || hit(9)) $('csGo').click(); else if (hit(1)) $('csBack').click();
     return;
   }
-  if (!lobbyEl.hidden) { if (hit(1)) closeLobby(); else if (hit(0)) startLocal(); return; }
+  if (!lobbyEl.hidden) {
+    // Mando en la lista de servidores: cruceta arriba/abajo elige, A entra, B cierra
+    const opts = [...lobbyEl.querySelectorAll<HTMLButtonElement>('#lobbyChar, .server:not([disabled])')];
+    const cur = opts.indexOf(document.activeElement as HTMLButtonElement);
+    if (hit(12) || hit(13)) opts[cur < 0 ? 0 : (cur + (hit(13) ? 1 : opts.length - 1)) % opts.length]?.focus();
+    if (hit(0)) (cur >= 0 ? opts[cur] : opts.find((o) => o.classList.contains('server')))?.click();
+    if (hit(1)) closeLobby();
+    return;
+  }
   if (!overlay.hidden) { if (hit(0) || hit(9)) playBtn.click(); return; }
-  if (!gameoverEl.hidden) { if (hit(0) || hit(9)) start(lastLocal); else if (hit(1)) toTitle(); return; }
+  if (!gameoverEl.hidden) { if (hit(0) || hit(9)) $('retry').click(); else if (hit(1)) toTitle(); return; }
   if (!shopEl.hidden) {
     if (hit(9)) $<HTMLButtonElement>('nextWave').click();
-    if (mode === 'local' && (hit(4) || hit(5))) setShopPid(shopPid === 'p1' ? 'p2' : 'p1');
     return;
   }
   if (paused) { if (hit(0) || hit(9) || hit(1)) setPaused(false); return; }
@@ -526,7 +490,7 @@ function pollOnePad(g: Gamepad) {
   if (hit(3)) tool('escudo', pid);
   if (hit(1) && buildPanel.hidden) tool('mina', pid);
   if (hit(6)) tool('barricada', pid);
-  if (!buildPanel.hidden && buildPid === pid) {
+  if (!buildPanel.hidden) {
     // Con el menú de construir abierto: cruceta izquierda/derecha elige, A construye, B o cruceta abajo cierra
     if (hit(14) || hit(15)) { buildSel = (buildSel + (hit(15) ? 1 : BUILDS.length - 1)) % BUILDS.length; renderBuild(); }
     if (hit(0)) doBuild(BUILDS[buildSel].id);
@@ -651,8 +615,8 @@ const SECTIONS: { kind: ShopKind; title: string }[] = [
   { kind: 'arma', title: 'Armas' }, { kind: 'mejora', title: 'Mejoras' }, { kind: 'equipo', title: 'Equipo de campo' },
 ];
 function card(item: ShopItem) {
-  const reason = cannotBuy(world, item.id, shopPid);
-  const n = owns(world, item.id, shopPid);
+  const reason = cannotBuy(world, item.id, myId);
+  const n = owns(world, item.id, myId);
   const lvl = item.max ? `<div class="lvl">${item.kind === 'equipo' ? `Tienes ${n}/${item.max}` : `Nivel ${n}/${item.max}`}</div>` : '';
   const el = document.createElement('div');
   el.className = `card${n && item.kind !== 'equipo' ? ' owned' : ''}`;
@@ -663,13 +627,13 @@ function card(item: ShopItem) {
   b.disabled = !!reason;
   b.addEventListener('click', () => {
     if (mode === 'multi') { net.send({ t: 'buy', id: item.id }); sfx.pickup(); b.disabled = true; return; }
-    if (buy(world, item.id, shopPid)) { sfx.pickup(); renderShop(); hud(); }
+    if (buy(world, item.id, myId)) { sfx.pickup(); renderShop(); hud(); }
   });
   el.appendChild(b);
   return el;
 }
 function buildCard(item: BuildItem) {
-  const reason = cannotBuild(world, item.id, shopPid);
+  const reason = cannotBuild(world, item.id, myId);
   const el = document.createElement('div');
   el.className = 'card';
   el.innerHTML = `<div class="art">${icon(ITEM_ICON[item.id])}</div><div class="info"><div class="t">${item.name}</div><div class="d">${item.desc}</div></div>`;
@@ -678,17 +642,14 @@ function buildCard(item: BuildItem) {
   else { b.innerHTML = `${icon('madera')}<span>${item.wood}</span>`; b.setAttribute('aria-label', `Construir por ${item.wood} de madera`); }
   b.disabled = !!reason;
   b.className = 'wood';
-  b.addEventListener('click', () => { if (doBuild(item.id, shopPid)) renderShop(); });
+  b.addEventListener('click', () => { if (doBuild(item.id, myId)) renderShop(); });
   el.appendChild(b);
   return el;
 }
 function renderShop() {
-  const sp = getPlayer(world, shopPid);
+  const sp = me();
   $('shopCoins').textContent = String(sp.coins);
   $('shopWood').textContent = String(sp.wood);
-  const tabs = $('shopTabs');
-  tabs.hidden = mode !== 'local';
-  for (const b of tabs.querySelectorAll<HTMLButtonElement>('[data-pid]')) b.setAttribute('aria-selected', String(b.dataset.pid === shopPid));
   const body = $('shopBody');
   body.innerHTML = '';
   for (const sec of SECTIONS) {
@@ -707,25 +668,23 @@ function renderShop() {
 const buildPanel = $('buildPanel'), buildBtn = $('buildBtn');
 let buildSel = 0;
 function renderBuild() {
-  $('bpWood').textContent = String(getPlayer(world, buildPid).wood);
-  $('bpWho').textContent = mode === 'local' ? `Construir · ${getPlayer(world, buildPid).name}` : 'Construir';
+  $('bpWood').textContent = String(me().wood);
   const list = $('bpList');
   list.innerHTML = '';
   BUILDS.forEach((item, i) => {
-    const reason = cannotBuild(world, item.id, buildPid);
+    const reason = cannotBuild(world, item.id, myId);
     const b = document.createElement('button');
     b.className = `bp-item${i === buildSel ? ' sel' : ''}`;
     b.setAttribute('role', 'menuitem');
     b.disabled = !!reason;
     b.innerHTML = `${icon(ITEM_ICON[item.id])}<span class="n">${item.name}</span><span class="c">${icon('madera')}${item.wood}</span>`;
     if (reason) b.title = reason;
-    b.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); buildSel = i; if (doBuild(item.id, buildPid)) toggleBuild(false); });
+    b.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); buildSel = i; if (doBuild(item.id)) toggleBuild(false); });
     list.appendChild(b);
   });
 }
 function toggleBuild(open = buildPanel.hidden, pid = myId) {
   if (open && (!playing || paused)) return;
-  if (open) buildPid = pid;
   buildPanel.hidden = !open;
   buildBtn.setAttribute('aria-expanded', String(open));
   if (open) renderBuild();
@@ -745,7 +704,6 @@ function openShop(bonus: number, wood: number) {
   releaseStick('L'); releaseStick('R'); mouse.down = false;
   $('shopTitle').textContent = `Oleada ${world.wave} superada`;
   $('shopSub').textContent = bonus ? `Vida completa · +${bonus} monedas y +${wood} de madera` : 'Prepárate para la siguiente oleada';
-  shopPid = myId;
   renderShop();
   const nb = $<HTMLButtonElement>('nextWave');
   nb.disabled = false;
@@ -776,23 +734,14 @@ function clearScene() {
   structBars.clear();
   fx.clear();
 }
-function start(local = false) {
+function start() {
   unlock();
   leaveMulti();
   clearScene();
-  mode = local ? 'local' : 'solo'; myId = 'p1'; lastLocal = local;
-  shopPid = buildPid = 'p1';
+  mode = 'solo'; myId = 'p1';
   document.body.classList.remove('multi');
-  document.body.classList.toggle('local', local);
-  world = local
-    ? newWorld(Math.random, true, [{ id: 'p1', name: 'Jugador 1', character: savedChar(1) }, { id: 'p2', name: 'Jugador 2', character: savedChar(2) }])
-    : newWorld(Math.random, true, [{ id: 'p1', name: 'Tú', character: savedChar(1) }]);
+  world = newWorld(Math.random, true, [{ id: 'p1', name: 'Tú', character: savedChar() }]);
   lobbyEl.hidden = true;
-  playersHud.hidden = !local; teamKey = '';
-  if (local) {
-    banner('Cooperativo local', '2 jugadores', 'Cada uno con sus monedas, armas y madera');
-    if (isTouch && !connectedPads().length) toast('El jugador 2 necesita un mando o un teclado');
-  }
   hudKey = ''; prevCoins = 0;
   run.kills = 0; run.coins = 0;
   snapCam = true;
@@ -839,7 +788,6 @@ function gameOver() {
 function toTitle() {
   leaveMulti();
   mode = 'solo';
-  document.body.classList.remove('local');
   playersHud.hidden = true;
   playing = false;
   document.body.classList.remove('playing');
@@ -854,16 +802,14 @@ function renderRecords() {
   $('records').hidden = best === 0;
 }
 renderRecords();
-playBtn.addEventListener('click', () => openCharSelect(1, () => start()));
-$('retry').addEventListener('click', () => start(lastLocal));
-function startLocal() { openCharSelect(1, () => openCharSelect(2, () => start(true), 'Jugador 2'), 'Jugador 1'); }
+playBtn.addEventListener('click', () => openCharSelect(() => start()));
+$('retry').addEventListener('click', () => start());
 $('goMenu').addEventListener('click', toTitle);
 
 
 // ---------- Pausa ----------
 const pauseEl = $('pause'), pauseBtn = $('pauseBtn');
 let paused = false;
-const LOCAL_HELP = 'Jugador 1: WASD, ratón y clic (1-7 armas, V construir). Jugador 2: flechas, Intro dispara apuntando solo, coma y punto cambian de arma. Con mandos, cada jugador el suyo.';
 const pauseHelpSolo = isTouch ? 'El juego se pausa solo si cambias de app.' : 'P o Esc para pausar y continuar.';
 $('pauseHelp').textContent = pauseHelpSolo;
 function setPaused(v: boolean) {
@@ -875,7 +821,7 @@ function setPaused(v: boolean) {
   $('pauseTitle').textContent = mode === 'multi' ? 'Menú' : 'Pausa';
   $('pausePlayers').hidden = mode !== 'multi';
   $('pauseHelp').textContent = mode === 'multi' ? 'En línea los demás siguen jugando: tu soldado se queda quieto mientras estás en el menú.'
-    : mode === 'local' ? LOCAL_HELP : pauseHelpSolo;
+    : pauseHelpSolo;
   if (v && mode === 'multi') renderTeam();
   pauseBtn.innerHTML = icon(v ? 'play' : 'pause');
   pauseBtn.setAttribute('aria-label', v ? 'Continuar' : 'Pausar');
@@ -907,7 +853,7 @@ function flushEvents() {
   const at = (pid: string) => world.players.find((q) => q.id === pid) ?? self;
   const nameOf = (pid: string) => { const q = world.players.find((x) => x.id === pid); return q ? shownName(q) : names.get(pid) ?? 'Un jugador'; };
   for (const ev of world.events) {
-    const mine = !('pid' in ev) || ev.pid === myId || mode === 'local'; // en local los dos juegan aquí
+    const mine = !('pid' in ev) || ev.pid === myId;
     const p = 'pid' in ev && ev.pid ? at(ev.pid) : self;
     switch (ev.kind) {
       case 'shoot': {
@@ -925,7 +871,7 @@ function flushEvents() {
       case 'boss': sfx.wave(); shake = Math.max(shake, 0.5); banner('¡Llega el jefe!', `Oleada ${ev.wave}`, 'Un coloso blindado entra por el norte'); break;
       case 'hit': sfx.hit(); fx.sparks(ev.x, 0.8, ev.z, 0xffe7a0, 3, 4); break;
       case 'kill': {
-        const byMe = mode === 'local' || ev.pid === myId || (ev.pid === null && mode === 'solo');
+        const byMe = ev.pid === myId || (ev.pid === null && mode === 'solo');
         sfx.kill();
         if (byMe) { run.kills++; run.coins += ev.coins; }
         const c = ENEMY_COLOR[ev.type], big = ev.type === 'tank' || ev.type === 'jefe';
@@ -978,8 +924,7 @@ function flushEvents() {
       case 'down':
         fx.debris(p.x, 1, p.z, p.color, 10, 5); fx.smoke(p.x, 0.5, p.z, 4);
         if (mode === 'solo' || world.players.every((q) => !q.alive)) break; // en solitario cae y termina la partida
-        if (mode === 'local') toast(`${nameOf(ev.pid)} ha caído: vuelve al terminar la oleada`);
-        else if (ev.pid === myId) { sfx.hurt(); banner('Has caído', 'Fuera de combate', 'Vuelves al terminar la oleada si tu equipo resiste'); }
+        if (ev.pid === myId) { sfx.hurt(); banner('Has caído', 'Fuera de combate', 'Vuelves al terminar la oleada si tu equipo resiste'); }
         else toast(`${nameOf(ev.pid)} ha caído`);
         break;
       case 'join': if (ev.pid !== myId && mode === 'multi') toast(`${nameOf(ev.pid)} se ha unido`); break;
@@ -990,10 +935,11 @@ function flushEvents() {
 }
 
 // ---------- Multijugador cooperativo en línea ----------
-const lobbyEl = $('lobby'), nickEl = $<HTMLInputElement>('nick'), lobbyStatus = $('lobbyStatus');
-const roomChip = $<HTMLButtonElement>('roomChip'), playersHud = $('playersHud');
-let joinedRoom: { name: string; code: string | null; public: boolean } | null = null;
-let waitingFirstSnap = false, shopOpenedFor = -1, netClosing = false;
+// Al abrir Multijugador se ve la lista de servidores con cuántos juegan en cada uno; se entra tocando uno.
+const lobbyEl = $('lobby'), lobbyStatus = $('lobbyStatus');
+const roomChip = $('roomChip'), playersHud = $('playersHud');
+let joinedRoom: { name: string } | null = null;
+let waitingFirstSnap = false, shopOpenedFor = -1, netClosing = false, listTimer = 0;
 const readStr = (k: string) => { try { return localStorage.getItem(k) ?? ''; } catch { return ''; } };
 const writeStr = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
 
@@ -1001,135 +947,87 @@ function setLobbyStatus(text: string, error = false) {
   lobbyStatus.textContent = text;
   lobbyStatus.classList.toggle('error', error);
 }
-/** Valida el nombre antes de mandarlo (el servidor vuelve a comprobarlo). */
-function nickOrNull(): string | null {
-  const c = checkName(nickEl.value, 'jugador');
-  const msg = $('nickMsg');
-  if (!c.ok) { msg.textContent = c.reason; msg.classList.add('error'); nickEl.focus(); return null; }
-  msg.textContent = 'Usa un apodo. No pongas tu nombre real.'; msg.classList.remove('error');
-  nickEl.value = c.name;
-  writeStr('shooter.nick', c.name);
-  return c.name;
-}
 async function ensureConnected(): Promise<boolean> {
   if (net.connected) return true;
-  setLobbyStatus('Conectando con el servidor');
+  setLobbyStatus('Conectando');
   try {
     await net.connect();
     setLobbyStatus('');
     return true;
   } catch {
-    setLobbyStatus('El juego en línea no está disponible ahora. El cooperativo local de arriba funciona sin conexión.', true);
+    setLobbyStatus('No se puede conectar con los servidores ahora. Comprueba tu conexión a internet e inténtalo de nuevo.', true);
+    renderRooms(null);
     return false;
   }
 }
-function renderRooms(rooms: RoomInfo[], list = $('roomsList')) {
-  list.innerHTML = '';
-  if (!rooms.length) {
-    const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'No hay salas públicas. Crea una.';
+/** Lista de servidores: nombre, jugadores conectados (de 7) y qué están haciendo. */
+const STATE_TEXT = (r: RoomInfo) => r.players >= r.max ? 'Lleno' : ({
+  vacio: 'Vacío', empezando: 'Empezando la partida', batalla: `En batalla · Oleada ${r.wave}`, tienda: `En la tienda · Oleada ${r.wave}`, reiniciando: 'Empezando otra partida',
+} as const)[r.state];
+function renderRooms(rooms: RoomInfo[] | null) {
+  const list = $('roomsList');
+  if (!rooms) {
+    list.innerHTML = '';
+    const li = document.createElement('li'); li.className = 'empty';
+    li.innerHTML = `${icon('wifiOff')}<span>Sin conexión con los servidores</span>`;
     list.appendChild(li);
     return;
   }
+  if (list.querySelector('.empty')) list.innerHTML = '';
+  // Se actualizan los botones que ya existen (no se sustituyen): así no se pierde un toque ni el foco.
   for (const r of rooms) {
-    const li = document.createElement('li');
-    const full = r.players >= r.max;
-    li.innerHTML = `<span class="ic-wrap">${icon(r.main ? 'globe' : 'users')}</span><span class="rn"></span>`
-      + `<span class="rm">${r.players}/${r.max} · ${r.wave > 0 ? `Oleada ${r.wave}` : 'Esperando'}</span>`;
-    li.querySelector('.rn')!.textContent = r.name; // nombre escrito por jugadores: siempre como texto
-    const b = document.createElement('button');
-    b.className = 'ghost small';
+    let b = list.querySelector<HTMLButtonElement>(`.server[data-id="${r.id}"]`);
+    if (!b) {
+      b = document.createElement('button');
+      b.className = 'server';
+      b.dataset.id = r.id;
+      b.innerHTML = `<span class="sv-ic">${icon('globe')}</span><span class="sv-txt"><span class="sv-name"></span><span class="sv-state"></span></span>`
+        + `<span class="sv-count"><span class="sv-dots"></span><span class="sv-n"></span></span>`;
+      b.querySelector('.sv-name')!.textContent = r.name;
+      const id = r.id, name = r.name;
+      b.addEventListener('click', () => void joinServer(id, name));
+      const li = document.createElement('li');
+      li.appendChild(b);
+      list.appendChild(li);
+    }
+    const full = r.players >= r.max, state = STATE_TEXT(r);
+    b.classList.toggle('full', full);
+    b.classList.toggle('busy', r.players > 0);
     b.disabled = full;
-    b.innerHTML = full ? 'Llena' : `${icon('logIn')} Entrar`;
-    b.setAttribute('aria-label', full ? `${r.name}: sala llena` : `Entrar en ${r.name}`);
-    b.addEventListener('click', () => joinWith({ room: r.id }));
-    li.appendChild(b);
-    list.appendChild(li);
+    b.querySelector('.sv-state')!.textContent = state;
+    b.querySelector('.sv-n')!.textContent = `${r.players}/${r.max}`;
+    b.querySelector('.sv-dots')!.innerHTML = Array.from({ length: r.max }, (_, k) => `<i class="${k < r.players ? 'on' : ''}"></i>`).join('');
+    b.setAttribute('aria-label', `${r.name}: ${r.players} de ${r.max} jugadores. ${state}`);
   }
 }
 async function openLobby(message = '') {
   unlock();
-  nickEl.value = readStr('shooter.nick');
   lobbyEl.hidden = false;
   setLobbyStatus(message, !!message);
-  $('localBtn').focus({ preventScroll: true });
   lobbyEl.querySelector('.lobby-panel')!.scrollTop = 0;
-  if (await ensureConnected()) { net.send({ t: 'list' }); if (message) setLobbyStatus(message, true); }
+  if (await ensureConnected()) {
+    net.send({ t: 'list' });
+    if (message) setLobbyStatus(message, true);
+    // La lista se actualiza sola mientras está abierta
+    clearInterval(listTimer);
+    listTimer = window.setInterval(() => { if (lobbyEl.hidden || !net.connected) clearInterval(listTimer); else net.send({ t: 'list' }); }, 2000);
+  }
+  ($('roomsList').querySelector('button:not([disabled])') as HTMLElement | null)?.focus({ preventScroll: true });
 }
 function closeLobby() {
   lobbyEl.hidden = true;
+  clearInterval(listTimer);
   if (mode !== 'multi') { netClosing = true; net.close(); netClosing = false; }
   $('multiBtn').focus();
 }
-async function joinWith(target: { main?: boolean; room?: string; code?: string }) {
-  const name = nickOrNull();
-  if (!name || !(await ensureConnected())) return;
-  setLobbyStatus('Entrando en la sala');
-  net.send({ t: 'join', name, character: savedChar(1), ...target });
+async function joinServer(id: string, name: string) {
+  if (!(await ensureConnected())) return;
+  setLobbyStatus(`Entrando en ${name}`);
+  net.send({ t: 'join', room: id, character: savedChar() });
 }
 $('multiBtn').addEventListener('click', () => void openLobby());
-$('localBtn').addEventListener('click', startLocal);
-function setShopPid(pid: string) { shopPid = pid; renderShop(); }
-for (const b of document.querySelectorAll<HTMLButtonElement>('#shopTabs [data-pid]')) b.addEventListener('click', () => setShopPid(b.dataset.pid!));
 $('lobbyClose').addEventListener('click', closeLobby);
-$('joinMain').addEventListener('click', () => void joinWith({ main: true }));
-$('roomsRefresh').addEventListener('click', async () => { if (await ensureConnected()) net.send({ t: 'list' }); });
-$('joinCode').addEventListener('click', () => {
-  const code = $<HTMLInputElement>('roomCode').value.trim().toUpperCase();
-  if (code.length !== 5) { setLobbyStatus('El código de una sala privada tiene 5 caracteres.', true); return; }
-  void joinWith({ code });
-});
-const privBtn = $('roomPrivate');
-privBtn.addEventListener('click', () => privBtn.setAttribute('aria-checked', String(privBtn.getAttribute('aria-checked') !== 'true')));
-$('createRoom').addEventListener('click', async () => {
-  const name = nickOrNull();
-  if (!name) return;
-  const roomName = $<HTMLInputElement>('roomName').value.trim();
-  if (roomName) {
-    const c = checkName(roomName, 'sala');
-    if (!c.ok) { setLobbyStatus(c.reason, true); return; }
-  }
-  if (!(await ensureConnected())) return;
-  setLobbyStatus('Creando la sala');
-  net.send({ t: 'create', name, roomName, public: privBtn.getAttribute('aria-checked') !== 'true', character: savedChar(1) });
-});
-nickEl.addEventListener('input', () => { const m = $('nickMsg'); m.textContent = 'Usa un apodo. No pongas tu nombre real.'; m.classList.remove('error'); });
-nickEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') void joinWith({ main: true }); });
-$('roomCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('joinCode').click(); });
-
 net.onRooms = (r) => renderRooms(r);
-/** Unirse a un amigo: busca su nombre en las salas públicas. Si solo está en una, entra directamente. */
-function setFriendMsg(text: string, error = false) {
-  const el = $('friendMsg');
-  el.textContent = text;
-  el.classList.toggle('error', error);
-}
-async function findFriend() {
-  const friend = $<HTMLInputElement>('friendName').value.trim();
-  if (friend.length < 2) { setFriendMsg('Escribe el nombre de tu amigo.', true); return; }
-  if (!nickOrNull() || !(await ensureConnected())) return;
-  $('friendResults').hidden = true;
-  setFriendMsg(`Buscando a ${friend}`);
-  net.send({ t: 'find', name: friend });
-}
-net.onFound = (name, rooms) => {
-  const list = $('friendResults');
-  if (!rooms.length) {
-    list.hidden = true;
-    setFriendMsg(`No hay nadie llamado ${name} en las salas públicas. Si está en una sala privada, pídele el código.`, true);
-    return;
-  }
-  if (rooms.length === 1 && rooms[0].players < rooms[0].max) {
-    list.hidden = true;
-    setFriendMsg(`${name} está en ${rooms[0].name}. Entrando`);
-    void joinWith({ room: rooms[0].id });
-    return;
-  }
-  setFriendMsg(rooms.length > 1 ? `Hay ${rooms.length} jugadores llamados ${name}. Elige su sala:` : `${name} está en una sala llena.`, rooms.length === 1);
-  list.hidden = false;
-  renderRooms(rooms, list);
-};
-$('findFriend').addEventListener('click', () => void findFriend());
-$('friendName').addEventListener('keydown', (e) => { if (e.key === 'Enter') void findFriend(); });
 net.onError = (msg) => { if (!lobbyEl.hidden) setLobbyStatus(msg, true); else toast(msg); };
 net.onNotice = (msg) => toast(msg);
 net.onJoined = (room) => {
@@ -1161,18 +1059,12 @@ function beginMulti() {
   setPaused(false);
   const r = joinedRoom!;
   roomChip.hidden = false;
-  roomChip.innerHTML = `${icon(r.public ? 'globe' : 'lock')}<span></span>`;
-  roomChip.querySelector('span')!.textContent = r.code ?? r.name; // el candado ya indica que es privada
-  roomChip.setAttribute('aria-label', r.code ? `Sala privada, código ${r.code}. Pulsa para copiarlo` : `Sala pública ${r.name}`);
-  roomChip.disabled = !r.code;
+  roomChip.innerHTML = `${icon('globe')}<span></span>`;
+  roomChip.querySelector('span')!.textContent = r.name;
+  roomChip.setAttribute('aria-label', r.name);
   playersHud.hidden = false;
-  banner(r.name, 'Cooperativo en línea', r.code ? `Comparte el código ${r.code} con tus compañeros` : 'Defended la línea juntos');
+  banner(r.name, 'Cooperativo en línea', `Juegas como ${me()?.name ?? ''}`);
 }
-roomChip.addEventListener('click', async () => {
-  const code = joinedRoom?.code;
-  if (!code) return;
-  try { await navigator.clipboard.writeText(code); toast('Código copiado'); } catch { toast(`Código de la sala: ${code}`); }
-});
 
 /** Sale del modo en línea (si estaba) y deja un mundo local para la pantalla de título. */
 function leaveMulti() {
@@ -1225,13 +1117,8 @@ function renderPlayers() {
     li.className = q.alive ? '' : 'down';
     li.style.setProperty('--pc', `#${q.color.toString(16).padStart(6, '0')}`);
     li.innerHTML = '<span class="dot"></span><span class="pn"></span><span class="ph"></span>';
-    li.querySelector('.pn')!.textContent = mode === 'local' ? q.name : q.id === myId ? `${q.name} (tú)` : shownName(q);
+    li.querySelector('.pn')!.textContent = q.id === myId ? `${q.name} (tú)` : shownName(q);
     li.querySelector('.ph')!.textContent = q.alive ? `${q.hp}/${q.maxHp}` : 'Caído';
-    if (mode === 'local') { // en local se ven las monedas de los dos
-      const c = document.createElement('span'); c.className = 'pc';
-      c.innerHTML = `${icon('coins')}<span></span>`; c.querySelector('span')!.textContent = String(q.coins);
-      li.appendChild(c);
-    }
     playersHud.appendChild(li);
   }
   if (!pauseEl.hidden) renderTeam();
@@ -1245,7 +1132,7 @@ function renderTeam() {
   const others = world.players.filter((q) => q.id !== myId);
   if (!others.length) {
     const li = document.createElement('li'); li.className = 'empty';
-    li.textContent = joinedRoom?.code ? `Estás solo. Comparte el código ${joinedRoom.code}.` : 'Estás solo en la sala por ahora.';
+    li.textContent = `Estás solo en ${joinedRoom?.name ?? 'el servidor'} por ahora.`;
     list.appendChild(li);
     return;
   }
@@ -1282,7 +1169,7 @@ function renderTeam() {
 }
 for (const b of document.querySelectorAll<HTMLButtonElement>('#reportDlg [data-reason]'))
   b.addEventListener('click', () => {
-    if (reportPid) net.send({ t: 'report', pid: reportPid, reason: b.dataset.reason as 'nombre' | 'conducta' });
+    if (reportPid) net.send({ t: 'report', pid: reportPid, reason: 'conducta' });
     reportPid = '';
     $('reportDlg').hidden = true;
   });
@@ -1290,12 +1177,12 @@ $('reportCancel').addEventListener('click', () => { reportPid = ''; $('reportDlg
 
 // ---------- Elegir soldado ----------
 const charSelEl = $('charSelect');
-/** Personaje guardado de cada jugador (1: tú / jugador 1; 2: jugador 2 en cooperativo local). */
-function savedChar(n: 1 | 2): CharacterId {
-  const v = readStr(n === 1 ? 'shooter.personaje' : 'shooter.personaje2');
-  return isCharacter(v) ? v : n === 1 ? 'sargento' : 'coloso';
+/** Soldado elegido la última vez. */
+function savedChar(): CharacterId {
+  const v = readStr('shooter.personaje');
+  return isCharacter(v) ? v : 'sargento';
 }
-let csWho: 1 | 2 = 1, csSel: CharacterId = 'sargento', csDone: () => void = () => {}, csBack: () => void = () => {};
+let csSel: CharacterId = 'sargento', csDone: () => void = () => {}, csBack: () => void = () => {};
 let portraits: Partial<Record<CharacterId, string>> = {};
 /** Retratos 3D de los soldados, dibujados una vez con un renderizador aparte. */
 function makePortraits() {
@@ -1348,9 +1235,9 @@ function renderCharSelect() {
   }
 }
 let csLabel = 'Tu soldado';
-function openCharSelect(who: 1 | 2, done: () => void, label = 'Tu soldado', back: () => void = () => {}) {
+function openCharSelect(done: () => void, label = 'Tu soldado', back: () => void = () => {}) {
   unlock();
-  csWho = who; csLabel = label; csSel = savedChar(who);
+  csLabel = label; csSel = savedChar();
   csDone = done; csBack = back;
   charSelEl.hidden = false;
   makePortraits();
@@ -1364,7 +1251,7 @@ function moveCharSel(dir: 1 | -1) {
   ($('csGrid').querySelector('[aria-checked="true"]') as HTMLElement | null)?.focus({ preventScroll: true });
 }
 $('csGo').addEventListener('click', () => {
-  writeStr(csWho === 1 ? 'shooter.personaje' : 'shooter.personaje2', csSel);
+  writeStr('shooter.personaje', csSel);
   charSelEl.hidden = true;
   renderLobbyChar();
   csDone();
@@ -1377,10 +1264,10 @@ charSelEl.addEventListener('keydown', (e) => {
 });
 /** Personaje elegido para jugar en línea (en el vestíbulo). */
 function renderLobbyChar() {
-  const c = savedChar(1);
+  const c = savedChar();
   $('lobbyCharName').textContent = `${CHARACTERS[c].name} · ${CHARACTERS[c].role}`;
 }
-$('lobbyChar').addEventListener('click', () => openCharSelect(1, () => $('lobbyChar').focus(), 'Tu soldado en línea'));
+$('lobbyChar').addEventListener('click', () => openCharSelect(() => $('lobbyChar').focus(), 'Tu soldado en línea'));
 renderLobbyChar();
 
 // ---------- Calidad gráfica ----------
@@ -1467,12 +1354,7 @@ function frame(now: number) {
   // En línea el tiempo real cuenta (el servidor no espera): la predicción usa el intervalo real.
   if (mode === 'multi' || waitingFirstSnap) multiFrame(Math.min(0.25, rawDt));
   else if (playing && !paused && !document.hidden && world.phase === 'fight') {
-    if (mode === 'local') {
-      getPlayer(world, 'p1').input = readInput();
-      getPlayer(world, 'p2').input = readInputP2();
-      step(world, null, dt);
-      leash(world, LEASH);
-    } else step(world, readInput(), dt);
+    step(world, readInput(), dt);
     flushEvents();
   }
   hud();
@@ -1610,20 +1492,8 @@ function frame(now: number) {
 
   // Cámara y sol siguen al jugador
   const portrait = camera.aspect < 1;
-  // Cooperativo local: la cámara se centra entre los jugadores y se aleja si se separan.
-  let cx = p.x, cz = p.z, spreadK = 1;
-  if (mode === 'local') {
-    const group = world.players.filter((q) => q.alive);
-    const g = group.length ? group : world.players;
-    cx = g.reduce((s, q) => s + q.x, 0) / g.length;
-    cz = g.reduce((s, q) => s + q.z, 0) / g.length;
-    let spread = 0;
-    for (const a of g) for (const b of g) spread = Math.max(spread, Math.hypot(a.x - b.x, a.z - b.z));
-    spreadK = 1 + Math.min(0.6, Math.max(0, spread - 8) / 26);
-  }
-  camZoom += (spreadK - camZoom) * (1 - Math.exp(-dt * 3));
-  const h = (portrait ? 26 : 17) * ZOOM * camZoom, back = (portrait ? 11 : 11.5) * ZOOM * camZoom;
-  camGoal.set(cx, h, cz + back);
+  const h = (portrait ? 26 : 17) * ZOOM, back = (portrait ? 11 : 11.5) * ZOOM;
+  camGoal.set(p.x, h, p.z + back);
   // El primer fotograma (y al empezar partida) coloca la cámara directamente; después la sigue con suavidad.
   if (snapCam) { camera.position.copy(camGoal); snapCam = false; } else camera.position.lerp(camGoal, 1 - Math.exp(-dt * 6));
   shake = Math.max(0, shake - dt * 2);
@@ -1639,7 +1509,7 @@ function frame(now: number) {
   if (!loaded) { loaded = true; const l = $('loading'); l.classList.add('done'); setTimeout(() => l.remove(), 450); }
   requestAnimationFrame(frame);
 }
-let loaded = false, snapCam = true, camZoom = 1;
+let loaded = false, snapCam = true;
 requestAnimationFrame(frame);
 
 // Para pruebas automatizadas

@@ -420,30 +420,10 @@ body:not(.playing) #buildPanel { display: none; }
 .lobby-panel .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .lobby-panel h2 { margin: 2px 0 0; font-size: 2rem; line-height: 1; }
 .lobby-body { display: flex; flex-direction: column; gap: 14px; }
-.lobby-body .primary.big { min-width: 0; width: 100%; }
-.field { display: flex; flex-direction: column; gap: 6px; font-weight: 600; }
-.field small { color: var(--muted); font-weight: 400; font-size: 0.8rem; }
-.field small.error, .lobby-status.error { color: #ff8a8d; }
 .lobby-body input { font: inherit; font-weight: 600; color: var(--text); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line-strong);
   padding: 12px 14px; min-width: 0; user-select: text; -webkit-user-select: text; border-radius: 0; }
-.lobby-body input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(255, 200, 61, 0.35); }
-#roomCode { text-transform: uppercase; letter-spacing: 0.3em; font-family: var(--display); width: 9em; }
 .lobby-status { margin: 0; min-height: 1.2em; color: var(--muted); font-size: 0.9rem; }
 .lobby-status:empty { display: none; }
-.lobby-sec { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
-.lobby-sec h3, .team h3 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 0.85rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
-.lobby-sec .sec-head { display: flex; align-items: center; justify-content: space-between; }
-.lobby-sec .row { display: flex; align-items: center; gap: 10px; }
-.lobby-sec .row input { flex: 1; }
-.lobby-sec .row .lbl { font-weight: 600; font-size: 0.9rem; color: var(--muted); }
-.rooms { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
-.rooms li { display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto auto; column-gap: 10px; align-items: center;
-  background: rgba(0, 0, 0, 0.22); border: 1px solid var(--line); padding: 8px 8px 8px 12px; }
-.rooms li.empty, .team li.empty { display: block; color: var(--muted); font-size: 0.9rem; text-align: center; padding: 12px; }
-.rooms .ic-wrap { grid-row: span 2; color: var(--accent); display: flex; }
-.rooms .rn { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rooms .rm { grid-column: 2; font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
-.rooms button { grid-row: 1 / span 2; grid-column: 3; }
 .ghost.small { padding: 8px 12px; font-size: 0.82rem; gap: 6px; }
 .ghost:disabled { opacity: 0.5; cursor: default; }
 
@@ -463,25 +443,12 @@ body:not(.playing) #buildPanel { display: none; }
 @media (max-height: 500px) and (orientation: landscape) {
   .players-hud { display: none; } /* en horizontal bajo, el equipo se consulta en el menú */
 }
-.lobby-body .help a { color: var(--accent); }
 .team li { flex-wrap: wrap; }
 .team .pn { flex: 1 1 calc(100% - 18px); min-width: 0; }
 .team li .ghost.small { flex: 1; }
-.lobby-body .primary.big { font-size: 1.1rem; padding: 14px 20px; }
 
 /* ---------- Cooperativo local ---------- */
-.lobby-local { display: flex; flex-direction: column; gap: 8px; }
-.lobby-local h3, .lobby-divider { margin: 0; font-family: var(--display); font-weight: 600; font-size: 0.85rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
-.lobby-divider { border-top: 1px solid var(--line); padding-top: 12px; }
-.ghost.big-ghost { padding: 14px 20px; font-size: 1rem; width: 100%; }
-.shop-tabs { grid-template-columns: repeat(2, 1fr); margin-top: 10px; max-width: 320px; }
-.shop-tabs[hidden] { display: none; }
-.shop-tabs button[aria-selected="true"] { background: var(--accent); color: #241a00; }
-.players-hud .pc { display: inline-flex; align-items: center; gap: 3px; font-family: var(--display); font-variant-numeric: tabular-nums; color: var(--accent); }
-.players-hud .pc .ic { width: 13px; height: 13px; }
 @media (max-width: 560px) and (orientation: portrait) {
-  body.local #rapid { top: calc(env(safe-area-inset-top) + 210px); }
-  body.local #toast { top: calc(env(safe-area-inset-top) + 238px); }
 }
 
 /* ---------- Jefe ---------- */
@@ -555,11 +522,10 @@ body.boss #toast { top: calc(env(safe-area-inset-top) + 160px); }
   .boss-bar { width: 44vw; padding: 3px 6px; gap: 5px; }
   .boss-bar .lbl { font-size: 0.6rem; letter-spacing: 0.1em; }
   .players-hud li { padding: 2px 5px; font-size: 0.7rem; gap: 5px; }
-  .players-hud .pc { display: none; } /* en móvil vertical, las monedas de cada uno se ven en la tienda */
   body.boss #rapid { top: calc(env(safe-area-inset-top) + 140px); }
   body.boss #toast { top: calc(env(safe-area-inset-top) + 168px); }
-  body.boss.local #rapid, body.boss.multi #rapid { top: calc(env(safe-area-inset-top) + 210px); }
-  body.boss.local #toast, body.boss.multi #toast { top: calc(env(safe-area-inset-top) + 238px); }
+  body.boss.multi #rapid { top: calc(env(safe-area-inset-top) + 210px); }
+  body.boss.multi #toast { top: calc(env(safe-area-inset-top) + 238px); }
 }
 @media (max-height: 500px) and (orientation: landscape) {
   .boss-bar { width: 30vw; padding: 2px 6px; }
@@ -583,3 +549,32 @@ body.boss #toast { top: calc(env(safe-area-inset-top) + 160px); }
 @media (min-width: 561px) and (max-width: 900px) {
   .boss-bar { width: 40vw; }
 }
+
+/* ---------- Lista de servidores ---------- */
+.room-chip { cursor: default; }
+.servers { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.servers li.empty { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--muted); padding: 18px; background: rgba(0, 0, 0, 0.22); border: 1px solid var(--line); }
+.server { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; text-align: left; color: var(--text); font: inherit;
+  background: rgba(0, 0, 0, 0.25); border: 1px solid var(--line); transition: border-color 0.12s, background 0.12s;
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)); }
+.server:hover:not(:disabled), .server:focus-visible { border-color: var(--accent); background: rgba(255, 200, 61, 0.08); }
+.server:active:not(:disabled) { transform: translateY(1px); }
+.server:disabled { cursor: default; opacity: 0.55; }
+.sv-ic { display: flex; color: var(--muted); }
+.server.busy .sv-ic { color: var(--accent); }
+.sv-ic .ic { width: 26px; height: 26px; }
+.sv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sv-name { font-family: var(--display); font-weight: 700; font-size: 1.15rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.sv-state { font-size: 0.8rem; color: var(--muted); }
+.server.busy .sv-state { color: var(--ok); }
+.server.full .sv-state { color: var(--danger); }
+.sv-count { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.sv-dots { display: flex; gap: 3px; }
+.sv-dots i { width: 8px; height: 12px; background: rgba(255, 255, 255, 0.12); transform: skewX(-12deg); }
+.sv-dots i.on { background: var(--accent); }
+.sv-n { font-family: var(--display); font-weight: 600; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+
+/* Mensajes de la lista de servidores y del panel del equipo */
+.lobby-status.error { color: #ff8a8d; }
+.team h3 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 0.85rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+.team li.empty { display: block; color: var(--muted); font-size: 0.9rem; text-align: center; padding: 12px; }

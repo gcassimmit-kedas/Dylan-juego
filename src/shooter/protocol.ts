@@ -5,7 +5,8 @@ import type {
   EnemyType, BulletKind, PickupType, ObstacleKind, WeaponId, ItemId, ToolId, BuildId, Phase,
 } from './sim.ts';
 
-export const MAX_PLAYERS = 8;
+/** Jugadores como máximo en cada servidor. */
+export const MAX_PLAYERS = 7;
 export const SIM_HZ = 60;
 export const SNAPSHOT_EVERY = 3; // 60 / 3 = 20 instantáneas por segundo
 export const SHOP_SECONDS = 30;
@@ -25,25 +26,21 @@ export function reportsToKick(players: number, isPublic: boolean): number {
   return isPublic ? Math.max(MIN_REPORTS_PUBLIC, Math.min(REPORTS_TO_KICK, others)) : Math.min(REPORTS_TO_KICK, others);
 }
 
-export interface RoomInfo { id: string; name: string; players: number; max: number; wave: number; main: boolean }
-
-/** Sala vista por la búsqueda de amigos: solo las públicas se pueden encontrar por el nombre de un jugador. */
-export interface SearchableRoom { info: RoomInfo; isPublic: boolean; playerKeys: string[] }
-/**
- * Salas públicas donde juega alguien con ese nombre (clave de nameKey, coincidencia exacta).
- * Las salas privadas nunca aparecen: a ellas solo se entra con su código.
- */
-export function findFriendRooms(rooms: SearchableRoom[], key: string, limit = 10): RoomInfo[] {
-  if (!key) return [];
-  return rooms.filter((r) => r.isPublic && r.playerKeys.includes(key)).map((r) => r.info).slice(0, limit);
+/** Un servidor de la lista: cuántos juegan ahora y si están en plena batalla. */
+export type RoomState = 'vacio' | 'empezando' | 'batalla' | 'tienda' | 'reiniciando';
+export interface RoomInfo { id: string; name: string; players: number; max: number; wave: number; state: RoomState }
+/** Estado de un servidor para la lista. */
+export function roomState(players: number, w: { wave: number; phase: Phase; over: boolean }): RoomState {
+  if (players === 0) return 'vacio';
+  if (w.over) return 'reiniciando';
+  if (w.phase === 'shop') return 'tienda';
+  return w.wave === 0 ? 'empezando' : 'batalla';
 }
-export type ReportReason = 'nombre' | 'conducta';
+export type ReportReason = 'conducta';
 
 export type ClientMsg =
   | { t: 'list' }
-  | { t: 'find'; name: string }
-  | { t: 'join'; room?: string; code?: string; main?: boolean; name: string; character?: string }
-  | { t: 'create'; roomName: string; public: boolean; name: string; character?: string }
+  | { t: 'join'; room: string; character?: string }
   | { t: 'in'; i: [number, number, number, number, number] }
   | { t: 'buy'; id: ItemId } | { t: 'weapon'; id: WeaponId } | { t: 'tool'; id: ToolId } | { t: 'build'; id: BuildId }
   | { t: 'ready' } | { t: 'leave' }
@@ -51,8 +48,7 @@ export type ClientMsg =
 
 export type ServerMsg =
   | { t: 'rooms'; rooms: RoomInfo[] }
-  | { t: 'found'; name: string; rooms: RoomInfo[] }
-  | { t: 'joined'; you: string; room: { id: string; name: string; code: string | null; public: boolean } }
+  | { t: 'joined'; you: string; room: { id: string; name: string } }
   | { t: 's'; s: Snapshot }
   | { t: 'error'; msg: string }
   | { t: 'notice'; msg: string }

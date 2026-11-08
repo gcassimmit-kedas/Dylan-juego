@@ -22,7 +22,7 @@ const wait = (p, ms) => p.waitForTimeout(ms);
 async function open(browser, dev) {
   const ctx = await browser.newContext({ ...dev, id: undefined });
   const p = await ctx.newPage();
-  await p.addInitScript(() => { try { localStorage.setItem('shooter.personaje', 'sargento'); localStorage.setItem('shooter.personaje2', 'coloso'); } catch { /* sin almacenamiento */ } });
+  await p.addInitScript(() => { try { localStorage.setItem('shooter.personaje', 'sargento'); } catch { /* sin almacenamiento */ } });
   await p.goto(BASE + '/');
   await p.waitForSelector('#loading', { state: 'detached', timeout: 60000 });
   return p;
@@ -86,17 +86,12 @@ async function shoot(browser, dev) {
   await p.screenshot({ path: path.join(OUT, `${dev.id}-3-soldados.png`) });
   await p.context().close();
 
-  // 5. Cooperativo (dos soldados con su nombre)
+  // 5. Lista de servidores (con el servidor en marcha)
   p = await open(browser, dev);
-  await p.click('#multiBtn'); await p.click('#localBtn'); await p.click('#csGo'); await p.click('#csGo');
-  await p.waitForFunction(() => window.__mode() === 'local' && window.__world().wave >= 1, null, { timeout: 90000 });
-  await p.evaluate(() => { const [a, b] = window.__world().players; b.x = a.x + 3.5; b.z = a.z + 0.5; });
-  await stage(p, {});
-  await holdFire(p, -1, -0.3);
-  await p.keyboard.down('Enter');
-  await wait(p, 2200);
-  await p.screenshot({ path: path.join(OUT, `${dev.id}-5-cooperativo.png`) });
-  await p.keyboard.up('Enter');
+  await p.click('#multiBtn');
+  await p.waitForSelector('#roomsList .server', { timeout: 30000 });
+  await wait(p, 900);
+  await p.screenshot({ path: path.join(OUT, `${dev.id}-5-servidores.png`) });
   await p.context().close();
 }
 

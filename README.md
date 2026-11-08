@@ -81,36 +81,23 @@ Los robots no rodean tus estructuras: **las atacan** hasta romperlas (cada una m
 reales (pone sombras simples bajo los personajes) y baja la resolución. Se puede forzar con `index.html?calidad=alta`
 o `?calidad=baja`.
 
-### Cooperativo local (2 jugadores, sin conexión)
-
-Título > **Multijugador** > **Cooperativo local**. Dos jugadores en la misma pantalla, sin servidor ni internet:
-
-- **Jugador 1:** WASD, ratón para apuntar y clic para disparar (1-7 armas, V construir), o la pantalla táctil.
-- **Jugador 2:** flechas para moverse, Intro (o Mayús derecha) dispara apuntando solo al robot más cercano, coma y punto cambian de arma.
-- **Mandos:** con dos mandos, uno para cada jugador; con uno, es del jugador 2.
-
-Cada jugador tiene sus monedas, madera y armas (la tienda tiene una pestaña por jugador; con mando, LB/RB cambia de pestaña).
-La cámara se coloca entre los dos y se aleja si se separan; no pueden alejarse más de 24 metros.
-
 ### Multijugador cooperativo en línea
 
-Hasta 8 jugadores contra las mismas oleadas (Título > **Multijugador**):
-
-- **Servidor público** principal: si se llena, se abre otra sala automáticamente.
-- **Salas públicas** que cualquiera crea y aparecen en la lista.
-- **Salas privadas** con un código de 5 caracteres (se copia pulsando el chip de la sala).
-- **Unirse a un amigo**: escribe su nombre y entras en su sala aunque esté en plena batalla (solo salas públicas; a las privadas, con el código).
+Título > **Multijugador** abre la **lista de servidores** (Alfa, Bravo, Charlie, Delta, Eco y Foxtrot). Cada uno muestra
+en vivo cuántos jugadores tiene (hasta **7**) y si están en batalla o en la tienda. Se entra tocando uno, aunque estén en
+plena oleada. No hay que escribir nada: tu nombre es tu soldado y un número ("Coloso 2"). Para jugar con un amigo,
+elegid el mismo servidor.
 
 Cada jugador tiene sus monedas, madera, armas y equipo; la puntuación es del equipo. Las oleadas crecen un 50 % por
 jugador extra. Si caes, vuelves al terminar la oleada; la partida acaba cuando cae todo el equipo y la sala empieza otra
 sola a los 8 segundos. La tienda dura 30 segundos o hasta que todos pulsan "Estoy listo".
 
-Moderación: nombres filtrados en el servidor, y en el menú de la partida se puede **bloquear** (deja de verse su
-nombre) o **denunciar** a un jugador. Ver `docs/TIENDAS.md`.
+En el menú de la partida se puede **bloquear** o **denunciar** a un jugador. Ver `docs/TIENDAS.md`.
 
 ```bash
 npm run start                      # compila y arranca el servidor de juego en http://localhost:8080
 PORT=9000 npm run server           # solo el servidor (sirve dist/ y el WebSocket en /ws)
+SERVERS=Alfa,Bravo npm run server  # otra lista de servidores
 npm run dev                        # desarrollo: Vite redirige /ws al servidor del puerto 8080
 ```
 
