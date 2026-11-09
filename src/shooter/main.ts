@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  newWorld, step, buy, cannotBuy, owns, nextWave, useTool, selectWeapon, dronePos, build, cannotBuild, getPlayer,
+  newWorld, step, buy, cannotBuy, owns, nextWave, useTool, selectWeapon, dronePos, build, cannotBuild, getPlayer, autoAim, leash,
   CHARACTERS, CHARACTER_ORDER, isCharacter, PLAYER_COLORS, type CharacterId,
   SHOP, WEAPONS, WEAPON_ORDER, TOOL_ORDER, BUILDS,
   type World, type Input, type Player, type Bullet, type Pickup, type EnemyType, type WeaponId, type ToolId, type ShopItem, type ShopKind, type BuildId, type BuildItem,
@@ -71,8 +71,18 @@ const SUN_OFFSET = SUN_DIR.clone().multiplyScalar(70);
 
 let world: World = newWorld();
 const A = world.arena;
-/** solo: un jugador. multi: cooperativo en línea (el mundo lo manda el servidor). */
-let mode: 'solo' | 'multi' = 'solo';
+/**
+ * solo: un jugador. local: 2 jugadores en el mismo dispositivo (sin conexión).
+ * multi: cooperativo en línea (el mundo lo manda el servidor).
+ */
+let mode: 'solo' | 'local' | 'multi' = 'solo';
+/** 2 jugadores: distancia máxima entre ellos para que quepan en la cámara. */
+const LEASH = 24;
+/**
+ * 2 jugadores: a quién se refieren la barra de armas y el equipo (gearPid), la tienda (shopPid)
+ * y el menú de construir (buildPid).
+ */
+let gearPid = 'p1', shopPid = 'p1', buildPid = 'p1';
 let myId = 'p1';
 const net = new NetSession();
 const me = (): Player => getPlayer(world, myId);
@@ -236,7 +246,7 @@ function soldierFor(q: Player): Soldier {
     scene.add(sd.root);
   }
   // Cartel con el nombre sobre los demás jugadores (en línea)
-  const text = mode === 'multi' && q.id !== myId ? shownName(q) : '';
+  const text = mode === 'multi' && q.id !== myId ? shownName(q) : mode === 'local' ? q.name : '';
   if (text !== sd.labelText) {
     if (sd.label) { scene.remove(sd.label); sd.label.material.map?.dispose(); sd.label.material.dispose(); sd.label = null; }
     sd.labelText = text;
@@ -362,11 +372,17 @@ addEventListener('keydown', (e) => {
   keys.add(e.code);
   if (e.code === 'Space') e.preventDefault();
   if (!playing || world.phase !== 'fight') return;
+  if (mode === 'local') {
+    // Jugador 2 con teclado: flechas, Intro dispara apuntando solo, coma y punto cambian de arma.
+    if (P2_FIRE.includes(e.code) || e.code.startsWith('Arrow')) e.preventDefault();
+    if ((e.code === 'Period' || e.code === 'Comma') && !padFor('p2')) cycleWeapon('p2', e.code === 'Period' ? 1 : -1);
+    if (e.code === 'Slash' || e.code === 'Minus') toggleBuild(undefined, 'p2');
+  }
   const n = Number(e.key);
   if (e.key >= '0' && e.key <= '9') pickWeapon(WEAPON_ORDER[n === 0 ? 9 : n - 1]);
-  if (e.code === 'KeyV') toggleBuild();
+  if (e.code === 'KeyV') toggleBuild(undefined, 'p1');
   if (e.code === 'KeyQ' || e.code === 'KeyE') cycleWeapon(myId, e.code === 'KeyE' ? 1 : -1);
-  for (const t of TOOL_ORDER) if (e.code === `Key${TOOL_KEY[t]}`) tool(t);
+  for (const t of TOOL_ORDER) if (e.code === `Key${TOOL_KEY[t]}`) tool(t, 'p1');
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => keys.clear());
@@ -417,11 +433,25 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 function readInput(): Input {
   const inp: Input = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false };
-  if (keys.has('KeyA') || keys.has('ArrowLeft')) inp.moveX -= 1;
-  if (keys.has('KeyD') || keys.has('ArrowRight')) inp.moveX += 1;
-  if (keys.has('KeyW') || keys.has('ArrowUp')) inp.moveZ -= 1;
-  if (keys.has('KeyS') || keys.has('ArrowDown')) inp.moveZ += 1;
+  const arrows = mode !== 'local'; // con 2 jugadores las flechas son del jugador 2
+  if (keys.has('KeyA') || (arrows && keys.has('ArrowLeft'))) inp.moveX -= 1;
+  if (keys.has('KeyD') || (arrows && keys.has('ArrowRight'))) inp.moveX += 1;
+  if (keys.has('KeyW') || (arrows && keys.has('ArrowUp'))) inp.moveZ -= 1;
+  if (keys.has('KeyS') || (arrows && keys.has('ArrowDown'))) inp.moveZ += 1;
   if (sticks.L) { inp.moveX = sticks.L.dx; inp.moveZ = sticks.L.dy; }
+  if (mode === 'local') {
+    // 2 jugadores: el jugador 1 apunta con el ratón; en pantalla táctil (media pantalla cada uno) apunta y dispara solo.
+    const g = padFor('p1');
+    if (g) { padInput(inp, g); return inp; }
+    if (mouse.active && !sticks.L) {
+      ndc.set((mouse.x / innerWidth) * 2 - 1, -(mouse.y / innerHeight) * 2 + 1);
+      ray.setFromCamera(ndc, camera);
+      if (ray.ray.intersectPlane(groundPlane, hitPt)) { const q = getPlayer(world, 'p1'); inp.aimX = hitPt.x - q.x; inp.aimZ = hitPt.z - q.z; }
+      inp.fire = mouse.down || keys.has('Space');
+    } else if (isTouch) autoFire(inp, 'p1');
+    else if (keys.has('Space')) autoFire(inp, 'p1');
+    return inp;
+  }
   if (sticks.R) {
     inp.aimX = sticks.R.dx; inp.aimZ = sticks.R.dy;
     inp.fire = Math.hypot(sticks.R.dx, sticks.R.dy) > 0.3;
@@ -434,6 +464,26 @@ function readInput(): Input {
   padInput(inp, connectedPads()[0] ?? null);
   return inp;
 }
+/** Teclas de disparo del jugador 2 (apunta solo al robot más cercano). */
+const P2_FIRE = ['Enter', 'NumpadEnter', 'ShiftRight', 'ControlRight', 'Numpad0'];
+/** Apunta al robot más cercano y dispara si hay alguno a tiro. */
+function autoFire(inp: Input, pid: string) {
+  const a = autoAim(world, getPlayer(world, pid));
+  if (a) { inp.aimX = a.aimX; inp.aimZ = a.aimZ; inp.fire = true; }
+}
+/** 2 jugadores: entrada del jugador 2 (su mando, la mitad derecha de la pantalla táctil o flechas e Intro). */
+function readInputP2(): Input {
+  const inp: Input = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false };
+  const g = padFor('p2');
+  if (g) { padInput(inp, g); return inp; }
+  if (keys.has('ArrowLeft')) inp.moveX -= 1;
+  if (keys.has('ArrowRight')) inp.moveX += 1;
+  if (keys.has('ArrowUp')) inp.moveZ -= 1;
+  if (keys.has('ArrowDown')) inp.moveZ += 1;
+  if (sticks.R) { inp.moveX = sticks.R.dx; inp.moveZ = sticks.R.dy; }
+  if (isTouch || P2_FIRE.some((k) => keys.has(k))) autoFire(inp, 'p2');
+  return inp;
+}
 
 // ---------- Mandos (Xbox, PlayStation y genéricos; API estándar del navegador) ----------
 // Distribución estándar: 0 A/Cruz, 1 B/Círculo, 2 X/Cuadrado, 3 Y/Triángulo, 4 LB, 5 RB, 6 LT, 7 RT, 9 Start/Options.
@@ -442,6 +492,21 @@ const dz = (v: number | undefined) => (v === undefined || Math.abs(v) < DEAD ? 0
 const padPrev = new Map<number, boolean[]>();
 function connectedPads(): Gamepad[] {
   return [...(navigator.getGamepads?.() ?? [])].filter((g): g is Gamepad => !!g && g.connected);
+}
+/**
+ * Mando de cada jugador. Un jugador: el primero. 2 jugadores: con dos mandos, uno cada uno;
+ * con uno solo, es del jugador 2 (el jugador 1 usa teclado y ratón o la pantalla táctil).
+ */
+function padFor(pid: string): Gamepad | null {
+  const pads = connectedPads();
+  if (mode !== 'local') return pid === myId ? pads[0] ?? null : null;
+  if (pads.length >= 2) return pid === 'p1' ? pads[0] : pads[1];
+  return pads.length === 1 && pid === 'p2' ? pads[0] : null;
+}
+function padOwner(g: Gamepad): string {
+  if (mode !== 'local') return myId;
+  const pads = connectedPads();
+  return pads.length >= 2 && pads[0] === g ? 'p1' : 'p2';
 }
 function padInput(inp: Input, g: Gamepad | null) {
   if (!g) return;
@@ -459,7 +524,7 @@ function pollOnePad(g: Gamepad) {
   const prev = padPrev.get(g.index) ?? []; // fotograma anterior (hay que leerlo antes de sobrescribir)
   const hit = (i: number) => now[i] && !prev[i];
   padPrev.set(g.index, now);
-  const pid = myId;
+  const pid = padOwner(g);
   const visible = (id: string) => !$(id).hidden;
   if (visible('settings')) { if (hit(1) || hit(9)) $('settingsClose').click(); return; }
   if (!charSelEl.hidden) {
@@ -476,10 +541,11 @@ function pollOnePad(g: Gamepad) {
     if (hit(1)) closeLobby();
     return;
   }
-  if (!overlay.hidden) { if (hit(0) || hit(9)) playBtn.click(); return; }
+  if (!overlay.hidden) { if (hit(0) || hit(9)) playBtn.click(); else if (hit(3)) duoBtn.click(); return; }
   if (!gameoverEl.hidden) { if (hit(0) || hit(9)) $('retry').click(); else if (hit(1)) toTitle(); return; }
   if (!shopEl.hidden) {
     if (hit(9)) $<HTMLButtonElement>('nextWave').click();
+    if (mode === 'local' && (hit(4) || hit(5))) setShopPid(shopPid === 'p1' ? 'p2' : 'p1');
     return;
   }
   if (paused) { if (hit(0) || hit(9) || hit(1)) setPaused(false); return; }
@@ -491,10 +557,10 @@ function pollOnePad(g: Gamepad) {
   if (hit(3)) tool('escudo', pid);
   if (hit(1) && buildPanel.hidden) tool('mina', pid);
   if (hit(6)) tool('barricada', pid);
-  if (!buildPanel.hidden) {
+  if (!buildPanel.hidden && buildPid === pid) {
     // Con el menú de construir abierto: cruceta izquierda/derecha elige, A construye, B o cruceta abajo cierra
     if (hit(14) || hit(15)) { buildSel = (buildSel + (hit(15) ? 1 : BUILDS.length - 1)) % BUILDS.length; renderBuild(); }
-    if (hit(0)) doBuild(BUILDS[buildSel].id);
+    if (hit(0)) doBuild(BUILDS[buildSel].id, pid);
     if (hit(1) || hit(13)) toggleBuild(false);
     return;
   }
@@ -520,12 +586,12 @@ let best = readNum('shooter.best'), bestWave = readNum('shooter.bestWave');
 const run = { kills: 0, coins: 0 };
 let hudKey = '', prevCoins = 0;
 function hud() {
-  const p = me();
+  const p = mode === 'local' ? getPlayer(world, gearPid) : me();
   if (!p) return;
   rapidEl.hidden = p.rapid <= 0;
   if (mode !== 'solo') renderPlayers();
   const left = world.toSpawn + world.enemies.length;
-  const key = [p.hp, p.maxHp, world.score, world.wave, left, p.coins, p.wood, p.weapon, p.owned.join(), ...TOOL_ORDER.map((t) => p.tools[t]), p.shield > 0,
+  const key = [p.id, p.hp, p.maxHp, world.score, world.wave, left, p.coins, p.wood, p.weapon, p.owned.join(), ...TOOL_ORDER.map((t) => p.tools[t]), p.shield > 0,
     p.speedLvl, p.armorLvl, p.dmgLvl, p.magnet, p.regen, p.drones, p.alive].join('|');
   if (key === hudKey) return;
   hudKey = key;
@@ -537,7 +603,8 @@ function hud() {
   scoreN.textContent = world.score.toLocaleString('es-ES');
   waveN.textContent = String(Math.max(1, world.wave));
   enemiesN.textContent = String(left);
-  weaponNameEl.textContent = WEAPONS[p.weapon].name;
+  weaponNameEl.textContent = mode === 'local' ? `${p.name} · ${WEAPONS[p.weapon].name}` : WEAPONS[p.weapon].name;
+  renderGearWho(p);
   coinsN.textContent = String(p.coins);
   if (!shopEl.hidden && mode === 'multi') renderShop(); // en línea, la compra se confirma con la siguiente instantánea
   $('woodN').textContent = String(p.wood);
@@ -553,10 +620,10 @@ function hud() {
     b.innerHTML = `${isTouch ? '' : `<small>${i + 1}</small>`}${icon(ITEM_ICON[id])}`;
     b.title = WEAPONS[id].name;
     b.setAttribute('aria-label', WEAPONS[id].name);
-    b.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); pickWeapon(id); });
+    b.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); pickWeapon(id, p.id); });
     weaponsEl.appendChild(b);
   });
-  weaponsEl.hidden = p.owned.length < 2;
+  weaponsEl.hidden = p.owned.length < 2 && mode !== 'local';
 
   toolsEl.innerHTML = '';
   for (const t of TOOL_ORDER) {
@@ -565,7 +632,7 @@ function hud() {
     b.className = `tool${t === 'escudo' && p.shield > 0 ? ' active' : ''}`;
     b.innerHTML = `${icon(ITEM_ICON[t])}<span>${p.tools[t]}</span>${isTouch ? '' : `<small>${TOOL_KEY[t]}</small>`}`;
     b.setAttribute('aria-label', SHOP.find((s) => s.id === t)!.name);
-    b.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); tool(t); });
+    b.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); tool(t, p.id); });
     toolsEl.appendChild(b);
   }
   toolsEl.prepend(buildBtn); // construir siempre disponible, encima del equipo
@@ -616,8 +683,8 @@ const SECTIONS: { kind: ShopKind; title: string }[] = [
   { kind: 'arma', title: 'Armas' }, { kind: 'mejora', title: 'Mejoras' }, { kind: 'equipo', title: 'Equipo de campo' },
 ];
 function card(item: ShopItem) {
-  const reason = cannotBuy(world, item.id, myId);
-  const n = owns(world, item.id, myId);
+  const reason = cannotBuy(world, item.id, shopPid);
+  const n = owns(world, item.id, shopPid);
   const lvl = item.max ? `<div class="lvl">${item.kind === 'equipo' ? `Tienes ${n}/${item.max}` : `Nivel ${n}/${item.max}`}</div>` : '';
   const el = document.createElement('div');
   el.className = `card${n && item.kind !== 'equipo' ? ' owned' : ''}`;
@@ -628,13 +695,13 @@ function card(item: ShopItem) {
   b.disabled = !!reason;
   b.addEventListener('click', () => {
     if (mode === 'multi') { net.send({ t: 'buy', id: item.id }); sfx.pickup(); b.disabled = true; return; }
-    if (buy(world, item.id, myId)) { sfx.pickup(); renderShop(); hud(); }
+    if (buy(world, item.id, shopPid)) { sfx.pickup(); renderShop(); hud(); }
   });
   el.appendChild(b);
   return el;
 }
 function buildCard(item: BuildItem) {
-  const reason = cannotBuild(world, item.id, myId);
+  const reason = cannotBuild(world, item.id, shopPid);
   const el = document.createElement('div');
   el.className = 'card';
   el.innerHTML = `<div class="art">${icon(ITEM_ICON[item.id])}</div><div class="info"><div class="t">${item.name}</div><div class="d">${item.desc}</div></div>`;
@@ -643,14 +710,21 @@ function buildCard(item: BuildItem) {
   else { b.innerHTML = `${icon('madera')}<span>${item.wood}</span>`; b.setAttribute('aria-label', `Construir por ${item.wood} de madera`); }
   b.disabled = !!reason;
   b.className = 'wood';
-  b.addEventListener('click', () => { if (doBuild(item.id, myId)) renderShop(); });
+  b.addEventListener('click', () => { if (doBuild(item.id, shopPid)) renderShop(); });
   el.appendChild(b);
   return el;
 }
 function renderShop() {
-  const sp = me();
+  const sp = mode === 'local' ? getPlayer(world, shopPid) : me();
   $('shopCoins').textContent = String(sp.coins);
   $('shopWood').textContent = String(sp.wood);
+  const tabs = $('shopTabs');
+  tabs.hidden = mode !== 'local';
+  for (const b of tabs.querySelectorAll<HTMLButtonElement>('[data-pid]')) {
+    const q = world.players.find((x) => x.id === b.dataset.pid);
+    b.setAttribute('aria-selected', String(b.dataset.pid === shopPid));
+    if (q) b.querySelector('.n')!.textContent = String(q.coins);
+  }
   const body = $('shopBody');
   body.innerHTML = '';
   for (const sec of SECTIONS) {
@@ -669,23 +743,28 @@ function renderShop() {
 const buildPanel = $('buildPanel'), buildBtn = $('buildBtn');
 let buildSel = 0;
 function renderBuild() {
-  $('bpWood').textContent = String(me().wood);
+  const bp = mode === 'local' ? getPlayer(world, buildPid) : me();
+  $('bpWood').textContent = String(bp.wood);
+  $('bpWho').textContent = mode === 'local' ? `Construir · ${bp.name}` : 'Construir';
   const list = $('bpList');
   list.innerHTML = '';
   BUILDS.forEach((item, i) => {
-    const reason = cannotBuild(world, item.id, myId);
+    const reason = cannotBuild(world, item.id, bp.id);
     const b = document.createElement('button');
     b.className = `bp-item${i === buildSel ? ' sel' : ''}`;
     b.setAttribute('role', 'menuitem');
     b.disabled = !!reason;
     b.innerHTML = `${icon(ITEM_ICON[item.id])}<span class="n">${item.name}</span><span class="c">${icon('madera')}${item.wood}</span>`;
     if (reason) b.title = reason;
-    b.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); buildSel = i; if (doBuild(item.id)) toggleBuild(false); });
+    b.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); buildSel = i; if (doBuild(item.id, bp.id)) toggleBuild(false); });
     list.appendChild(b);
   });
 }
-function toggleBuild(open = buildPanel.hidden, pid = myId) {
+function toggleBuild(open?: boolean, pid = mode === 'local' ? gearPid : myId) {
+  // 2 jugadores: si el menú está abierto para el otro, se pasa a este en vez de cerrarse
+  open ??= !!buildPanel.hidden || (mode === 'local' && buildPid !== pid);
   if (open && (!playing || paused)) return;
+  if (open) buildPid = pid;
   buildPanel.hidden = !open;
   buildBtn.setAttribute('aria-expanded', String(open));
   if (open) renderBuild();
@@ -704,7 +783,8 @@ buildBtn.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); toggleB
 function openShop(bonus: number, wood: number) {
   releaseStick('L'); releaseStick('R'); mouse.down = false;
   $('shopTitle').textContent = `Oleada ${world.wave} superada`;
-  $('shopSub').textContent = bonus ? `Vida completa · +${bonus} monedas y +${wood} de madera` : 'Prepárate para la siguiente oleada';
+  $('shopSub').textContent = bonus ? `Vida completa · +${bonus} monedas y +${wood} de madera${mode === 'local' ? ' para cada uno' : ''}` : 'Prepárate para la siguiente oleada';
+  shopPid = myId;
   renderShop();
   const nb = $<HTMLButtonElement>('nextWave');
   nb.disabled = false;
@@ -735,14 +815,21 @@ function clearScene() {
   structBars.clear();
   fx.clear();
 }
-function start() {
+function start(local = false) {
   unlock();
   leaveMulti();
   clearScene();
-  mode = 'solo'; myId = 'p1';
+  mode = local ? 'local' : 'solo'; myId = 'p1';
+  gearPid = shopPid = buildPid = 'p1';
   document.body.classList.remove('multi');
-  world = newWorld(Math.random, true, [{ id: 'p1', name: 'Tú', character: savedChar() }]);
+  document.body.classList.toggle('local', local);
+  world = local
+    ? newWorld(Math.random, true, [{ id: 'p1', name: 'Jugador 1', character: savedChar(1) }, { id: 'p2', name: 'Jugador 2', character: savedChar(2) }])
+    : newWorld(Math.random, true, [{ id: 'p1', name: 'Tú', character: savedChar(1) }]);
   lobbyEl.hidden = true;
+  playersHud.hidden = !local; teamKey = '';
+  camZoom = 1;
+  if (local) banner('2 jugadores', 'En este dispositivo', 'Cada uno con sus monedas, armas y madera');
   hudKey = ''; prevCoins = 0;
   run.kills = 0; run.coins = 0;
   snapCam = true;
@@ -774,6 +861,12 @@ function gameOver() {
   }
   $('goBestLabel').textContent = 'Récord';
   $('retry').hidden = false;
+  if (mode === 'local') {
+    // 2 jugadores: abatidos de cada uno (la puntuación y las monedas son del equipo)
+    const [a, b] = world.players;
+    $('goKillsLabel').textContent = 'Destruidos J1 / J2';
+    $('goKills').textContent = `${a.kills} / ${b.kills}`;
+  } else $('goKillsLabel').textContent = 'Robots destruidos';
   $('goAuto').hidden = true;
   playing = false;
   const record = world.score > best;
@@ -782,7 +875,7 @@ function gameOver() {
   const fmt = (n: number) => n.toLocaleString('es-ES');
   $('goWave').textContent = String(world.wave);
   $('goScore').textContent = fmt(world.score);
-  $('goKills').textContent = fmt(run.kills);
+  if (mode !== 'local') $('goKills').textContent = fmt(run.kills);
   $('goCoins').textContent = fmt(run.coins);
   $('goBest').textContent = fmt(best);
   $('goRecord').hidden = !record || world.score === 0;
@@ -792,6 +885,7 @@ function gameOver() {
 function toTitle() {
   leaveMulti();
   mode = 'solo';
+  document.body.classList.remove('local');
   playersHud.hidden = true;
   playing = false;
   document.body.classList.remove('playing');
@@ -818,7 +912,7 @@ async function play() {
   playBtn.disabled = false;
   if (!online) { start(); return; }
   hosting = true;
-  net.send({ t: 'host', character: savedChar() });
+  net.send({ t: 'host', character: savedChar(1) });
 }
 /** Conecta con el servidor sin hacer esperar: si no responde en 3,5 s, se juega sin conexión. */
 async function connectQuick(): Promise<boolean> {
@@ -832,14 +926,38 @@ async function connectQuick(): Promise<boolean> {
   if (!ok) { netClosing = true; net.close(); netClosing = false; }
   return ok;
 }
-playBtn.addEventListener('click', () => openCharSelect(() => void play()));
-$('retry').addEventListener('click', () => void play());
+playBtn.addEventListener('click', () => openCharSelect(1, () => void play()));
+$('retry').addEventListener('click', () => { if (mode === 'local') start(true); else void play(); });
+/** 2 jugadores en el mismo dispositivo: cada uno elige su soldado y se juega sin conexión. */
+const duoBtn = $<HTMLButtonElement>('duoBtn');
+duoBtn.addEventListener('click', () => openCharSelect(1, () => openCharSelect(2, () => start(true), 'Jugador 2', () => duoBtn.focus()), 'Jugador 1', () => duoBtn.focus()));
+function setShopPid(pid: string) { shopPid = pid; renderShop(); }
+for (const b of document.querySelectorAll<HTMLButtonElement>('#shopTabs [data-pid]')) b.addEventListener('click', () => setShopPid(b.dataset.pid!));
+/** 2 jugadores: botón que elige de quién son la barra de armas y el equipo. */
+const gearWho = $<HTMLButtonElement>('gearWho');
+function renderGearWho(p: Player) {
+  gearWho.hidden = mode !== 'local';
+  if (mode !== 'local') return;
+  gearWho.style.setProperty('--pc', `#${p.color.toString(16).padStart(6, '0')}`);
+  gearWho.querySelector('.n')!.textContent = p.id === 'p1' ? 'J1' : 'J2';
+  gearWho.setAttribute('aria-label', `Armas y equipo de ${p.name}. Cambiar al otro jugador`);
+}
+gearWho.addEventListener('pointerdown', (ev) => {
+  ev.stopPropagation();
+  gearPid = gearPid === 'p1' ? 'p2' : 'p1';
+  if (!buildPanel.hidden) toggleBuild(true, gearPid);
+  hud();
+});
+gearWho.addEventListener('click', (ev) => { if (ev.detail === 0) gearWho.dispatchEvent(new PointerEvent('pointerdown')); }); // teclado
 $('goMenu').addEventListener('click', toTitle);
 
 
 // ---------- Pausa ----------
 const pauseEl = $('pause'), pauseBtn = $('pauseBtn');
 let paused = false;
+const LOCAL_HELP = isTouch
+  ? 'Cada jugador mueve a su soldado con su mitad de la pantalla y dispara solo al robot más cercano. El botón J1/J2 de abajo elige de quién son las armas y el equipo.'
+  : 'Jugador 1: WASD, ratón y clic (1-7 armas, V construir). Jugador 2: flechas, Intro dispara apuntando solo, coma y punto cambian de arma, guion construye. Con mandos, cada uno el suyo.';
 const pauseHelpSolo = isTouch ? 'El juego se pausa solo si cambias de app.' : 'P o Esc para pausar y continuar.';
 $('pauseHelp').textContent = pauseHelpSolo;
 function setPaused(v: boolean) {
@@ -854,7 +972,7 @@ function setPaused(v: boolean) {
   $('pauseTitle').textContent = shared ? 'Menú' : 'Pausa';
   $('pausePlayers').hidden = mode !== 'multi';
   $('pauseHelp').textContent = shared ? 'Los demás siguen jugando: tu soldado se queda quieto mientras estás en el menú.'
-    : pauseHelpSolo;
+    : mode === 'local' ? LOCAL_HELP : pauseHelpSolo;
   if (v && mode === 'multi') renderTeam();
   pauseBtn.innerHTML = icon(v ? 'play' : 'pause');
   pauseBtn.setAttribute('aria-label', v ? 'Continuar' : 'Pausar');
@@ -886,7 +1004,7 @@ function flushEvents() {
   const at = (pid: string) => world.players.find((q) => q.id === pid) ?? self;
   const nameOf = (pid: string) => { const q = world.players.find((x) => x.id === pid); return q ? shownName(q) : names.get(pid) ?? 'Un jugador'; };
   for (const ev of world.events) {
-    const mine = !('pid' in ev) || ev.pid === myId;
+    const mine = !('pid' in ev) || ev.pid === myId || mode === 'local'; // con 2 jugadores, los dos juegan aquí
     const p = 'pid' in ev && ev.pid ? at(ev.pid) : self;
     switch (ev.kind) {
       case 'shoot': {
@@ -906,7 +1024,7 @@ function flushEvents() {
       case 'boss': sfx.wave(); shake = Math.max(shake, 0.5); banner('¡Llega el jefe!', `Oleada ${ev.wave}`, 'Un coloso blindado entra por el norte'); break;
       case 'hit': sfx.hit(); fx.sparks(ev.x, 0.8, ev.z, 0xffe7a0, 3, 4); break;
       case 'kill': {
-        const byMe = ev.pid === myId || (ev.pid === null && mode === 'solo');
+        const byMe = mode === 'local' || ev.pid === myId || (ev.pid === null && mode === 'solo');
         sfx.kill();
         if (byMe) { run.kills++; run.coins += ev.coins; }
         const c = ENEMY_COLOR[ev.type], big = ev.type === 'tank' || ev.type === 'jefe';
@@ -959,7 +1077,8 @@ function flushEvents() {
       case 'down':
         fx.debris(p.x, 1, p.z, p.color, 10, 5); fx.smoke(p.x, 0.5, p.z, 4);
         if (mode === 'solo' || world.players.every((q) => !q.alive)) break; // en solitario cae y termina la partida
-        if (ev.pid === myId) { sfx.hurt(); banner('Has caído', 'Fuera de combate', 'Vuelves al terminar la oleada si tu equipo resiste'); }
+        if (mode === 'local') { sfx.hurt(); toast(`${nameOf(ev.pid)} ha caído: vuelve al terminar la oleada`); }
+        else if (ev.pid === myId) { sfx.hurt(); banner('Has caído', 'Fuera de combate', 'Vuelves al terminar la oleada si tu equipo resiste'); }
         else toast(`${nameOf(ev.pid)} ha caído`);
         break;
       case 'join': if (ev.pid !== myId && mode === 'multi') toast(`${nameOf(ev.pid)} se ha unido`); break;
@@ -1062,7 +1181,7 @@ function closeLobby() {
 async function joinServer(id: string, name: string) {
   if (!(await ensureConnected())) return;
   setLobbyStatus(`Entrando en ${name}`);
-  net.send({ t: 'join', room: id, character: savedChar() });
+  net.send({ t: 'join', room: id, character: savedChar(1) });
 }
 $('multiBtn').addEventListener('click', () => void openLobby());
 $('lobbyClose').addEventListener('click', closeLobby);
@@ -1160,8 +1279,13 @@ function renderPlayers() {
     li.className = q.alive ? '' : 'down';
     li.style.setProperty('--pc', `#${q.color.toString(16).padStart(6, '0')}`);
     li.innerHTML = '<span class="dot"></span><span class="pn"></span><span class="ph"></span>';
-    li.querySelector('.pn')!.textContent = q.id === myId ? `${q.name} (tú)` : shownName(q);
+    li.querySelector('.pn')!.textContent = mode === 'local' ? q.name : q.id === myId ? `${q.name} (tú)` : shownName(q);
     li.querySelector('.ph')!.textContent = q.alive ? `${q.hp}/${q.maxHp}` : 'Caído';
+    if (mode === 'local') { // con 2 jugadores se ven las monedas de los dos
+      const c = document.createElement('span'); c.className = 'pc';
+      c.innerHTML = `${icon('coins')}<span></span>`; c.querySelector('span')!.textContent = String(q.coins);
+      li.appendChild(c);
+    }
     playersHud.appendChild(li);
   }
   if (!pauseEl.hidden) renderTeam();
@@ -1220,12 +1344,12 @@ $('reportCancel').addEventListener('click', () => { reportPid = ''; $('reportDlg
 
 // ---------- Elegir soldado ----------
 const charSelEl = $('charSelect');
-/** Soldado elegido la última vez. */
-function savedChar(): CharacterId {
-  const v = readStr('shooter.personaje');
-  return isCharacter(v) ? v : 'sargento';
+/** Soldado elegido la última vez por cada jugador (2: el segundo jugador en el mismo dispositivo). */
+function savedChar(n: 1 | 2): CharacterId {
+  const v = readStr(n === 1 ? 'shooter.personaje' : 'shooter.personaje2');
+  return isCharacter(v) ? v : n === 1 ? 'sargento' : 'coloso';
 }
-let csSel: CharacterId = 'sargento', csDone: () => void = () => {}, csBack: () => void = () => {};
+let csWho: 1 | 2 = 1, csSel: CharacterId = 'sargento', csDone: () => void = () => {}, csBack: () => void = () => {};
 let portraits: Partial<Record<CharacterId, string>> = {};
 /** Retratos 3D de los soldados, dibujados una vez con un renderizador aparte. */
 function makePortraits() {
@@ -1278,9 +1402,9 @@ function renderCharSelect() {
   }
 }
 let csLabel = 'Tu soldado';
-function openCharSelect(done: () => void, label = 'Tu soldado', back: () => void = () => {}) {
+function openCharSelect(who: 1 | 2, done: () => void, label = 'Tu soldado', back: () => void = () => {}) {
   unlock();
-  csLabel = label; csSel = savedChar();
+  csWho = who; csLabel = label; csSel = savedChar(who);
   csDone = done; csBack = back;
   charSelEl.hidden = false;
   makePortraits();
@@ -1294,7 +1418,7 @@ function moveCharSel(dir: 1 | -1) {
   ($('csGrid').querySelector('[aria-checked="true"]') as HTMLElement | null)?.focus({ preventScroll: true });
 }
 $('csGo').addEventListener('click', () => {
-  writeStr('shooter.personaje', csSel);
+  writeStr(csWho === 1 ? 'shooter.personaje' : 'shooter.personaje2', csSel);
   charSelEl.hidden = true;
   csDone();
 });
@@ -1389,7 +1513,12 @@ function frame(now: number) {
   // En línea el tiempo real cuenta (el servidor no espera): la predicción usa el intervalo real.
   if (mode === 'multi' || waitingFirstSnap) multiFrame(paused && world.players.length <= 1 ? 0 : Math.min(0.25, rawDt));
   else if (playing && !paused && !document.hidden && world.phase === 'fight') {
-    step(world, readInput(), dt);
+    if (mode === 'local') {
+      getPlayer(world, 'p1').input = readInput();
+      getPlayer(world, 'p2').input = readInputP2();
+      step(world, null, dt);
+      leash(world, LEASH);
+    } else step(world, readInput(), dt);
     flushEvents();
   }
   hud();
@@ -1540,8 +1669,20 @@ function frame(now: number) {
 
   // Cámara y sol siguen al jugador
   const portrait = camera.aspect < 1;
-  const h = (portrait ? 26 : 17) * ZOOM, back = (portrait ? 11 : 11.5) * ZOOM;
-  camGoal.set(p.x, h, p.z + back);
+  // 2 jugadores: la cámara se centra entre los dos y se aleja si se separan.
+  let cx = p.x, cz = p.z, spreadK = 1;
+  if (mode === 'local') {
+    const alive = world.players.filter((q) => q.alive);
+    const g = alive.length ? alive : world.players;
+    cx = g.reduce((sum, q) => sum + q.x, 0) / g.length;
+    cz = g.reduce((sum, q) => sum + q.z, 0) / g.length;
+    let spread = 0;
+    for (const a of g) for (const b of g) spread = Math.max(spread, Math.hypot(a.x - b.x, a.z - b.z));
+    spreadK = 1 + Math.min(0.6, Math.max(0, spread - 8) / 26);
+  }
+  camZoom += (spreadK - camZoom) * (1 - Math.exp(-dt * 3));
+  const h = (portrait ? 26 : 17) * ZOOM * camZoom, back = (portrait ? 11 : 11.5) * ZOOM * camZoom;
+  camGoal.set(cx, h, cz + back);
   // El primer fotograma (y al empezar partida) coloca la cámara directamente; después la sigue con suavidad.
   if (snapCam) { camera.position.copy(camGoal); snapCam = false; } else camera.position.lerp(camGoal, 1 - Math.exp(-dt * 6));
   shake = Math.max(0, shake - dt * 2);
@@ -1557,7 +1698,7 @@ function frame(now: number) {
   if (!loaded) { loaded = true; const l = $('loading'); l.classList.add('done'); setTimeout(() => l.remove(), 450); }
   requestAnimationFrame(frame);
 }
-let loaded = false, snapCam = true;
+let loaded = false, snapCam = true, camZoom = 1;
 requestAnimationFrame(frame);
 
 // Para pruebas automatizadas

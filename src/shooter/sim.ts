@@ -518,6 +518,31 @@ function nearestEnemy(w: World, x: number, z: number, range: number, needSight =
   return best;
 }
 
+/**
+ * Puntería automática (2 jugadores en el mismo dispositivo, cuando no hay ratón ni stick para apuntar):
+ * dirección hacia el robot visible más cercano dentro del alcance, o null si no hay ninguno.
+ */
+export function autoAim(w: World, p: Player, range = 18): { aimX: number; aimZ: number } | null {
+  const e = nearestEnemy(w, p.x, p.z, range, true) ?? nearestEnemy(w, p.x, p.z, range);
+  return e ? { aimX: e.x - p.x, aimZ: e.z - p.z } : null;
+}
+
+/**
+ * 2 jugadores con una sola cámara: los jugadores vivos no pueden separarse más de `maxDist`.
+ * Si se pasan, cada uno se acerca al centro del grupo lo justo para volver al límite.
+ */
+export function leash(w: World, maxDist: number) {
+  const alive = w.players.filter((p) => p.alive);
+  if (alive.length < 2) return;
+  const cx = alive.reduce((s, p) => s + p.x, 0) / alive.length;
+  const cz = alive.reduce((s, p) => s + p.z, 0) / alive.length;
+  const r = maxDist / 2;
+  for (const p of alive) {
+    const dx = p.x - cx, dz = p.z - cz, d = Math.hypot(dx, dz);
+    if (d > r) { p.x = cx + (dx / d) * r; p.z = cz + (dz / d) * r; pushOut(p, PLAYER_R, w.obstacles); }
+  }
+}
+
 function damageEnemy(w: World, e: Enemy, dmg: number, owner: string | null, kx = 0, kz = 0) {
   if (e.hp <= 0) return;
   e.hp -= dmg; e.flash = 0.08;

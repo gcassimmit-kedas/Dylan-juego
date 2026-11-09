@@ -52,6 +52,8 @@ import plus from 'lucide-static/icons/plus.svg?raw';
 import wifiOff from 'lucide-static/icons/wifi-off.svg?raw';
 import ban from 'lucide-static/icons/ban.svg?raw';
 import keyRound from 'lucide-static/icons/key-round.svg?raw';
+import gamepad from 'lucide-static/icons/gamepad-2.svg?raw';
+import arrowLeftRight from 'lucide-static/icons/arrow-left-right.svg?raw';
 
 /** Extrae solo el contenido interior de un SVG de Lucide (sin comentario de licencia ni atributos). */
 const inner = (svg: string) => svg.replace(/<!--[\s\S]*?-->/g, '').replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '').trim();
@@ -92,7 +94,7 @@ const LUCIDE = {
   pause, play, volumeOn, volumeOff, house, coins, heart, heartPulse, zap, flame, bomb, rocket,
   footprints, magnet, drone, shieldCheck, brickWall, settings, x, chevronRight, arrowLeft,
   trophy, check, fileText, info, crosshair, grid, rotateCcw, hammer, fence, castle, hospital, plane, zapOff, userRound, shieldOff,
-  globe, search, lock, users, flag, copy, refreshCw, logIn, logOut, plus, wifiOff, ban, keyRound,
+  globe, search, lock, users, flag, copy, refreshCw, logIn, logOut, plus, wifiOff, ban, keyRound, gamepad, arrowLeftRight,
 };
 
 export type IconName = keyof typeof LUCIDE | keyof typeof CUSTOM;

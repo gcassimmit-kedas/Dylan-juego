@@ -85,6 +85,18 @@ Los robots no rodean tus estructuras: **las atacan** hasta romperlas (cada una m
 reales (pone sombras simples bajo los personajes) y baja la resolución. Se puede forzar con `index.html?calidad=alta`
 o `?calidad=baja`.
 
+### 2 jugadores en el mismo dispositivo (sin conexión)
+
+Título > **2 jugadores**. Cada jugador elige su soldado y juegan juntos en la misma pantalla, sin servidor ni internet:
+
+- **Móvil o tableta:** cada jugador usa su mitad de la pantalla (izquierda, jugador 1; derecha, jugador 2) para moverse, y su soldado apunta y dispara solo al robot más cercano. El botón **J1/J2** de abajo elige de quién son la barra de armas, el equipo y el menú de construir.
+- **Teclado:** jugador 1 con WASD, ratón y clic (1-7 armas, V construir); jugador 2 con flechas, Intro dispara apuntando solo, coma y punto cambian de arma y el guion abre construir.
+- **Mandos:** con dos mandos, uno para cada jugador; con uno, es del jugador 2. En el título, Y abre 2 jugadores.
+
+Cada jugador tiene sus monedas, madera y armas (la tienda tiene una pestaña por jugador; con mando, LB/RB cambia de pestaña).
+La cámara se coloca entre los dos y se aleja si se separan; no pueden alejarse más de 24 metros.
+Si uno cae, vuelve al terminar la oleada; la partida acaba cuando caen los dos.
+
 ### Multijugador cooperativo en línea
 
 Con conexión, al pulsar **Jugar** tu partida es un **servidor público** con nombre aleatorio ("Halcón Dorado 27") al

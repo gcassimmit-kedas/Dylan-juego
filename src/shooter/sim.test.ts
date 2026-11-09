@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addPlayer, removePlayer, BOSS_EVERY, SWARM_SIZE, shieldGuard, SNIPER_AIM, REPAIR_EVERY, REPAIR_AMOUNT, CHARACTERS, CHARACTER_ORDER, build, cannotBuild, woodReward, ARMOR_MAX, newWorld, step, spawnEnemy, waveSize, waveBonus, buy, cannotBuy, nextWave, useTool, selectWeapon, dronePos, type Input, type World } from './sim.ts';
+import { addPlayer, removePlayer, autoAim, leash, BOSS_EVERY, SWARM_SIZE, shieldGuard, SNIPER_AIM, REPAIR_EVERY, REPAIR_AMOUNT, CHARACTERS, CHARACTER_ORDER, build, cannotBuild, woodReward, ARMOR_MAX, newWorld, step, spawnEnemy, waveSize, waveBonus, buy, cannotBuy, nextWave, useTool, selectWeapon, dronePos, type Input, type World } from './sim.ts';
 
 const idle: Input = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false };
 const seq = (vals: number[]) => { let i = 0; return () => vals[i++ % vals.length]; };
@@ -739,4 +739,50 @@ test('escudero: el escudo se rompe tras aguantar daño y gira despacio', () => {
   p2.z = 16; // ahora el jugador está detrás
   step(w2, null as unknown as Input, 1 / 60);
   assert.ok(Math.abs(Math.cos(e2.face)) > 0.9 && Math.cos(e2.face) < 0, 'sigue mirando hacia donde estaba');
+});
+
+test('2 jugadores: la puntería automática apunta al robot más cercano', () => {
+  const w = newWorld(() => 0.5, false);
+  const p = w.players[0];
+  p.x = 0; p.z = 0;
+  assert.equal(autoAim(w, p), null, 'sin robots no apunta');
+  spawnEnemy(w, 'chaser'); spawnEnemy(w, 'chaser');
+  const [near, far] = w.enemies;
+  near.x = 5; near.z = 0; far.x = -10; far.z = 0;
+  const a = autoAim(w, p)!;
+  assert.ok(a.aimX > 0 && Math.abs(a.aimZ) < 1e-9, 'apunta al cercano');
+  near.x = 40;
+  assert.ok(autoAim(w, p)!.aimX < 0, 'el lejano fuera de alcance no cuenta');
+  far.x = -30;
+  assert.equal(autoAim(w, p), null);
+});
+
+test('2 jugadores: no se separan más que la correa', () => {
+  const w = newWorld(() => 0.5, false, [{ id: 'p1', name: 'Jugador 1' }, { id: 'p2', name: 'Jugador 2' }]);
+  const [a, b] = w.players;
+  a.x = -20; a.z = 0; b.x = 20; b.z = 0;
+  leash(w, 24);
+  assert.ok(Math.abs(Math.hypot(a.x - b.x, a.z - b.z) - 24) < 1e-6, 'quedan a 24');
+  assert.ok(Math.abs(a.x + b.x) < 1e-6, 'se acercan los dos por igual');
+  a.x = -3; b.x = 3;
+  leash(w, 24);
+  assert.equal(a.x, -3, 'cerca no se toca');
+  b.alive = false; b.x = 25; a.x = -25;
+  leash(w, 24);
+  assert.equal(a.x, -25, 'un jugador caído no tira del otro');
+});
+
+test('2 jugadores: cada uno dispara con su propia entrada y lleva sus monedas', () => {
+  const w = newWorld(() => 0.5, false, [{ id: 'p1', name: 'Jugador 1' }, { id: 'p2', name: 'Jugador 2' }]);
+  w.wave = 1; w.toSpawn = 1; w.spawnTimer = 999;
+  const [a, b] = w.players;
+  a.x = -5; a.z = 0; b.x = 5; b.z = 0;
+  b.input = { moveX: 0, moveZ: 0, aimX: 1, aimZ: 0, fire: true };
+  step(w, null, 1 / 60);
+  assert.ok(w.events.some((e) => e.kind === 'shoot' && e.pid === 'p2'), 'dispara el jugador 2');
+  assert.ok(!w.events.some((e) => e.kind === 'shoot' && e.pid === 'p1'), 'el jugador 1 no');
+  a.coins = 100; b.coins = 0;
+  assert.ok(buy(w, 'subfusil', 'p1'));
+  assert.equal(b.coins, 0);
+  assert.ok(cannotBuy(w, 'subfusil', 'p2'), 'el jugador 2 no puede pagar con monedas ajenas');
 });
