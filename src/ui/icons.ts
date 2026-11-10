@@ -52,6 +52,24 @@ import plus from 'lucide-static/icons/plus.svg?raw';
 import wifiOff from 'lucide-static/icons/wifi-off.svg?raw';
 import ban from 'lucide-static/icons/ban.svg?raw';
 import keyRound from 'lucide-static/icons/key-round.svg?raw';
+// Supermercado
+import store from 'lucide-static/icons/store.svg?raw';
+import shoppingCart from 'lucide-static/icons/shopping-cart.svg?raw';
+import shoppingBasket from 'lucide-static/icons/shopping-basket.svg?raw';
+import monitor from 'lucide-static/icons/monitor.svg?raw';
+import packageIc from 'lucide-static/icons/package.svg?raw';
+import scanBarcode from 'lucide-static/icons/scan-barcode.svg?raw';
+import clock from 'lucide-static/icons/clock.svg?raw';
+import truck from 'lucide-static/icons/truck.svg?raw';
+import warehouse from 'lucide-static/icons/warehouse.svg?raw';
+import smile from 'lucide-static/icons/smile.svg?raw';
+import receipt from 'lucide-static/icons/receipt.svg?raw';
+import minus from 'lucide-static/icons/minus.svg?raw';
+import refrigerator from 'lucide-static/icons/refrigerator.svg?raw';
+import trendingUp from 'lucide-static/icons/trending-up.svg?raw';
+import packagePlus from 'lucide-static/icons/package-plus.svg?raw';
+import userX from 'lucide-static/icons/user-x.svg?raw';
+import circleHelp from 'lucide-static/icons/circle-question-mark.svg?raw';
 
 /** Extrae solo el contenido interior de un SVG de Lucide (sin comentario de licencia ni atributos). */
 const inner = (svg: string) => svg.replace(/<!--[\s\S]*?-->/g, '').replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '').trim();
@@ -93,6 +111,7 @@ const LUCIDE = {
   footprints, magnet, drone, shieldCheck, brickWall, settings, x, chevronRight, arrowLeft,
   trophy, check, fileText, info, crosshair, grid, rotateCcw, hammer, fence, castle, hospital, plane, zapOff, userRound, shieldOff,
   globe, search, lock, users, flag, copy, refreshCw, logIn, logOut, plus, wifiOff, ban, keyRound,
+  store, shoppingCart, shoppingBasket, monitor, packageIc, scanBarcode, clock, truck, warehouse, smile, receipt, minus, refrigerator, trendingUp, packagePlus, userX, circleHelp,
 };
 
 export type IconName = keyof typeof LUCIDE | keyof typeof CUSTOM;

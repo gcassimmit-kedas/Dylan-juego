@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#141a0f" />
+  <meta name="description" content="Supermercado: dirige tu tienda, cobra a los clientes, repón las estanterías y compra género en el ordenador." />
+  <link rel="icon" type="image/svg+xml" href="./icons/emblema.svg" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <title>Supermercado</title>
+  <link rel="stylesheet" href="/src/super/style.css" />
+</head>
+<body>
+  <canvas id="scene" aria-label="Vista de la tienda"></canvas>
+
+  <div id="loading" aria-live="polite">
+    <span class="load-ic" data-icon="store"></span>
+    <div class="loadbar"><span></span></div>
+    <p>Abriendo la tienda</p>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div class="left">
+      <div id="clock" class="meter" role="meter" aria-label="Hora del turno" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <span class="m-ic" data-icon="clock"></span>
+        <div class="track"><div class="fill" id="clockFill"></div></div>
+        <span class="val" id="clockVal">08:00</span>
+      </div>
+    </div>
+    <div class="center">
+      <div class="wave"><span class="lbl">Día</span><span class="n" id="dayN">1</span></div>
+      <div class="sub-chip" id="phaseChip">Preparación</div>
+    </div>
+    <div class="right">
+      <div id="money" class="stat" aria-label="Dinero"><span data-icon="coins"></span><span id="moneyN">0</span></div>
+      <div id="rep" class="stat rep" aria-label="Reputación"><span data-icon="smile"></span><span id="repN">50</span></div>
+      <button id="pauseBtn" class="btn" aria-label="Pausar" title="Pausar (P)"></button>
+      <button id="mute" class="btn" aria-label="Silenciar"></button>
+    </div>
+  </div>
+  <div id="banner" aria-live="polite"><div class="kicker" id="bannerKicker"></div><div class="title" id="bannerTitle"></div><div class="sub" id="bannerSub"></div></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <!-- Acciones -->
+  <div id="actions">
+    <button id="pcBtn" class="tool" aria-label="Ordenador de pedidos" title="Ordenador (O)"><span data-icon="monitor"></span><b>Ordenador</b></button>
+    <button id="shelvesBtn" class="tool" aria-label="Estanterías y almacén" title="Estanterías (R)"><span data-icon="warehouse"></span><b>Reponer</b></button>
+    <button id="startBtn" class="primary big" title="Empezar turno (Intro)"><span data-icon="store"></span>Empezar turno</button>
+    <button id="scanBtn" class="primary big scan" hidden title="Cobrar (Espacio)"><span data-icon="scanBarcode"></span><span id="scanLbl">Cobrar</span><i id="queueN" aria-label="Clientes en la cola">0</i></button>
+  </div>
+
+  <!-- Título -->
+  <section id="title" class="screen title-screen" aria-label="Menú principal">
+    <div class="brand">
+      <div class="emblem" aria-hidden="true"><span data-icon="shoppingCart"></span></div>
+      <h1><span class="l1">Super</span><span class="l2">Mercado</span></h1>
+      <p class="tagline">Abre tu tienda, cobra a los clientes y haz crecer el negocio.</p>
+    </div>
+    <div class="menu">
+      <button id="playBtn" class="primary big"><span data-icon="play"></span><span id="playLbl">Jugar</span></button>
+      <button id="newBtn" class="ghost" hidden><span data-icon="rotateCcw"></span>Nueva partida</button>
+      <button id="helpBtn" class="ghost"><span data-icon="circleHelp"></span>Cómo se juega</button>
+    </div>
+    <dl class="records">
+      <div><dt>Día</dt><dd id="recDay">1</dd></div>
+      <div><dt>Dinero</dt><dd id="recMoney">80</dd></div>
+      <div><dt>Mejor día</dt><dd id="recBest">0</dd></div>
+    </dl>
+    <nav class="links" aria-label="Más">
+      <a href="./juegos.html"><span data-icon="grid"></span>Más juegos</a>
+      <a href="./privacidad.html"><span data-icon="fileText"></span>Privacidad</a>
+      <a href="./creditos.html"><span data-icon="info"></span>Créditos</a>
+    </nav>
+  </section>
+
+  <!-- Ayuda -->
+  <section id="help" class="screen" hidden aria-labelledby="helpTitle">
+    <div class="panel menu-panel help-panel" role="dialog" aria-modal="true">
+      <p class="kicker">Guía rápida</p>
+      <h2 id="helpTitle">Cómo se juega</h2>
+      <ol class="steps">
+        <li><span data-icon="monitor"></span><div><strong>Compra en el ordenador</strong>Pide cajas al proveedor con el dinero de la caja. Llegan al almacén al momento.</div></li>
+        <li><span data-icon="warehouse"></span><div><strong>Repón las estanterías</strong>Toca un mueble para llenarlo con lo que haya en el almacén. Si un cliente no encuentra algo, se enfada.</div></li>
+        <li><span data-icon="store"></span><div><strong>Empieza el turno</strong>La tienda abre de 8:00 a 20:00 y van llegando clientes.</div></li>
+        <li><span data-icon="scanBarcode"></span><div><strong>Cobra</strong>Toca la caja o el botón Cobrar para pasar cada artículo. Si esperan demasiado, se van sin pagar.</div></li>
+      </ol>
+      <p class="help" id="helpKeys"></p>
+      <button class="primary" data-close="help"><span data-icon="check"></span>Entendido</button>
+    </div>
+  </section>
+
+  <!-- Ordenador de pedidos -->
+  <section id="pc" class="screen" hidden aria-labelledby="pcTitle">
+    <div class="panel pc-panel" role="dialog" aria-modal="true">
+      <header class="pc-head">
+        <div>
+          <p class="kicker"><span data-icon="truck"></span> Proveedor</p>
+          <h2 id="pcTitle">Pedidos</h2>
+        </div>
+        <div class="wallet" aria-label="Dinero disponible"><span data-icon="coins"></span><span id="pcMoney">0</span></div>
+        <button class="btn close" data-close="pc" aria-label="Cerrar ordenador"><span data-icon="x"></span></button>
+      </header>
+      <div id="pcBody" class="pc-body"></div>
+      <footer class="pc-foot">
+        <div class="pc-total"><span>Total del pedido</span><strong id="pcTotal">0</strong><small id="pcAfter"></small></div>
+        <button id="pcClear" class="ghost">Vaciar</button>
+        <button id="pcPay" class="primary"><span data-icon="shoppingCart"></span>Pagar pedido</button>
+      </footer>
+    </div>
+  </section>
+
+  <!-- Estanterías y almacén -->
+  <section id="shelves" class="screen" hidden aria-labelledby="shTitle">
+    <div class="panel pc-panel" role="dialog" aria-modal="true">
+      <header class="pc-head">
+        <div>
+          <p class="kicker"><span data-icon="warehouse"></span> Almacén</p>
+          <h2 id="shTitle">Estanterías</h2>
+        </div>
+        <button class="btn close" data-close="shelves" aria-label="Cerrar estanterías"><span data-icon="x"></span></button>
+      </header>
+      <div id="shBody" class="pc-body"></div>
+      <footer class="pc-foot">
+        <p class="help">También puedes tocar cada mueble en la tienda para reponerlo.</p>
+        <button id="shAll" class="primary"><span data-icon="packagePlus"></span>Reponer todo</button>
+      </footer>
+    </div>
+  </section>
+
+  <!-- Pausa -->
+  <section id="pause" class="screen" hidden aria-labelledby="pauseTitle">
+    <div class="panel menu-panel" role="dialog" aria-modal="true">
+      <p class="kicker">Juego en pausa</p>
+      <h2 id="pauseTitle">Pausa</h2>
+      <button id="resumeBtn" class="primary big"><span data-icon="play"></span>Continuar</button>
+      <button id="quitBtn" class="ghost"><span data-icon="house"></span>Salir al menú</button>
+      <p class="help" id="quitHelp"></p>
+    </div>
+  </section>
+
+  <!-- Fin de turno -->
+  <section id="summary" class="screen" hidden aria-labelledby="sumTitle">
+    <div class="panel menu-panel result" role="dialog" aria-modal="true">
+      <p class="kicker">Turno terminado</p>
+      <h2 id="sumTitle">Día <span id="sumDay">1</span></h2>
+      <div class="newrecord" id="sumRecord" hidden><span data-icon="trophy"></span>Mejor día</div>
+      <dl class="stats">
+        <div><dt>Clientes</dt><dd id="sClients">0</dd></div>
+        <div><dt>Atendidos</dt><dd id="sServed">0</dd></div>
+        <div><dt>Se fueron</dt><dd id="sLost">0</dd></div>
+        <div><dt>Artículos</dt><dd id="sItems">0</dd></div>
+        <div><dt>Ingresos</dt><dd id="sIncome" class="ok">0</dd></div>
+        <div><dt>Gastos</dt><dd id="sCost" class="bad">0</dd></div>
+        <div class="wide"><dt>Beneficio del día</dt><dd id="sProfit">0</dd></div>
+      </dl>
+      <p class="help" id="sumTip"></p>
+      <button id="nextBtn" class="primary big"><span data-icon="chevronRight"></span>Siguiente día</button>
+    </div>
+  </section>
+
+  <!-- Confirmar partida nueva -->
+  <section id="confirm" class="screen" hidden aria-labelledby="cfTitle">
+    <div class="panel menu-panel" role="alertdialog" aria-modal="true">
+      <p class="kicker danger">Atención</p>
+      <h2 id="cfTitle">¿Empezar de cero?</h2>
+      <p class="help">Se borrará la tienda guardada en este dispositivo: días, dinero y género.</p>
+      <button id="cfYes" class="primary">Sí, empezar de cero</button>
+      <button class="ghost" data-close="confirm">Cancelar</button>
+    </div>
+  </section>
+
+  <script type="module" src="/src/super/main.ts"></script>
+</body>
+</html>

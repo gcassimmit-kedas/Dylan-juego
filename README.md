@@ -4,6 +4,7 @@
 
 - **Shooter 2027** (`index.html`): shooter de oleadas de día en un campo de batalla, con tienda de armas y herramientas.
 - **Tres en Raya 3D** (`tres-en-raya.html`, incluido como juego extra): tres en raya en un cubo de 4×4×4 o 3×3×3.
+- **Supermercado** (`supermercado.html`, incluido como juego extra): gestión de una tienda en 3D.
 
 **Stack:** TypeScript + [Three.js](https://threejs.org) (render 3D) + Vite (build) + Capacitor (apps móviles).
 Un solo código para las tres plataformas.
@@ -118,6 +119,33 @@ El control "Separar capas" abre el cubo para ver las casillas del interior.
 - Gana quien alinea N fichas en cualquier dirección: filas, columnas, pilares y diagonales de capa y del espacio
   (76 líneas en 4×4×4 y 49 en 3×3×3).
 - En 3×3×3 el centro está **bloqueado**. Si no, el primer jugador gana casi siempre tomándolo.
+
+## Supermercado
+
+Dirige un supermercado en 3D (vista de casa de muñecas: las paredes que tapan el interior se bajan solas).
+
+- **Preparación:** antes de abrir, compra género en el **ordenador** (oficina, abajo a la izquierda) con el dinero de la caja
+  y **repón** las estanterías tocando cada mueble (o desde el botón Reponer). Las compras llegan al almacén al momento.
+- **Empezar turno:** la tienda abre de 8:00 a 20:00 (150 s). Los clientes entran, recorren la tienda con su lista y hacen cola.
+- **Cobrar:** cada toque en la caja (o Espacio) pasa un artículo; al pasar el último, el cliente paga.
+- **Recursos limitados:** el dinero y el género. Si un producto se agota, el cliente se enfada; si espera demasiado en la cola,
+  deja la compra y se va. La reputación (0-100) decide cuántos clientes llegan.
+- **Fin de turno:** resumen con clientes, ingresos, gastos y beneficio. La partida se guarda en el dispositivo entre turnos.
+
+| Producto | Caja (uds.) | Coste caja | Venta/ud. |
+|---|---|---|---|
+| Pan de molde | 8 | 12 | 3 |
+| Leche | 6 | 12 | 4 |
+| Yogur | 8 | 10 | 2 |
+| Queso | 4 | 14 | 6 |
+| Cereales | 6 | 15 | 5 |
+| Galletas | 10 | 12 | 2 |
+| Refresco | 12 | 14 | 2 |
+| Agua | 12 | 8 | 1 |
+| Manzanas | 20 | 10 | 1 |
+
+Código: `src/super/sim.ts` (reglas puras con tests, caminos A* de los clientes), `models.ts` (modelos 3D),
+`textures.ts` (texturas dibujadas por código, sin imágenes externas) y `main.ts` (escena e interfaz).
 
 ## Apps móviles (Capacitor)
 
