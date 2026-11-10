@@ -89,17 +89,20 @@ export const LAYOUT = {
   street: { x: 6, z: 9 },
   /** Justo al pasar la puerta. */
   entry: { x: 6, z: 5.4 },
-  /** Caja registradora (el empleado está detrás, en z mayor). */
+  /** Cajas registradoras (el empleado está detrás, en z mayor). La 1 es la del anfitrión (o del que juega solo). */
+  registers: [{ x: 3.6, z: 4.25 }, { x: -3.4, z: 4.25 }] as const,
+  /** La caja 1 (alias de registers[0]). */
   register: { x: 3.6, z: 4.25 },
-  /** Hueco de la cola: el 0 es el que está pagando. */
-  queue: (i: number): Point => ({ x: 3.4 - i * 0.85, z: 3.3 }),
-  queueMax: 8,
+  /** Hueco de la cola de una caja: el 0 es el que está pagando. */
+  queue: (i: number, k = 0): Point => ({ x: LAYOUT.registers[k].x - 0.2 - i * 0.85, z: 3.3 }),
+  queueMax: 6,
   /** Ordenador de pedidos (oficina). */
   computer: { x: -7.6, z: 5.6 },
   /** Palés del almacén (fondo a la derecha). */
   storage: { x: 8.1, z: -5.6 },
-  /** Donde está el cajero (el jugador). */
+  /** Donde está el cajero de cada caja. */
   cashier: { x: 3.9, z: 5.0 },
+  cashiers: [{ x: 3.9, z: 5.0 }, { x: -3.1, z: 5.0 }] as const,
   /** Puerta automática de la fachada. */
   door: { x: 6, w: 2.4 },
 };
@@ -138,6 +141,8 @@ export interface Customer {
   /** Billete con el que paga (0 mientras se escanea). */
   pago: number;
   enfadado: boolean;
+  /** Caja en cuya cola está (-1 si todavía no hace cola). */
+  caja: number;
   /** Semilla de aspecto (ropa, pelo, piel) para que cada cliente se vea distinto. */
   look: number;
 }
@@ -146,9 +151,11 @@ export type GameEvent =
   | { tipo: 'entra'; id: number }
   | { tipo: 'falta'; product: ProductId; id: number }
   | { tipo: 'coge'; product: ProductId; qty: number; id: number }
-  | { tipo: 'escanea'; id: number; product: ProductId }
-  | { tipo: 'paga'; billete: number; total: number; id: number }
-  | { tipo: 'venta'; importe: number; cambio: number; sobra: number; id: number }
+  | { tipo: 'escanea'; id: number; product: ProductId; caja: number }
+  | { tipo: 'paga'; billete: number; total: number; id: number; caja: number }
+  | { tipo: 'venta'; importe: number; cambio: number; sobra: number; propina: number; id: number; caja: number }
+  | { tipo: 'compra'; j: number; coste: number; lineas: [ProductId, number][] }
+  | { tipo: 'mejora'; j: number; caja: number; mejora: MejoraId }
   | { tipo: 'seVa'; id: number }
   | { tipo: 'cierre' }
   | { tipo: 'fin' };
@@ -161,18 +168,42 @@ export interface ShiftStats {
   cansados: number;
   articulos: number;
   faltas: number;
+}
+
+/** Cada jugador tiene su dinero; los ingresos y gastos son los del día. */
+export interface Jugador {
+  dinero: number;
   ingresos: number;
   gastos: number;
-  /** Dinero perdido por dar cambio de más. */
+  /** Dinero perdido hoy por dar cambio de más. */
   cambioDeMas: number;
 }
+
+export interface Caja {
+  /** Ids de clientes en la cola, por orden (el primero está en la caja). */
+  cola: number[];
+  /** La caja 2 solo abre cuando hay un segundo jugador. */
+  abierta: boolean;
+  musica: boolean;
+  propinas: boolean;
+}
+
+/** Mejoras de las cajas: cualquiera de los dos jugadores puede comprarlas para su caja o para la del otro. */
+export const MEJORAS = {
+  musica: { nombre: 'Música relajante', coste: 2000, desc: 'Los clientes de esta caja aguantan un 50 % más en la cola.' },
+  propinas: { nombre: 'Bote de propinas', coste: 3500, desc: 'Los clientes contentos de esta caja dejan un 10 % de propina.' },
+} as const;
+export type MejoraId = keyof typeof MEJORAS;
+export const MEJORA_IDS = Object.keys(MEJORAS) as MejoraId[];
 
 export type Phase = 'preparacion' | 'turno' | 'resumen';
 
 export interface GameState {
   fase: Phase;
   dia: number;
-  dinero: number;
+  /** Jugador 1 (anfitrión o el que juega solo) y jugador 2. */
+  jugadores: [Jugador, Jugador];
+  cajas: [Caja, Caja];
   /** 0 a 100: con más reputación llegan más clientes. */
   reputacion: number;
   almacen: Record<ProductId, number>;
@@ -180,8 +211,6 @@ export interface GameState {
   reloj: number;
   proximoCliente: number;
   clientes: Customer[];
-  /** Ids de clientes en la cola, por orden (el primero está en la caja). */
-  cola: number[];
   stats: ShiftStats;
   eventos: GameEvent[];
   seed: number;
@@ -191,7 +220,11 @@ export interface GameState {
   ofertaRara: Partial<Record<ProductId, number>>;
 }
 
-const emptyStats = (): ShiftStats => ({ clientes: 0, atendidos: 0, perdidos: 0, cansados: 0, articulos: 0, faltas: 0, ingresos: 0, gastos: 0, cambioDeMas: 0 });
+const emptyStats = (): ShiftStats => ({ clientes: 0, atendidos: 0, perdidos: 0, cansados: 0, articulos: 0, faltas: 0 });
+const nuevoJugador = (dinero: number): Jugador => ({ dinero, ingresos: 0, gastos: 0, cambioDeMas: 0 });
+const nuevaCaja = (abierta: boolean): Caja => ({ cola: [], abierta, musica: false, propinas: false });
+/** Dinero con el que empieza cada jugador. */
+export const DINERO_INICIAL = 1500;
 const byProduct = (f: (id: ProductId) => number) => Object.fromEntries(PRODUCT_IDS.map((id) => [id, f(id)])) as Record<ProductId, number>;
 
 /** Partida nueva: poco dinero y poco género, para que haya que gestionar desde el primer día. */
@@ -212,14 +245,14 @@ function crearPartida(seed: number): GameState {
   return {
     fase: 'preparacion',
     dia: 1,
-    dinero: 1500,
+    jugadores: [nuevoJugador(DINERO_INICIAL), nuevoJugador(DINERO_INICIAL)],
+    cajas: [nuevaCaja(true), nuevaCaja(false)],
     reputacion: 50,
     estantes: byProduct((id) => start[id]?.[0] ?? 0),
     almacen: byProduct((id) => start[id]?.[1] ?? 0),
     reloj: 0,
     proximoCliente: 1.5,
     clientes: [],
-    cola: [],
     stats: emptyStats(),
     eventos: [],
     seed: seed >>> 0 || 1,
@@ -253,28 +286,73 @@ export const displayOf = (p: ProductId) => DISPLAYS.find((d) => d.product === p)
 
 export type BuyResult = { ok: true; coste: number } | { ok: false; motivo: 'dinero' | 'cantidad' | 'agotado' };
 
-/** Compra cajas en el ordenador. Llegan al almacén al momento. */
-export function comprar(s: GameState, p: ProductId, cajas = 1): BuyResult {
-  if (!Number.isInteger(cajas) || cajas <= 0) return { ok: false, motivo: 'cantidad' };
+const jugadorValido = (j: number) => j === 0 || j === 1;
+
+/** Compra cajas en el ordenador con el dinero del jugador `j`. Llegan al almacén (compartido) al momento. */
+export function comprar(s: GameState, p: ProductId, cajas = 1, j = 0): BuyResult {
+  if (!Number.isInteger(cajas) || cajas <= 0 || !jugadorValido(j)) return { ok: false, motivo: 'cantidad' };
   if (cajas > disponibles(s, p)) return { ok: false, motivo: 'agotado' };
-  const coste = PRODUCTS[p].costoCaja * cajas;
-  if (coste > s.dinero) return { ok: false, motivo: 'dinero' };
+  const coste = PRODUCTS[p].costoCaja * cajas, jug = s.jugadores[j];
+  if (coste > jug.dinero) return { ok: false, motivo: 'dinero' };
   if (isRara(p)) s.ofertaRara[p] = (s.ofertaRara[p] ?? 0) - cajas;
-  s.dinero -= coste;
+  jug.dinero -= coste;
   s.almacen[p] += PRODUCTS[p].caja * cajas;
-  s.stats.gastos += coste;
+  jug.gastos += coste;
   return { ok: true, coste };
 }
 
 /** Compra varios productos de una vez (el carrito del ordenador). Si no llega el dinero, no se compra nada. */
-export function comprarPedido(s: GameState, pedido: Partial<Record<ProductId, number>>): BuyResult {
+export function comprarPedido(s: GameState, pedido: Partial<Record<ProductId, number>>, j = 0): BuyResult {
+  if (!jugadorValido(j)) return { ok: false, motivo: 'cantidad' };
   const lineas = PRODUCT_IDS.map((p) => [p, pedido[p] ?? 0] as const).filter(([, n]) => n !== 0);
-  if (!lineas.length || lineas.some(([, n]) => !Number.isInteger(n) || n < 0)) return { ok: false, motivo: 'cantidad' };
+  if (!lineas.length || lineas.some(([, n]) => !Number.isInteger(n) || n < 0 || n > 99)) return { ok: false, motivo: 'cantidad' };
   if (lineas.some(([p, n]) => n > disponibles(s, p))) return { ok: false, motivo: 'agotado' };
   const coste = costePedido(pedido);
-  if (coste > s.dinero) return { ok: false, motivo: 'dinero' };
-  for (const [p, n] of lineas) if (n > 0) comprar(s, p, n);
+  if (coste > s.jugadores[j].dinero) return { ok: false, motivo: 'dinero' };
+  for (const [p, n] of lineas) if (n > 0) comprar(s, p, n, j);
+  // El otro jugador ve lo que se ha comprado.
+  s.eventos.push({ tipo: 'compra', j, coste, lineas: lineas.map(([p, n]) => [p, n]) });
   return { ok: true, coste };
+}
+
+/** Compra una mejora para una caja (la propia o la del compañero) con el dinero del jugador `j`. */
+export function mejorar(s: GameState, mejora: MejoraId, caja: number, j = 0): { ok: true; coste: number } | { ok: false; motivo: 'dinero' | 'ya' | 'cantidad' } {
+  if (!jugadorValido(j) || !(caja === 0 || caja === 1) || !(mejora in MEJORAS)) return { ok: false, motivo: 'cantidad' };
+  const k = s.cajas[caja];
+  if (k[mejora]) return { ok: false, motivo: 'ya' };
+  const coste = MEJORAS[mejora].coste, jug = s.jugadores[j];
+  if (coste > jug.dinero) return { ok: false, motivo: 'dinero' };
+  jug.dinero -= coste;
+  jug.gastos += coste;
+  k[mejora] = true;
+  s.eventos.push({ tipo: 'mejora', j, caja, mejora });
+  return { ok: true, coste };
+}
+
+/**
+ * Abre o cierra una caja (la 2 abre cuando entra el segundo jugador). Al cerrarla, su cola pasa
+ * a la otra caja abierta; si no queda ninguna, esos clientes dejan la compra y se van.
+ */
+export function abrirCaja(s: GameState, k: number, abierta: boolean) {
+  if (!(k === 0 || k === 1)) return;
+  const caja = s.cajas[k];
+  caja.abierta = abierta;
+  if (abierta || !caja.cola.length) return;
+  const otra = s.cajas.findIndex((c, i) => i !== k && c.abierta);
+  for (const id of caja.cola) {
+    const c = s.clientes.find((x) => x.id === id);
+    if (!c) continue;
+    if (otra >= 0 && s.cajas[otra].cola.length < LAYOUT.queueMax) {
+      c.caja = otra; c.pago = 0; c.escaneados = 0; c.pasados = {};
+      s.cajas[otra].cola.push(id);
+    } else {
+      devolver(s, c); c.caja = -1; s.stats.perdidos++;
+      s.eventos.push({ tipo: 'seVa', id });
+      salir(c, { x: c.x, z: c.z });
+    }
+  }
+  caja.cola = [];
+  if (otra >= 0) avanzarCola(s, otra);
 }
 
 export const costePedido = (pedido: Partial<Record<ProductId, number>>) =>
@@ -295,7 +373,7 @@ export function empezarTurno(s: GameState) {
   s.reloj = 0;
   s.proximoCliente = 1.5;
   s.clientes = [];
-  s.cola = [];
+  for (const k of s.cajas) k.cola = [];
   s.eventos = [];
   // Los gastos de preparación (pedidos antes de abrir) cuentan para el día.
 }
@@ -306,12 +384,15 @@ export function siguienteDia(s: GameState) {
   s.fase = 'preparacion';
   s.dia += 1;
   s.stats = emptyStats();
+  for (const j of s.jugadores) { j.ingresos = 0; j.gastos = 0; j.cambioDeMas = 0; }
   sortearOferta(s);
 }
 
-/** El cliente que está ahora en la caja, si ya ha llegado a ella. */
-export function clienteEnCaja(s: GameState): Customer | null {
-  const c = s.clientes.find((k) => k.id === s.cola[0]);
+/** El cliente que está ahora en la caja `k`, si ya ha llegado a ella. */
+export function clienteEnCaja(s: GameState, k = 0): Customer | null {
+  const caja = s.cajas[k];
+  if (!caja) return null;
+  const c = s.clientes.find((x) => x.id === caja.cola[0]);
   return c && c.estado === 'cola' && c.path.length === 0 ? c : null;
 }
 
@@ -351,45 +432,48 @@ export const cambioDebido = (c: Customer) => (c.pago ? c.pago - importe(c) : 0);
  * El jugador pasa un producto por el escáner (si no dice cuál, el siguiente que falte).
  * Al pasar el último, el cliente paga con un billete y hay que darle el cambio.
  */
-export function escanear(s: GameState, product?: ProductId): { pagaCon: number } | { escaneado: ProductId } | null {
+export function escanear(s: GameState, product?: ProductId, k = 0): { pagaCon: number } | { escaneado: ProductId } | null {
   if (s.fase !== 'turno') return null;
-  const c = clienteEnCaja(s);
+  const c = clienteEnCaja(s, k);
   if (!c || c.pago) return null;
   const p = product ?? siguienteArticulo(c);
   const linea = p && c.cesta.find((l) => l.product === p);
   if (!p || !linea || (c.pasados[p] ?? 0) >= linea.qty) return null;
   c.pasados[p] = (c.pasados[p] ?? 0) + 1;
   c.escaneados++;
-  s.eventos.push({ tipo: 'escanea', id: c.id, product: p });
+  s.eventos.push({ tipo: 'escanea', id: c.id, product: p, caja: k });
   if (c.escaneados < totalArticulos(c)) return { escaneado: p };
   const total = importe(c);
   c.pago = elegirPago(s, total);
-  s.eventos.push({ tipo: 'paga', billete: c.pago, total, id: c.id });
+  s.eventos.push({ tipo: 'paga', billete: c.pago, total, id: c.id, caja: k });
   return { pagaCon: c.pago };
 }
 
 /**
  * Entrega el cambio. Si falta, el cliente no se va. Si sobra, la venta se cierra pero se pierde lo que sobra.
  */
-export function darCambio(s: GameState, cambio: number): { ok: true; sobra: number } | { ok: false; falta: number } | null {
+export function darCambio(s: GameState, cambio: number, k = 0): { ok: true; sobra: number; propina: number } | { ok: false; falta: number } | null {
   if (s.fase !== 'turno' || !Number.isInteger(cambio) || cambio < 0) return null;
-  const c = clienteEnCaja(s);
+  const c = clienteEnCaja(s, k);
   if (!c || !c.pago) return null;
   const debido = cambioDebido(c);
   if (cambio < debido) return { ok: false, falta: debido - cambio };
   if (cambio > c.pago) return null; // no se puede dar más de lo que entregó... ni tiene sentido
   const total = importe(c), sobra = cambio - debido;
-  s.dinero += c.pago - cambio;
-  s.stats.ingresos += total - sobra;
-  s.stats.cambioDeMas += sobra;
+  // El dinero de la venta es del jugador de esa caja (caja 1: jugador 1; caja 2: jugador 2).
+  const jug = s.jugadores[k];
+  const propina = s.cajas[k].propinas && !c.enfadado ? Math.round((total * 0.1) / 5) * 5 : 0;
+  jug.dinero += c.pago - cambio + propina;
+  jug.ingresos += total - sobra + propina;
+  jug.cambioDeMas += sobra;
   s.stats.articulos += totalArticulos(c);
   s.stats.atendidos++;
   s.reputacion = Math.min(100, s.reputacion + (c.enfadado ? 0 : 2));
-  s.eventos.push({ tipo: 'venta', importe: total - sobra, cambio, sobra, id: c.id });
-  s.cola.shift();
-  salir(c, LAYOUT.queue(0));
-  avanzarCola(s);
-  return { ok: true, sobra };
+  s.eventos.push({ tipo: 'venta', importe: total - sobra, cambio, sobra, propina, id: c.id, caja: k });
+  s.cajas[k].cola.shift();
+  salir(c, LAYOUT.queue(0, k));
+  avanzarCola(s, k);
+  return { ok: true, sobra, propina };
 }
 
 // ---------- Simulación ----------
@@ -412,8 +496,7 @@ export function obstacles(): Rect[] {
     const hw = (side ? dep : w) / 2, hd = (side ? w : dep) / 2;
     out.push({ x0: d.x - hw, z0: d.z - hd, x1: d.x + hw, z1: d.z + hd });
   }
-  const r = LAYOUT.register;
-  out.push({ x0: r.x - 1.45, z0: r.z - 0.38, x1: r.x + 0.85, z1: r.z + 0.38 });
+  for (const r of LAYOUT.registers) out.push({ x0: r.x - 1.45, z0: r.z - 0.38, x1: r.x + 0.85, z1: r.z + 0.38 });
   const pc = LAYOUT.computer;
   out.push({ x0: pc.x - 1.5, z0: pc.z - 0.5, x1: pc.x + 1.4, z1: pc.z + 1.1 });
   const st = LAYOUT.storage;
@@ -526,10 +609,11 @@ function salir(c: Customer, from: Point) {
   c.path = [...route(from, LAYOUT.entry), { ...LAYOUT.street }];
 }
 
-function avanzarCola(s: GameState) {
-  s.cola.forEach((id, i) => {
-    const c = s.clientes.find((k) => k.id === id)!;
-    const spot = LAYOUT.queue(i);
+function avanzarCola(s: GameState, k: number) {
+  s.cajas[k].cola.forEach((id, i) => {
+    const c = s.clientes.find((x) => x.id === id);
+    if (!c) return;
+    const spot = LAYOUT.queue(i, k);
     // Si su hueco ha cambiado, recalcula el camino hasta el nuevo.
     const last = c.path.length ? c.path[c.path.length - 1] : { x: c.x, z: c.z };
     if (Math.abs(last.x - spot.x) > 0.01 || Math.abs(last.z - spot.z) > 0.01) c.path = route({ x: c.x, z: c.z }, spot);
@@ -562,7 +646,7 @@ function nuevoCliente(s: GameState): Customer {
   const c: Customer = {
     id: s.nextId++, x: LAYOUT.street.x + (rand(s) - 0.5) * 0.6, z: LAYOUT.street.z, dir: Math.PI, andando: true,
     path: [LAYOUT.entry], estado: 'entrando', lista, paso: 0, cesta: [], timer: 0,
-    paciencia: QUEUE_PATIENCE, pacienciaMax: QUEUE_PATIENCE, escaneados: 0, pasados: {}, pago: 0, enfadado: false, look: Math.floor(rand(s) * 1e6),
+    paciencia: QUEUE_PATIENCE, pacienciaMax: QUEUE_PATIENCE, escaneados: 0, pasados: {}, pago: 0, enfadado: false, caja: -1, look: Math.floor(rand(s) * 1e6),
   };
   s.stats.clientes++;
   s.eventos.push({ tipo: 'entra', id: c.id });
@@ -576,7 +660,10 @@ function irAlSiguiente(s: GameState, c: Customer) {
     c.path = route(here, displayOf(c.lista[c.paso].product).pick);
     return;
   }
-  if (!c.cesta.length || s.cola.length >= LAYOUT.queueMax) {
+  // Va a la caja abierta con menos cola.
+  let k = -1;
+  s.cajas.forEach((caja, i) => { if (caja.abierta && (k < 0 || caja.cola.length < s.cajas[k].cola.length)) k = i; });
+  if (!c.cesta.length || k < 0 || s.cajas[k].cola.length >= LAYOUT.queueMax) {
     // No ha encontrado nada (o la cola está llena): se va sin comprar.
     if (!c.cesta.length) { s.stats.perdidos++; }
     else { devolver(s, c); s.stats.perdidos++; s.reputacion = Math.max(0, s.reputacion - 4); }
@@ -585,9 +672,11 @@ function irAlSiguiente(s: GameState, c: Customer) {
     return;
   }
   c.estado = 'cola';
-  s.cola.push(c.id);
-  const spot = LAYOUT.queue(s.cola.length - 1);
-  c.path = route(here, spot);
+  c.caja = k;
+  const caja = s.cajas[k];
+  caja.cola.push(c.id);
+  c.paciencia = c.pacienciaMax = QUEUE_PATIENCE * (caja.musica ? 1.5 : 1);
+  c.path = route(here, LAYOUT.queue(caja.cola.length - 1, k));
 }
 
 /** Si se va sin pagar, deja lo que llevaba en su sitio. */
@@ -641,13 +730,15 @@ function actualizar(s: GameState, c: Customer, dt: number) {
         irAlSiguiente(s, c);
       }
       break;
-    case 'cola':
+    case 'cola': {
+      const caja = s.cajas[c.caja] ?? s.cajas[0];
+      const primero = caja.cola[0] === c.id;
       // Mientras se le atiende en la caja no pierde la paciencia.
-      if (!(s.cola[0] === c.id && llegado && c.escaneados > 0)) c.paciencia -= dt;
-      if (llegado && s.cola[0] === c.id) c.dir = 0; // mira hacia la caja
+      if (!(primero && llegado && c.escaneados > 0)) c.paciencia -= dt;
+      if (llegado && primero) c.dir = 0; // mira hacia la caja
       if (c.paciencia <= 0) {
         // Se cansa de esperar: deja la compra y se marcha.
-        s.cola = s.cola.filter((id) => id !== c.id);
+        caja.cola = caja.cola.filter((id) => id !== c.id);
         devolver(s, c);
         c.enfadado = true;
         s.stats.perdidos++;
@@ -655,9 +746,10 @@ function actualizar(s: GameState, c: Customer, dt: number) {
         s.reputacion = Math.max(0, s.reputacion - 4);
         s.eventos.push({ tipo: 'seVa', id: c.id });
         salir(c, { x: c.x, z: c.z });
-        avanzarCola(s);
+        avanzarCola(s, c.caja < 0 ? 0 : c.caja);
       }
       break;
+    }
     case 'saliendo':
       if (llegado) c.estado = 'fuera';
       break;
@@ -681,7 +773,7 @@ export function tick(s: GameState, dt: number) {
   s.clientes = s.clientes.filter((c) => c.estado !== 'fuera');
   if (s.reloj >= SHIFT_SECONDS && s.clientes.length === 0) {
     s.fase = 'resumen';
-    s.mejorDia = Math.max(s.mejorDia, s.stats.ingresos - s.stats.gastos);
+    s.mejorDia = Math.max(s.mejorDia, s.jugadores[0].ingresos - s.jugadores[0].gastos);
     s.eventos.push({ tipo: 'fin' });
   }
 }
@@ -696,9 +788,13 @@ export function horaTienda(s: GameState): { h: number; m: number } {
 // ---------- Guardado (solo en el dispositivo) ----------
 
 export interface Save {
-  v: 1 | 2;
+  v: 1 | 2 | 3;
   dia: number;
   dinero: number;
+  /** Dinero del jugador 2 (v3). */
+  dinero2?: number;
+  /** Mejoras de cada caja (v3): [música, propinas]. */
+  mejoras?: [boolean, boolean][];
   reputacion: number;
   almacen: Record<string, number>;
   estantes: Record<string, number>;
@@ -709,7 +805,7 @@ export interface Save {
 
 /** Guarda lo necesario para seguir otro día. Solo se guarda entre turnos. */
 export function exportar(s: GameState): Save {
-  return { v: 2, dia: s.dia, dinero: s.dinero, reputacion: s.reputacion, almacen: { ...s.almacen }, estantes: { ...s.estantes }, mejorDia: s.mejorDia, seed: s.seed, ofertaRara: { ...s.ofertaRara } as Record<string, number> };
+  return { v: 3, dia: s.dia, dinero: s.jugadores[0].dinero, dinero2: s.jugadores[1].dinero, mejoras: s.cajas.map((k) => [k.musica, k.propinas]), reputacion: s.reputacion, almacen: { ...s.almacen }, estantes: { ...s.estantes }, mejorDia: s.mejorDia, seed: s.seed, ofertaRara: { ...s.ofertaRara } as Record<string, number> };
 }
 
 /** Restaura una partida guardada validando cada dato (si algo no cuadra, partida nueva). */
@@ -718,7 +814,7 @@ export function importar(data: unknown): GameState | null {
   const d = data as Partial<Save>;
   const int = (v: unknown, min: number, max: number) => (typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : null);
   const dia = int(d.dia, 1, 1e6), dinero = int(d.dinero, 0, 1e9), rep = int(d.reputacion, 0, 100);
-  if ((d.v !== 1 && d.v !== 2) || dia === null || dinero === null || rep === null || !d.almacen || !d.estantes) return null;
+  if ((d.v !== 1 && d.v !== 2 && d.v !== 3) || dia === null || dinero === null || rep === null || !d.almacen || !d.estantes) return null;
   const s = newGame(int(d.seed, 1, 2 ** 32 - 1) ?? 1);
   for (const p of PRODUCT_IDS) {
     // Productos añadidos después de guardar la partida: empiezan a cero.
@@ -729,7 +825,9 @@ export function importar(data: unknown): GameState | null {
   }
   // Las partidas de antes de los precios nuevos (v1) tenían todo unas 20 veces más barato.
   const escala = d.v === 1 ? 20 : 1;
-  s.dia = dia; s.dinero = dinero * escala; s.reputacion = rep; s.mejorDia = (int(d.mejorDia, -1e9, 1e9) ?? 0) * escala;
+  s.dia = dia; s.jugadores[0].dinero = dinero * escala; s.reputacion = rep;
+  s.jugadores[1].dinero = int(d.dinero2, 0, 1e9) ?? DINERO_INICIAL;
+  if (Array.isArray(d.mejoras)) d.mejoras.slice(0, 2).forEach((m, k) => { if (Array.isArray(m)) { s.cajas[k].musica = m[0] === true; s.cajas[k].propinas = m[1] === true; } }); s.mejorDia = (int(d.mejorDia, -1e9, 1e9) ?? 0) * escala;
   if (d.ofertaRara && typeof d.ofertaRara === 'object') {
     for (const p of PRODUCT_IDS) if (isRara(p)) s.ofertaRara[p] = int(d.ofertaRara[p], 0, 9) ?? 0;
   } else sortearOferta(s);

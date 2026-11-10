@@ -43,6 +43,16 @@ export interface TillDeps {
   onChange: () => void;
   /** Fracción de la altura de pantalla libre (sin la barra de arriba ni el panel de la caja). */
   freeHeight: () => number;
+  /** Número de caja (0 o 1). */
+  caja: number;
+  /**
+   * Cómo se escanea y se da el cambio. Por defecto, directamente sobre la simulación; el segundo
+   * jugador las cambia para mandar la acción al anfitrión.
+   */
+  ops?: {
+    escanear(p: ProductId): ReturnType<typeof escanear>;
+    darCambio(v: number): ReturnType<typeof darCambio>;
+  };
 }
 
 export class Till {
@@ -75,6 +85,13 @@ export class Till {
   private coinMats = new Map<number, THREE.Material[]>();
   private billMats = new Map<number, THREE.Material[]>();
   private bag: THREE.Group;
+  private served = new Set<number>();
+  private get ops() {
+    return this.d.ops ?? {
+      escanear: (p: ProductId) => escanear(this.d.state(), p, this.d.caja),
+      darCambio: (v: number) => darCambio(this.d.state(), v, this.d.caja),
+    };
+  }
 
   constructor(d: TillDeps) {
     this.d = d;
@@ -259,8 +276,8 @@ export class Till {
   /** Prepara el mostrador para el cliente que está en la caja. */
   private load() {
     const s = this.d.state();
-    const c = clienteEnCaja(s);
-    if (!c) { if (this.customerId) this.clearAll(); this.phase = 'espera'; return; }
+    const c = clienteEnCaja(s, this.d.caja);
+    if (!c || this.served.has(c.id)) { if (this.customerId) this.clearAll(); this.phase = 'espera'; return; }
     if (c.id === this.customerId) return;
     this.clearAll();
     this.customerId = c.id;
@@ -364,9 +381,9 @@ export class Till {
   giveChange() {
     if (this.phase !== 'pago') return;
     const s = this.d.state();
-    const c = clienteEnCaja(s);
+    const c = clienteEnCaja(s, this.d.caja);
     if (!c) return;
-    const r = darCambio(s, this.changeTotal);
+    const r = this.ops.darCambio(this.changeTotal);
     if (!r) { sfx.error(); this.d.toast('Eso es más dinero del que te ha dado', 'bad'); return; }
     if (!r.ok) { sfx.error(); this.d.toast(`Al cambio le faltan RD$${r.falta}`, 'bad', 2400); return; }
     if (r.sobra > 0) this.d.toast(`Le diste RD$${r.sobra} de más`, 'bad', 2400);
@@ -378,6 +395,9 @@ export class Till {
     const bagTo = this.bag.position.clone().add(new THREE.Vector3(0, 0.25, -0.8));
     const bagBack = BAG.clone();
     this.tween(this.bag, bagTo, 0.45, 0.1, 0.2, () => { this.bag.visible = false; this.bag.position.copy(bagBack); });
+    // Ya atendido: aunque la confirmación del anfitrión tarde un momento, no vuelve a cargarse.
+    this.served.add(c.id);
+    if (this.served.size > 50) this.served.delete(this.served.values().next().value as number);
     this.customerId = 0;
     this.phase = 'espera';
     this.refocus();
@@ -396,7 +416,7 @@ export class Till {
   }
 
   private scan(it: BeltItem): boolean {
-    const r = escanear(this.d.state(), it.product);
+    const r = this.ops.escanear(it.product);
     if (!r) return false;
     it.state = 'bolsa';
     this.grabbed = this.grabbed === it ? null : this.grabbed;
@@ -406,7 +426,7 @@ export class Till {
     this.layout();
     this.beltMoving = 0.5;
     if ('pagaCon' in r) {
-      const c = clienteEnCaja(this.d.state());
+      const c = clienteEnCaja(this.d.state(), this.d.caja);
       if (c) setTimeout(() => { if (this.active && this.customerId === c.id) this.startPayment(c); }, 450);
     }
     this.d.onChange();
@@ -512,8 +532,10 @@ export class Till {
     if (!this.active) { this.drawerOpen = Math.max(0, this.drawerOpen - dt * 4); this.drawer.position.z = 0.2 + this.drawerOpen * 0.4; this.stepTweens(dt); return; }
     if (!this.leaving) {
       // ¿Ha cambiado el cliente de la caja?
-      const c = clienteEnCaja(this.d.state());
+      const c = clienteEnCaja(this.d.state(), this.d.caja);
       if ((c?.id ?? 0) !== this.customerId && (this.phase !== 'pago' || !c)) { this.load(); this.d.onChange(); }
+      // El billete puede llegar después (lo decide el anfitrión): en cuanto el cliente paga, se cobra.
+      else if (c && c.id === this.customerId && this.phase === 'escaneo' && c.pago > 0 && !this.items.some((i) => i.state !== 'bolsa')) this.startPayment(c);
     }
     // Productos llegando y avanzando por la cinta
     let moving = false;
@@ -556,7 +578,7 @@ export class Till {
 
   /** Datos para el panel de la caja. */
   info(): { phase: Phase; scanned: number; total: number; sub: number; paid: number; due: number } {
-    const c = this.customerId ? clienteEnCaja(this.d.state()) : null;
+    const c = this.customerId ? clienteEnCaja(this.d.state(), this.d.caja) : null;
     if (!c) return { phase: this.phase, scanned: 0, total: 0, sub: 0, paid: 0, due: 0 };
     return { phase: this.phase, scanned: c.escaneados, total: totalArticulos(c), sub: importeEscaneado(c), paid: c.pago, due: importe(c) };
   }

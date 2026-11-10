@@ -162,8 +162,27 @@ Versión de una sola página (todo dentro de un HTML, para publicarla sin servid
 genera `dist-artifact/supermercado-vN.html` con el título "Supermercado versión N". Cada actualización se publica
 como una página nueva con el número siguiente, así las versiones anteriores siguen disponibles.
 
+**Dos cajas y multijugador de dos personas** (solo en la página publicada en claude.ai, con la capacidad `room`):
+el botón "Multijugador" del menú crea una partida con nombre automático o se une a una abierta. El anfitrión
+juega con su tienda guardada y cobra en la caja 1; el invitado cobra en la caja 2. Cada uno tiene su dinero
+(lo que cobra en su caja y lo que gasta en el ordenador); el almacén y las estanterías son de los dos y cada
+uno ve las compras del otro. En el ordenador hay **mejoras de caja** (música relajante, bote de propinas) que
+se pueden comprar para la propia caja o regalar a la del otro. La pausa es compartida y el anfitrión puede
+sacar al invitado. Jugando solo, la caja 2 está cerrada.
+Cómo funciona: el anfitrión simula la tienda y publica en su "presencia" una foto compacta del estado
+(`src/super/sync.ts`, menos de 4 KiB); el invitado la dibuja y manda sus acciones por su presencia, y el anfitrión
+las valida (`aplicarAccion`). Nadie escribe nada: no hay nombres ni chat. En la app (iOS/Android) no existe
+`window.claude`, así que el botón no aparece; llevarlo a la app exigiría el servidor (`server/index.ts`) y
+actualizar antes la privacidad, según la constitución del proyecto.
+
+**Todos los dispositivos:** móvil (vertical y apaisado), tableta y ordenador, con ratón, dedo o teclado. La calidad
+gráfica se ajusta sola si el dispositivo va lento (en Pausa se puede fijar en Alta o Baja); hay botón de pantalla
+completa donde el navegador lo permite, y un aviso claro si el dispositivo no tiene gráficos 3D (WebGL 2).
+Se compila para navegadores desde Safari 14 / Chrome 87.
+
 Código: `src/super/sim.ts` (reglas puras con tests, caminos A* de los clientes), `models.ts` (modelos 3D),
-`textures.ts` (texturas dibujadas por código, sin imágenes externas), `checkout.ts` (la caja en 3D) y `main.ts` (escena e interfaz).
+`textures.ts` (texturas dibujadas por código, sin imágenes externas), `checkout.ts` (la caja en 3D), `player.ts` (primera persona),
+`sync.ts` y `multi.ts` (multijugador) y `main.ts` (escena e interfaz).
 
 ## Apps móviles (Capacitor)
 

@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import {
   newGame, tick, comprarPedido, costePedido, reponer, empezarTurno, siguienteDia, clienteEnCaja, CAMBIO, esMoneda, esRara, disponibles,
+  abrirCaja, mejorar, cambioDebido, escanear, darCambio, MEJORAS, MEJORA_IDS, type MejoraId, type Jugador,
   horaTienda, exportar, importar,
   PRODUCTS, PRODUCT_IDS, DISPLAYS, LAYOUT, SHIFT_SECONDS,
   type GameState, type ProductId, type Customer,
@@ -12,6 +13,8 @@ import * as M from './models.ts';
 import * as T from './textures.ts';
 import { Till, tillScreenPoints } from './checkout.ts';
 import { Player } from './player.ts';
+import { Session, getRoom, listGames, type OpenGame } from './multi.ts';
+import { aplicarAccion, type Accion } from './sync.ts';
 import { sfx, unlock, isMuted, setMuted } from './audio.ts';
 import { icon, hydrateIcons } from '../ui/icons.ts';
 import '../ui/pwa.ts';
@@ -30,9 +33,41 @@ function loadSave(): GameState | null {
 function writeSave(data: ReturnType<typeof exportar>) {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch { /* sin almacenamiento: se juega igual, sin guardar */ }
 }
-const save = () => { if (state.fase === 'preparacion') writeSave(exportar(state)); };
+const save = () => { if (!isGuest() && state.fase === 'preparacion') writeSave(exportar(state)); };
 let hasSave = loadSave() !== null;
 let state: GameState = loadSave() ?? newGame((Math.random() * 2 ** 32) >>> 0);
+
+// ---------- Multijugador (solo en la página publicada en claude.ai) ----------
+/** Partida de dos en curso, si la hay. */
+let session: Session | null = null;
+/** Qué jugador soy: 0 (anfitrión o solo, caja 1) o 1 (invitado, caja 2). */
+let ME: 0 | 1 = 0;
+const isGuest = () => session?.role === 'guest';
+const yo = (): Jugador => state.jugadores[ME];
+const escanearSim = (p: ProductId, k: number) => escanear(state, p, k);
+const darCambioSim = (v: number, k: number) => darCambio(state, v, k);
+/** Invitado: el escaneo se refleja al momento y se manda al anfitrión. El billete lo elige el anfitrión. */
+function guestScan(p: ProductId): ReturnType<typeof escanear> {
+  const c = clienteEnCaja(state, 1);
+  if (!c || c.pago) return null;
+  const l = c.cesta.find((x) => x.product === p);
+  if (!l || (c.pasados[p] ?? 0) >= l.qty) return null;
+  c.pasados[p] = (c.pasados[p] ?? 0) + 1;
+  c.escaneados++;
+  session!.send({ t: 'escanear', p } as Omit<Accion, 'n'>);
+  sfx.scan();
+  return { escaneado: p };
+}
+/** Invitado: se comprueba el cambio aquí para responder al momento; el anfitrión lo confirma. */
+function guestChange(v: number): ReturnType<typeof darCambio> {
+  const c = clienteEnCaja(state, 1);
+  if (!c || !c.pago || !Number.isInteger(v) || v < 0) return null;
+  const debido = cambioDebido(c);
+  if (v < debido) return { ok: false, falta: debido - v };
+  if (v > c.pago) return null;
+  session!.send({ t: 'cambio', v } as Omit<Accion, 'n'>);
+  return { ok: true, sobra: v - debido, propina: 0 };
+}
 
 // ---------- Render ----------
 const canvas = $<HTMLCanvasElement>('scene');
@@ -152,6 +187,12 @@ const hitTargets: THREE.Object3D[] = [];
 let build: M.Building;
 let cashier: M.Person;
 let reg: M.Checkout;
+/** Las dos cajas (reg es la 1). */
+let regs: M.Checkout[] = [];
+let tills: Till[] = [];
+/** Avatar del otro jugador. */
+let partner: M.Person;
+let partnerLabel: THREE.Sprite;
 let pcScreen: THREE.Mesh;
 let store: ReturnType<typeof M.storage>;
 let doors: { left: THREE.Mesh; right: THREE.Mesh; x: number; w: number };
@@ -179,9 +220,14 @@ function buildWorld() {
     displays.set(d.product, { model, badge, tex, shown: -1 });
     hitTargets.push(model.hit, badge);
   }
-  reg = M.checkout(LAYOUT.register.x, LAYOUT.register.z);
-  reg.hit.userData.action = 'cobrar';
-  scene.add(reg.group); hitTargets.push(reg.hit);
+  regs = LAYOUT.registers.map((r, k) => {
+    const m = M.checkout(r.x, r.z);
+    m.hit.userData.action = 'cobrar';
+    m.hit.userData.caja = k;
+    scene.add(m.group); hitTargets.push(m.hit);
+    return m;
+  });
+  reg = regs[0];
   const off = M.office(LAYOUT.computer.x, LAYOUT.computer.z);
   off.hit.userData.action = 'ordenador';
   pcScreen = off.screen;
@@ -196,15 +242,41 @@ function buildWorld() {
   scene.add(cashier.group);
   ceilingGroup = M.ceiling();
   scene.add(ceilingGroup);
-  till = new Till({
-    scene, camera, controls: tillView as unknown as OrbitControls, canvas, register: reg.group, scanner: reg.scanner, belt: reg.belt, cashier: cashier.group,
+  tills = regs.map((r, k) => new Till({
+    scene, camera, controls: tillView as unknown as OrbitControls, canvas, register: r.group, scanner: r.scanner, belt: r.belt, cashier: cashier.group,
     state: () => state, toast, onChange: () => { if (inStore) renderTill(); },
     freeHeight: () => {
       const h = innerHeight, hud = $('hud').getBoundingClientRect().bottom;
       const panel = $('till').hidden ? 170 : $('till').getBoundingClientRect().height;
       return (h - hud - panel) / h;
     },
-  });
+    caja: k,
+    ops: {
+      // Como invitado, el escaneo y el cambio se comprueban aquí para responder al momento,
+      // y se mandan al anfitrión, que es quien decide (y quien elige con qué billete se paga).
+      escanear: (p) => (isGuest() ? guestScan(p) : escanearSim(p, k)),
+      darCambio: (v) => (isGuest() ? guestChange(v) : darCambioSim(v, k)),
+    },
+  }));
+  till = tills[0];
+  partner = M.person(919191, true);
+  partner.group.visible = false;
+  scene.add(partner.group);
+  partnerLabel = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture('Compañero'), transparent: true }));
+  partnerLabel.scale.set(0.9, 0.22, 1); partnerLabel.position.y = 2.05;
+  partner.group.add(partnerLabel);
+}
+
+/** Etiqueta flotante sobre el avatar del otro jugador. */
+function labelTexture(text: string): THREE.CanvasTexture {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+  const g = c.getContext('2d')!;
+  g.fillStyle = 'rgba(22,28,17,0.88)'; g.fillRect(0, 0, 256, 64);
+  g.fillStyle = '#ffc83d'; g.fillRect(0, 58, 256, 6);
+  g.fillStyle = '#f4f1e4'; g.font = "600 34px 'Oswald', sans-serif"; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(text.toUpperCase(), 128, 32);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 /** Miniaturas de los productos para el ordenador: se renderizan una vez con los mismos modelos 3D. */
@@ -284,7 +356,12 @@ function syncCustomers(dt: number, t: number) {
     let v = views.get(c.id);
     if (!v) { v = customerView(c); views.set(c.id, v); }
     const g = v.p.group;
-    g.position.x = c.x; g.position.z = c.z;
+    if (isGuest()) {
+      // Las fotos del anfitrión llegan unas 10 veces por segundo: se suaviza el movimiento entre ellas.
+      const k = Math.min(1, dt * 12);
+      if (Math.hypot(c.x - g.position.x, c.z - g.position.z) > 3) { g.position.x = c.x; g.position.z = c.z; }
+      else { g.position.x += (c.x - g.position.x) * k; g.position.z += (c.z - g.position.z) * k; }
+    } else { g.position.x = c.x; g.position.z = c.z; }
     // Gira suave hacia donde camina
     let dr = c.dir - g.rotation.y;
     dr = Math.atan2(Math.sin(dr), Math.cos(dr));
@@ -300,7 +377,7 @@ function syncCustomers(dt: number, t: number) {
     v.p.armR.rotation.x = THREE.MathUtils.lerp(v.p.armR.rotation.x, reach || swing * 0.3, 0.3);
     g.position.y = walking ? Math.abs(Math.sin(v.phase)) * 0.035 : 0;
     // Cesta mientras compra, bolsa al pagar
-    v.p.basket.visible = c.estado !== 'entrando' && !v.bag.visible && !(till.active && c.id === state.cola[0] && c.path.length === 0);
+    v.p.basket.visible = c.estado !== 'entrando' && !v.bag.visible && !(till.active && c.id === state.cajas[ME].cola[0] && c.path.length === 0);
     // Paciencia en la cola
     const inQueue = c.estado === 'cola';
     v.bar.visible = inQueue;
@@ -378,7 +455,7 @@ function pulse(el: HTMLElement, cls: 'pulse' | 'spend') {
 
 let shownMoney = -1;
 function renderHud() {
-  if (state.dinero !== shownMoney) { hudMoney.textContent = String(state.dinero); shownMoney = state.dinero; }
+  if (yo().dinero !== shownMoney) { hudMoney.textContent = String(yo().dinero); shownMoney = yo().dinero; }
   hudRep.textContent = String(Math.round(state.reputacion));
   hudRepEl.classList.toggle('low', state.reputacion < 30);
   hudRepEl.setAttribute('aria-label', `Reputación ${Math.round(state.reputacion)} de 100`);
@@ -390,22 +467,23 @@ function renderHud() {
   clockEl.setAttribute('aria-valuenow', String(Math.round(f * 100)));
   const closing = state.fase === 'turno' && state.reloj >= SHIFT_SECONDS;
   clockEl.classList.toggle('closing', closing);
-  phaseChip.textContent = state.fase === 'preparacion' ? 'Preparación' : state.fase === 'resumen' ? 'Cerrado' : closing ? 'Cerrando' : 'Abierto';
+  phaseChip.textContent = (state.fase === 'preparacion' ? 'Preparación' : state.fase === 'resumen' ? 'Cerrado' : closing ? 'Cerrando' : 'Abierto')
+    + (session ? ` · Caja ${ME + 1}${session.partner ? '' : ' · esperando'}` : '');
   phaseChip.classList.toggle('open', state.fase === 'turno' && !closing);
   const turno = state.fase === 'turno';
   startBtn.hidden = state.fase !== 'preparacion'; scanBtn.hidden = !turno;
   if (turno) {
-    const c = clienteEnCaja(state);
+    const c = clienteEnCaja(state, ME);
     scanBtn.classList.toggle('ready', !!c);
     scanLbl.textContent = c ? 'Atender cliente' : 'Ir a la caja';
-    queueN.textContent = String(state.cola.length);
-    queueN.hidden = state.cola.length === 0;
+    queueN.textContent = String(state.cajas[ME].cola.length);
+    queueN.hidden = state.cajas[ME].cola.length === 0;
   }
   const needs = PRODUCT_IDS.some((p) => state.estantes[p] <= PRODUCTS[p].capacidad * 0.25 && state.almacen[p] > 0);
   shelvesBtn.classList.toggle('warn', needs);
 }
 
-let shownRegister = '';
+const shownRegister: string[] = ['', ''];
 function updateWorldState() {
   for (const [p, v] of displays) {
     const n = state.estantes[p];
@@ -418,14 +496,19 @@ function updateWorldState() {
   let boxes = 0;
   for (const p of PRODUCT_IDS) boxes += Math.ceil(state.almacen[p] / PRODUCTS[p].caja);
   store.boxes.count = Math.min(store.max, boxes);
-  const c = clienteEnCaja(state);
-  let total = 0, items = 0;
-  if (c) {
-    let n = c.escaneados;
-    for (const l of c.cesta) { const k = Math.min(n, l.qty); total += k * PRODUCTS[l.product].precio; items += k; n -= k; }
-  }
-  const key = `${total}/${items}`;
-  if (key !== shownRegister) { T.drawRegister(reg.screen, total, items); shownRegister = key; }
+  regs.forEach((r, k) => {
+    const c = clienteEnCaja(state, k);
+    let total = 0, items = 0;
+    if (c) {
+      for (const l of c.cesta) { const n = Math.min(l.qty, c.pasados[l.product] ?? 0); total += n * PRODUCTS[l.product].precio; items += n; }
+    }
+    const key = `${total}/${items}`;
+    if (key !== shownRegister[k]) { T.drawRegister(r.screen, total, items); shownRegister[k] = key; }
+    // Caja cerrada y mejoras a la vista
+    r.closed.visible = !state.cajas[k].abierta;
+    r.speaker.visible = state.cajas[k].musica;
+    r.tipJar.visible = state.cajas[k].propinas;
+  });
 }
 
 // ---------- Ordenador ----------
@@ -433,6 +516,7 @@ const cart: Record<ProductId, number> = Object.fromEntries(PRODUCT_IDS.map((p) =
 const pcRows = new Map<ProductId, { card: HTMLElement; qty: HTMLOutputElement; minus: HTMLButtonElement; plus: HTMLButtonElement; stock: HTMLElement }>();
 function buildPc() {
   const body = $('pcBody');
+  const mejoras = $('pcMejoras');
   body.innerHTML = '';
   for (const p of PRODUCT_IDS) {
     const d = PRODUCTS[p];
@@ -448,6 +532,8 @@ function buildPc() {
     body.append(card);
     pcRows.set(p, { card, qty: card.querySelector('output')!, minus, plus, stock: card.querySelector('.st')! });
   }
+  // Las mejoras van en la misma lista, debajo de los productos.
+  body.append(mejoras);
 }
 function renderPc() {
   const total = costePedido(cart);
@@ -462,17 +548,21 @@ function renderPc() {
       + (esRara(p) ? `<br />${disp > 0 ? `Hoy el proveedor tiene <b>${disp}</b> ${disp === 1 ? 'caja' : 'cajas'}` : 'Hoy no hay: prueba otro día'}` : '');
     r.qty.value = String(cart[p]);
   }
-  $('pcMoney').textContent = String(state.dinero);
+  const dinero = yo().dinero;
+  $('pcMoney').textContent = String(dinero);
   $('pcTotal').textContent = money(total);
   const after = $('pcAfter');
-  after.textContent = total === 0 ? 'Añade cajas al pedido' : total > state.dinero ? `Faltan ${money(total - state.dinero)}` : `Te quedarán ${money(state.dinero - total)}`;
-  after.classList.toggle('bad', total > state.dinero);
-  $<HTMLButtonElement>('pcPay').disabled = total === 0 || total > state.dinero;
+  after.textContent = total === 0 ? 'Añade cajas al pedido' : total > dinero ? `Faltan ${money(total - dinero)}` : `Te quedarán ${money(dinero - total)}`;
+  after.classList.toggle('bad', total > dinero);
+  $<HTMLButtonElement>('pcPay').disabled = total === 0 || total > dinero;
+  renderMejoras();
   $<HTMLButtonElement>('pcClear').disabled = total === 0;
 }
 $('pcClear').addEventListener('click', () => { for (const p of PRODUCT_IDS) cart[p] = 0; renderPc(); });
 $('pcPay').addEventListener('click', () => {
-  const r = comprarPedido(state, cart);
+  const pedido = { ...cart };
+  const r = comprarPedido(state, pedido, ME);
+  if (r.ok && isGuest()) session!.send({ t: 'comprar', pedido } as Omit<Accion, 'n'>);
   if (!r.ok) { sfx.error(); toast(r.motivo === 'dinero' ? 'No hay dinero suficiente' : r.motivo === 'agotado' ? 'El proveedor no tiene tantas cajas hoy' : 'El pedido está vacío', 'bad'); return; }
   for (const p of PRODUCT_IDS) cart[p] = 0;
   sfx.buy();
@@ -512,6 +602,7 @@ function renderShelves() {
 function restock(p: ProductId, fromScene = false): number {
   const d = PRODUCTS[p];
   const n = reponer(state, p);
+  if (n > 0 && isGuest()) session!.send({ t: 'reponer', p } as Omit<Accion, 'n'>);
   if (n > 0) {
     sfx.stock();
     const v = displays.get(p)!;
@@ -528,7 +619,7 @@ function restock(p: ProductId, fromScene = false): number {
 }
 $('shAll').addEventListener('click', () => {
   let total = 0;
-  for (const p of PRODUCT_IDS) total += reponer(state, p);
+  for (const p of PRODUCT_IDS) { const n = reponer(state, p); total += n; if (n > 0 && isGuest()) session!.send({ t: 'reponer', p } as Omit<Accion, 'n'>); }
   if (total) { sfx.stock(); toast(`Repuestas ${total} unidades`, 'ok'); save(); }
   else { sfx.error(); toast('No hay nada que reponer', 'bad'); }
   renderShelves();
@@ -536,7 +627,7 @@ $('shAll').addEventListener('click', () => {
 
 // ---------- Ventanas ----------
 let openModal: HTMLElement | null = null, opener: HTMLElement | null = null;
-function open(id: 'pc' | 'shelves' | 'help' | 'confirm') {
+function open(id: 'pc' | 'shelves' | 'help' | 'confirm' | 'mp') {
   if (openModal) close();
   player?.unlock(); player?.release();
   const el = $(id);
@@ -554,18 +645,214 @@ function close() {
   opener?.focus?.();
 }
 document.querySelectorAll<HTMLElement>('[data-close]').forEach((b) => b.addEventListener('click', close));
-for (const id of ['pc', 'shelves', 'help', 'confirm']) $(id).addEventListener('pointerdown', (e) => { if (e.target === e.currentTarget) close(); });
+for (const id of ['pc', 'shelves', 'help', 'confirm', 'mp']) $(id).addEventListener('pointerdown', (e) => { if (e.target === e.currentTarget) close(); });
 pcBtn.addEventListener('click', () => open('pc'));
 shelvesBtn.addEventListener('click', () => open('shelves'));
 
 // ---------- Flujo de partida ----------
-let inStore = false, paused = false;
+let inStore = false, paused = false, pausedByPartner = false, pauseSeen = false, lastFase = state.fase;
+
+/** Cambios de fase que llegan por la simulación o por el otro jugador. */
+function watchPhase() {
+  if (!inStore) { lastFase = state.fase; return; }
+  if (state.fase === lastFase) return;
+  const prev = lastFase;
+  lastFase = state.fase;
+  if (state.fase === 'turno') {
+    sfx.open();
+    banner(`Día ${state.dia}`, '¡Abrimos!', session ? `Tú cobras en la caja ${ME + 1}` : 'Cobra a los clientes y vigila las estanterías');
+  } else if (state.fase === 'resumen') {
+    for (const t of tills) if (t.active) t.exit();
+    setTimeout(showSummary, 600);
+  } else if (state.fase === 'preparacion' && prev === 'resumen') {
+    $('summary').hidden = true;
+    save();
+    prepBanner();
+    startBtn.focus();
+  }
+}
+
+// ---------- Mejoras de las cajas (en el ordenador) ----------
+let mejorasKey = '';
+function renderMejoras() {
+  const el = $('pcMejoras');
+  const targets = session && session.partner ? [ME, 1 - ME] : [ME];
+  const key = `${targets.join()}|${state.cajas.map((k) => `${k.musica}${k.propinas}`).join()}|${yo().dinero}`;
+  if (key === mejorasKey) return;
+  mejorasKey = key;
+  el.innerHTML = `<h3 class="pc-sub">Mejoras de las cajas</h3>` + targets.flatMap((k) => MEJORA_IDS.map((m) => {
+    const d = MEJORAS[m], tiene = state.cajas[k][m];
+    const para = k === ME ? 'Para tu caja' : 'Para la caja de tu compañero';
+    return `<article class="prod mejora${tiene ? ' sel' : ''}"><div class="mj-ic">${icon(m === 'musica' ? 'volumeOn' : 'coins')}</div><h3>${d.nombre}</h3>
+      <div class="meta"><b>${para} (caja ${k + 1})</b><br />${d.desc}</div>
+      <div class="row"><span class="price">${icon('coins')}${money(d.coste)}</span>
+      <button class="ghost" data-m="${m}" data-k="${k}" ${tiene || d.coste > yo().dinero ? 'disabled' : ''}>${tiene ? 'Ya la tiene' : k === ME ? 'Comprar' : 'Regalar'}</button></div></article>`;
+  })).join('');
+}
+$('pcMejoras').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-m]');
+  if (!b) return;
+  const m = b.dataset.m as MejoraId, k = Number(b.dataset.k);
+  const r = mejorar(state, m, k, ME);
+  if (!r.ok) { sfx.error(); toast(r.motivo === 'dinero' ? 'No tienes dinero suficiente' : 'Esa caja ya tiene esa mejora', 'bad'); return; }
+  if (isGuest()) session!.send({ t: 'mejorar', m, k } as Omit<Accion, 'n'>);
+  sfx.buy();
+  pulse(hudMoneyEl, 'spend');
+  toast(k === ME ? `Tu caja tiene ahora: ${MEJORAS[m].nombre.toLowerCase()}` : `Has regalado a tu compañero: ${MEJORAS[m].nombre.toLowerCase()}`, 'ok', 2600);
+  save();
+  renderPc();
+});
+
+// ---------- Partida de dos: vestíbulo, anfitrión e invitado ----------
+const MOTIVOS: Record<string, string> = {
+  dinero: 'No tienes dinero suficiente', agotado: 'El proveedor no tiene tantas cajas hoy', ya: 'Esa caja ya tiene esa mejora',
+};
+const sessionHooks = {
+  onPartner(present: boolean) {
+    if (session?.role !== 'host') return;
+    abrirCaja(state, 1, present);
+    sfx.door();
+    toast(present ? 'Se ha unido tu compañero: la caja 2 está abierta' : 'Tu compañero se ha ido: la caja 2 cierra', present ? 'ok' : 'bad', 3200);
+    mejorasKey = '';
+  },
+  onAction(a: Accion): [0 | 1, string] {
+    const r = aplicarAccion(state, a, 1);
+    if (a.t === 'reponer' || a.t === 'comprar' || a.t === 'mejorar') save();
+    return r;
+  },
+  onSnap(x: { ev: [number, GameState['eventos'][number]][]; res: [number, 0 | 1, string][] }) {
+    for (const [, ev] of x.ev) state.eventos.push(ev);
+    for (const [, ok, m] of x.res) {
+      if (ok) continue;
+      if (m.startsWith('falta:')) toast(`Al cambio le faltan ${money(Number(m.slice(6)))}`, 'bad', 2400);
+      else if (MOTIVOS[m]) toast(MOTIVOS[m], 'bad');
+    }
+  },
+  onEnd(reason: 'host-gone' | 'full' | 'kicked' | 'lost') {
+    const msg = { 'host-gone': 'Tu compañero ha cerrado la partida', full: 'Esa partida ya tiene dos jugadores', kicked: 'El anfitrión te ha sacado de la partida', lost: 'Se ha perdido la conexión con la partida' }[reason];
+    goTitle();
+    toast(msg, 'bad', 3600);
+  },
+};
+
+function startSession(s: Session) {
+  session = s;
+  ME = s.me;
+  till = tills[ME];
+  partnerLabel.material.map?.dispose();
+  partnerLabel.material.map = labelTexture(ME === 0 ? 'Jugador 2' : 'Jugador 1');
+  partnerLabel.material.needsUpdate = true;
+  mejorasKey = '';
+  document.body.classList.add('mp');
+  close();
+  enterStore();
+}
+
+function endSession() {
+  if (!session) return;
+  const s = session;
+  session = null;
+  void s.leave();
+  for (const t of tills) if (t.active) t.exit();
+  partner.group.visible = false;
+  if (s.role === 'guest') { state = loadSave() ?? newGame((Math.random() * 2 ** 32) >>> 0); resetViews(); }
+  else abrirCaja(state, 1, false);
+  ME = 0;
+  till = tills[0];
+  mejorasKey = '';
+  document.body.classList.remove('mp');
+}
+
+/** Avatar del otro jugador: camina donde está; si está cobrando, aparece detrás de su caja. */
+let partnerPhase = 0;
+function updatePartner(dt: number) {
+  const p = session?.partnerPos ?? null;
+  partner.group.visible = !!p && inStore;
+  if (!p) return;
+  const k = 1 - ME;
+  let x = p[0], z = p[1], yaw = p[2] + Math.PI;
+  if (p[3]) { x = LAYOUT.cashiers[k].x; z = LAYOUT.cashiers[k].z; yaw = Math.PI; }
+  const g = partner.group;
+  const d = Math.hypot(x - g.position.x, z - g.position.z);
+  if (d > 4) g.position.set(x, 0, z);
+  else { const f = Math.min(1, dt * 10); g.position.x += (x - g.position.x) * f; g.position.z += (z - g.position.z) * f; }
+  let dr = yaw - g.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
+  g.rotation.y += dr * Math.min(1, dt * 10);
+  const walking = d > 0.02 && !p[3];
+  if (walking) partnerPhase += dt * 9;
+  const sw = walking ? Math.sin(partnerPhase) * 0.5 : 0;
+  partner.legL.rotation.x = sw; partner.legR.rotation.x = -sw;
+  partner.armL.rotation.x = -sw * 0.7; partner.armR.rotation.x = p[3] ? -0.9 : sw * 0.7;
+}
+
+// Vestíbulo
+const mpStatus = $('mpStatus'), mpList = $('mpList');
+let lobbyTimer = 0;
+let lobbyKey = '';
+function renderLobby(games: OpenGame[]) {
+  // Solo se redibuja si cambia algo: así un toque en "Unirse" nunca cae justo en un redibujado.
+  const key = JSON.stringify(games);
+  if (key === lobbyKey) return;
+  lobbyKey = key;
+  mpList.innerHTML = games.length
+    ? games.map((g, i) => `<li><div><strong></strong><span>Día ${g.dia} · ${g.n === 2 ? 'llena' : '1 de 2 jugadores'}</span></div><button class="ghost" data-i="${i}" ${g.n === 2 ? 'disabled' : ''}>${icon('logIn')}Unirse</button></li>`).join('')
+    : '<li class="empty">Todavía no hay partidas abiertas. Crea una o espera a que tu amigo cree la suya.</li>';
+  // El nombre de la partida llega de otro jugador: se pone como texto, nunca como HTML.
+  mpList.querySelectorAll('li strong').forEach((el, i) => { el.textContent = games[i].nombre; });
+  mpList.querySelectorAll<HTMLButtonElement>('button[data-i]').forEach((b) => b.addEventListener('click', () => void joinGame(games[Number(b.dataset.i)])));
+}
+async function openLobby() {
+  const room = await getRoom();
+  if (!room) return;
+  mpStatus.textContent = '';
+  lobbyKey = '';
+  open('mp');
+  const refresh = () => { if (!$('mp').hidden) renderLobby(listGames(room)); else clearInterval(lobbyTimer); };
+  refresh();
+  clearInterval(lobbyTimer);
+  lobbyTimer = window.setInterval(refresh, 1000);
+}
+$('mpBtn').addEventListener('click', () => void openLobby());
+$('mpCreate').addEventListener('click', async () => {
+  const room = await getRoom();
+  if (!room || session) return;
+  const btn = $<HTMLButtonElement>('mpCreate');
+  btn.disabled = true;
+  mpStatus.textContent = 'Creando la partida...';
+  try {
+    const s = await Session.host(room, sessionHooks, () => state);
+    startSession(s);
+    toast(`Partida «${s.nombre}» creada: espera a tu compañero`, 'ok', 4200);
+  } catch {
+    mpStatus.textContent = 'No se pudo crear la partida. Inténtalo de nuevo.';
+  } finally { btn.disabled = false; }
+});
+async function joinGame(g: OpenGame) {
+  const room = await getRoom();
+  if (!room || session) return;
+  mpStatus.textContent = 'Uniéndote a la partida...';
+  mpList.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+  // El invitado dibuja la tienda del anfitrión: su propia partida guardada no se toca.
+  const mine = state;
+  state = newGame(1);
+  resetViews();
+  try {
+    const s = await Session.join(room, g.sala, sessionHooks, () => state);
+    startSession(s);
+    toast(`Te has unido a ${g.nombre}: tú cobras en la caja 2`, 'ok', 4200);
+  } catch (e) {
+    state = mine;
+    resetViews();
+    mpStatus.textContent = (e as Error).message === 'full' ? 'Esa partida ya tiene dos jugadores.' : 'No se pudo conectar con esa partida.';
+    mpList.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+  }
+}
 
 function renderTitle() {
   $('playLbl').textContent = hasSave ? `Continuar · Día ${state.dia}` : 'Jugar';
   $('newBtn').hidden = !hasSave;
   $('recDay').textContent = String(state.dia);
-  $('recMoney').textContent = money(state.dinero);
+  $('recMoney').textContent = money(state.jugadores[0].dinero);
   $('recBest').textContent = money(Math.max(0, state.mejorDia));
 }
 function enterStore() {
@@ -578,7 +865,8 @@ function enterStore() {
   camera.fov = 70;
   camera.clearViewOffset();
   fitCamera();
-  player.place(0.5, 4.2, 0);
+  lastFase = state.fase;
+  if (ME === 1) player.place(-2.6, 4.2, 0); else player.place(0.5, 4.2, 0);
   player.enabled = true;
   prepBanner();
   toast(isTouch ? 'Joystick a la izquierda para andar · arrastra a la derecha para mirar' : 'Haz clic para mirar con el ratón (L o Esc lo suelta) · WASD para andar', '', 4200);
@@ -590,6 +878,7 @@ function prepBanner() {
 }
 function goTitle() {
   close();
+  endSession();
   setPaused(false);
   inStore = false;
   player.enabled = false;
@@ -623,12 +912,9 @@ $('helpKeys').textContent = isTouch
 
 startBtn.addEventListener('click', () => {
   if (state.fase !== 'preparacion') return;
+  if (isGuest()) { session!.send({ t: 'empezar' } as Omit<Accion, 'n'>); return; }
   writeSave(exportar(state));
   empezarTurno(state);
-  sfx.open();
-  banner(`Día ${state.dia}`, '¡Abrimos!', 'Cobra a los clientes y vigila las estanterías');
-  scanBtn.hidden = false;
-  scanBtn.focus();
 });
 function doScan() {
   if (state.fase !== 'turno' || paused) return;
@@ -671,55 +957,62 @@ function renderTill() {
     $('tChange').textContent = money(till.changeTotal);
     tUndo.disabled = till.change.length === 0;
   } else {
-    const n = state.cola.length;
+    const n = state.cajas[ME].cola.length;
     tillMsg.textContent = n ? 'El siguiente cliente está llegando a la caja.' : state.reloj >= SHIFT_SECONDS ? 'No queda nadie: la tienda está cerrada.' : 'No hay nadie en la cola.';
     tillCount.textContent = n ? `${n} en cola` : '';
   }
 }
 
 function showSummary() {
-  const s = state.stats;
-  const profit = s.ingresos - s.gastos;
+  if (!$('summary').hidden) return;
+  const s = state.stats, j = yo();
+  const profit = j.ingresos - j.gastos;
   $('sumDay').textContent = String(state.dia);
   $('sClients').textContent = String(s.clientes);
   $('sServed').textContent = String(s.atendidos);
   $('sLost').textContent = String(s.perdidos);
   $('sItems').textContent = String(s.articulos);
-  $('sIncome').textContent = money(s.ingresos);
-  $('sCost').textContent = money(s.gastos);
+  $('sIncome').textContent = money(j.ingresos);
+  $('sCost').textContent = money(j.gastos);
   const pe = $('sProfit');
   pe.textContent = (profit < 0 ? '-' : '') + money(Math.abs(profit));
   pe.classList.toggle('neg', profit < 0);
   $('sumRecord').hidden = !(profit > 0 && profit >= state.mejorDia);
   const tips: string[] = [];
   if (s.faltas > 0) tips.push(`${s.faltas === 1 ? 'Una vez' : `${s.faltas} veces`} un cliente no encontró lo que buscaba: compra más género en el ordenador.`);
-  if (s.cambioDeMas > 0) tips.push(`Diste ${money(s.cambioDeMas)} de más en cambios.`);
+  if (j.cambioDeMas > 0) tips.push(`Diste ${money(j.cambioDeMas)} de más en cambios.`);
+  if (session) tips.push(`Tu compañero ganó ${money(state.jugadores[1 - ME].ingresos)} hoy.`);
   if (s.cansados > 0) tips.push('Hubo clientes que se cansaron de esperar en la caja: cóbrales más rápido.');
   $('sumTip').textContent = tips.length ? tips.join(' ') : 'Día perfecto: todos los clientes se fueron contentos.';
   close();
   $('summary').hidden = false;
   $('nextBtn').focus();
+  if (isGuest()) return; // la partida es del anfitrión: el invitado no guarda
   // Se guarda ya el día siguiente: si se cierra la app aquí, no se pierde lo ganado.
   const sv = exportar(state); sv.dia = state.dia + 1;
   writeSave(sv);
   hasSave = true;
 }
 $('nextBtn').addEventListener('click', () => {
+  if (isGuest()) { session!.send({ t: 'siguiente' } as Omit<Accion, 'n'>); return; }
   siguienteDia(state);
-  $('summary').hidden = true;
-  save();
-  prepBanner();
-  startBtn.focus();
 });
 
 // Pausa
 const pauseBtn = $('pauseBtn');
-function setPaused(v: boolean) {
+function setPaused(v: boolean, remote = false) {
+  // En multijugador la pausa es de los dos: se avisa al otro (salvo si la pidió él).
+  if (session && !remote && v !== paused) { session.setPause(v); session.pump(performance.now(), v); }
+  pausedByPartner = v && remote;
   paused = v;
+  $('pauseKicker').textContent = pausedByPartner ? 'Tu compañero ha pausado' : 'Juego en pausa';
+  $('kickBtn').hidden = !(session?.role === 'host' && session.partner);
   pauseEl.hidden = !v;
   pauseBtn.innerHTML = icon(v ? 'play' : 'pause');
   pauseBtn.setAttribute('aria-label', v ? 'Continuar' : 'Pausar');
-  $('quitHelp').textContent = state.fase === 'turno' ? 'Si sales ahora, el turno en curso no se guardará.' : 'La tienda queda guardada en este dispositivo.';
+  $('quitHelp').textContent = isGuest() ? 'Saldrás de la partida de tu compañero.'
+    : session ? 'Se cerrará la partida para tu compañero.'
+    : state.fase === 'turno' ? 'Si sales ahora, el turno en curso no se guardará.' : 'La tienda queda guardada en este dispositivo.';
   if (v) { close(); player.unlock(); player.release(); $('resumeBtn').focus(); }
   else if (till?.active) applyViewOffset();
 }
@@ -727,9 +1020,10 @@ pauseBtn.innerHTML = icon('pause');
 pauseBtn.addEventListener('click', () => setPaused(!paused));
 $('resumeBtn').addEventListener('click', () => setPaused(false));
 $('quitBtn').addEventListener('click', () => {
-  if (state.fase === 'turno') { state = loadSave() ?? newGame(); resetViews(); }
+  if (!isGuest() && state.fase === 'turno') { state = loadSave() ?? newGame(); resetViews(); }
   goTitle();
 });
+$('kickBtn').addEventListener('click', () => { session?.kick(); setPaused(false); toast('Has sacado a tu compañero de la partida'); });
 // Ciclo de vida: al pasar a segundo plano el turno se pausa solo.
 document.addEventListener('visibilitychange', () => { if (document.hidden && inStore && state.fase === 'turno' && !paused) setPaused(true); });
 
@@ -860,6 +1154,8 @@ function act(o: THREE.Object3D) {
   if (o.userData.product) { restock(o.userData.product as ProductId, true); return; }
   const a = o.userData.action;
   if (a === 'cobrar') {
+    const k = o.userData.caja as number;
+    if (k !== ME) { toast(session ? 'Esa es la caja de tu compañero: tú cobras en la tuya' : 'La caja 2 se abre cuando juegan dos personas'); return; }
     if (state.fase !== 'turno') { toast('La caja se abre al empezar el turno'); return; }
     player.unlock(); player.release();
     // La caja arranca desde donde mira el jugador y vuelve ahí al salir.
@@ -875,7 +1171,12 @@ function describe(o: THREE.Object3D): string {
     return `Reponer ${d.nombre.toLowerCase()} · ${state.estantes[p]}/${d.capacidad} · almacén ${state.almacen[p]}`;
   }
   const a = o.userData.action;
-  if (a === 'cobrar') return state.fase === 'turno' ? (state.cola.length ? `Atender la caja · ${state.cola.length} en cola` : 'Atender la caja') : 'Caja (cerrada hasta empezar el turno)';
+  if (a === 'cobrar') {
+    const k = o.userData.caja as number;
+    if (k !== ME) return session ? `Caja ${k + 1}: la de tu compañero` : 'Caja 2 (cerrada: se abre cuando juegan dos)';
+    const n = state.cajas[ME].cola.length;
+    return state.fase === 'turno' ? (n ? `Atender tu caja · ${n} en cola` : 'Atender tu caja') : `Caja ${ME + 1} (se abre al empezar el turno)`;
+  }
   if (a === 'ordenador') return 'Hacer pedidos en el ordenador';
   return 'Ver el almacén';
 }
@@ -935,16 +1236,20 @@ function handleEvents(now: number) {
         }
         break;
       case 'escanea': {
-        sfx.scan();
+        if (ev.caja === ME && !isGuest()) sfx.scan();
         const v = views.get(ev.id);
         const it = v?.inBasket.pop();
         if (it) it.removeFromParent();
         break;
       }
       case 'venta': {
-        sfx.cash();
-        pulse(hudMoneyEl, 'pulse');
-        floatText(`+${money(ev.importe)}`, '#ffc83d', new THREE.Vector3(LAYOUT.register.x, 1.9, LAYOUT.register.z - 0.4));
+        const r = LAYOUT.registers[ev.caja] ?? LAYOUT.register;
+        if (ev.caja === ME) {
+          sfx.cash();
+          pulse(hudMoneyEl, 'pulse');
+          if (ev.propina > 0) toast(`Propina: +${money(ev.propina)}`, 'ok');
+        }
+        floatText(`+${money(ev.importe + ev.propina)}`, ev.caja === ME ? '#ffc83d' : '#b3b199', new THREE.Vector3(r.x, 1.9, r.z - 0.4));
         const v = views.get(ev.id);
         if (v) { v.bag.visible = true; v.p.basket.visible = false; for (const m of v.inBasket) m.removeFromParent(); v.inBasket = []; }
         break;
@@ -961,8 +1266,18 @@ function handleEvents(now: number) {
         till.exit();
         setTimeout(showSummary, 600);
         break;
+      case 'compra':
+        if (ev.j !== ME) toast(`Tu compañero compró: ${ev.lineas.map(([p, n]) => `${n} ${n === 1 ? 'caja' : 'cajas'} de ${PRODUCTS[p].nombre.toLowerCase()}`).join(', ')}`, '', 3200);
+        break;
+      case 'mejora':
+        if (ev.j !== ME) {
+          sfx.buy();
+          toast(ev.caja === ME ? `Tu compañero ha mejorado tu caja: ${MEJORAS[ev.mejora].nombre.toLowerCase()}` : `Tu compañero ha mejorado su caja: ${MEJORAS[ev.mejora].nombre.toLowerCase()}`, 'ok', 3200);
+        }
+        break;
     }
   }
+  if (session?.role === 'host') session.pushEvents(state.eventos);
   state.eventos.length = 0;
   for (const p of lowWarned) if (state.estantes[p] > PRODUCTS[p].capacidad * 0.25) lowWarned.delete(p);
 }
@@ -978,12 +1293,27 @@ function frame(now: number) {
   const dt = Math.min(0.1, raw);
   elapsed += dt;
   watchFps(raw);
+  // Pausa compartida en multijugador
+  if (session) {
+    // 1: la pidió el anfitrión, 2: el invitado. Si la pide el otro, se pausa aquí; si cualquiera
+    // la quita (después de haberse visto activa), se quita aquí también.
+    const mine = session.role === 'host' ? 1 : 2, p = session.pausa;
+    if (p !== 0 && p !== mine && !paused) setPaused(true, true);
+    else if (p === 0 && paused && pauseSeen) setPaused(false, true);
+    pauseSeen = paused && p !== 0;
+  }
   const running = inStore && !paused && $('summary').hidden;
-  if (running) {
+  if (running && !isGuest()) {
     // Pasos fijos: la simulación avanza igual en un móvil lento y en un ordenador rápido.
     let left = dt;
     while (left > 1e-6) { const s = Math.min(0.05, left); tick(state, s); left -= s; }
-    handleEvents(elapsed);
+  }
+  if (inStore) handleEvents(elapsed);
+  watchPhase();
+  if (session) {
+    session.myPos = [player.pos.x, player.pos.y, player.yaw, till.active ? 1 : 0];
+    session.pump(now, paused && !pausedByPartner);
+    updatePartner(dt);
   }
   syncCustomers(running ? dt : 0, elapsed);
   updateWorldState();
@@ -998,10 +1328,10 @@ function frame(now: number) {
   cashier.group.visible = !player.enabled && !till.active;
 
   // Caja y cajero
-  till.update(running || till.isLeaving ? dt : 0);
+  for (const t of tills) t.update(running || t.isLeaving ? dt : 0);
   cashier.armR.rotation.x = -0.25;
   cashier.armL.rotation.x = -0.2 + (reducedMotion ? 0 : Math.sin(elapsed * 1.3) * 0.04);
-  const atReg = clienteEnCaja(state);
+  const atReg = clienteEnCaja(state, 0);
   cashier.group.rotation.y = Math.PI + (atReg ? 0 : Math.sin(elapsed * 0.4) * 0.25);
 
   // Puertas automáticas
@@ -1024,7 +1354,7 @@ function frame(now: number) {
   // Pantalla del ordenador con leve parpadeo
   ((pcScreen.material as THREE.Material[])[4] as THREE.MeshStandardMaterial).emissiveIntensity = 1.05 + (reducedMotion ? 0 : Math.sin(elapsed * 3) * 0.05);
 
-  if (!till.active && !player.enabled) controls.update();
+  if (!tills.some((t) => t.active) && !player.enabled) controls.update();
   if (inStore) updateAim();
   renderer.render(scene, camera);
   if (inStore) { renderHud(); renderTill(); }
@@ -1053,5 +1383,5 @@ void init();
 // Para pruebas automáticas en el navegador (no forma parte del juego).
 (window as unknown as { __super: () => GameState }).__super = () => state;
 (window as unknown as { __player: Player }).__player = player;
-(window as unknown as { __tillPts: () => unknown }).__tillPts = () => tillScreenPoints(till, camera, reg.group);
+(window as unknown as { __tillPts: () => unknown }).__tillPts = () => tillScreenPoints(till, camera, regs[ME].group);
 (window as unknown as { __superAvanzar: (s: number) => void }).__superAvanzar = (seg: number) => { for (let t = 0; t < seg; t += 0.05) tick(state, 0.05); };

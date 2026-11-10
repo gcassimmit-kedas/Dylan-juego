@@ -99,6 +99,7 @@
     </div>
     <div class="menu">
       <button id="playBtn" class="primary big"><span data-icon="play"></span><span id="playLbl">Jugar</span></button>
+      <button id="mpBtn" class="ghost" hidden><span data-icon="users"></span>Multijugador</button>
       <button id="newBtn" class="ghost" hidden><span data-icon="rotateCcw"></span>Nueva partida</button>
       <button id="helpBtn" class="ghost"><span data-icon="circleHelp"></span>Cómo se juega</button>
     </div>
@@ -142,7 +143,7 @@
         <div class="wallet" aria-label="Dinero disponible"><span data-icon="coins"></span><span id="pcMoney">0</span></div>
         <button class="btn close" data-close="pc" aria-label="Cerrar ordenador"><span data-icon="x"></span></button>
       </header>
-      <div id="pcBody" class="pc-body"></div>
+      <div id="pcBody" class="pc-body"><div id="pcMejoras" class="pc-mejoras"></div></div>
       <footer class="pc-foot">
         <div class="pc-total"><span>Total del pedido</span><strong id="pcTotal">0</strong><small id="pcAfter"></small></div>
         <button id="pcClear" class="ghost">Vaciar</button>
@@ -172,10 +173,11 @@
   <!-- Pausa -->
   <section id="pause" class="screen" hidden aria-labelledby="pauseTitle">
     <div class="panel menu-panel" role="dialog" aria-modal="true">
-      <p class="kicker">Juego en pausa</p>
+      <p class="kicker" id="pauseKicker">Juego en pausa</p>
       <h2 id="pauseTitle">Pausa</h2>
       <button id="resumeBtn" class="primary big"><span data-icon="play"></span>Continuar</button>
       <button id="qualityBtn" class="ghost"><span data-icon="gauge"></span><span id="qualityLbl">Gráficos: automático</span></button>
+      <button id="kickBtn" class="ghost" hidden><span data-icon="ban"></span>Sacar a tu compañero</button>
       <button id="quitBtn" class="ghost"><span data-icon="house"></span>Salir al menú</button>
       <p class="help" id="quitHelp"></p>
     </div>
@@ -198,6 +200,20 @@
       </dl>
       <p class="help" id="sumTip"></p>
       <button id="nextBtn" class="primary big"><span data-icon="chevronRight"></span>Siguiente día</button>
+    </div>
+  </section>
+
+  <!-- Multijugador -->
+  <section id="mp" class="screen" hidden aria-labelledby="mpTitle">
+    <div class="panel menu-panel mp-panel" role="dialog" aria-modal="true">
+      <p class="kicker"><span data-icon="users"></span>Dos jugadores</p>
+      <h2 id="mpTitle">Multijugador</h2>
+      <p class="help">Cada uno cobra en su caja y tiene su dinero. Las compras de uno las ve el otro y podéis regalaros mejoras para la caja. Tu amigo tiene que abrir esta misma página (compártela con el botón Compartir).</p>
+      <button id="mpCreate" class="primary"><span data-icon="plus"></span>Crear partida</button>
+      <h3 class="mp-sub">Partidas abiertas</h3>
+      <ul id="mpList" class="mp-list"></ul>
+      <p id="mpStatus" class="help" aria-live="polite"></p>
+      <button class="ghost" data-close="mp">Cerrar</button>
     </div>
   </section>
 

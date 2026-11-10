@@ -521,13 +521,20 @@ export function ceilingDecor(): THREE.Group {
     g.add(s);
     for (const dx of [-0.8, 0.8]) g.add(box(0.012, 0.4, 0.012, MAT.metalDark, x + dx * Math.cos(ry), 3.2, z - dx * Math.sin(ry)));
   };
-  hanging('Caja', 3.6, 4.25);
+  hanging('Caja 1', 3.6, 4.25);
+  hanging('Caja 2', -3.4, 4.25);
   return g;
 }
 
 // ---------- Caja registradora ----------
 
-export interface Checkout { group: THREE.Group; belt: THREE.Texture; screen: THREE.CanvasTexture; hit: THREE.Mesh; scanner: THREE.Mesh }
+export interface Checkout {
+  group: THREE.Group; belt: THREE.Texture; screen: THREE.CanvasTexture; hit: THREE.Mesh; scanner: THREE.Mesh;
+  /** Cartel de "Cerrada" (la caja 2 cuando se juega solo). */
+  closed: THREE.Object3D;
+  /** Mejoras visibles en el mostrador. */
+  speaker: THREE.Object3D; tipJar: THREE.Object3D;
+}
 
 /** Mostrador de caja con cinta, escáner y visor. El cliente se pone en z menor; el cajero detrás. */
 export function checkout(x: number, z: number): Checkout {
@@ -551,7 +558,27 @@ export function checkout(x: number, z: number): Checkout {
   g.add(box(0.45, 0.12, 0.35, MAT.black, 0.6, 0.95, 0.15));
   shadow(g);
   const hit = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.6, 1.6), hitMat); hit.position.set(-0.2, 0.8, 0.2); g.add(hit);
-  return { group: g, belt, screen, hit, scanner };
+  // Cartel de caja cerrada, de pie sobre la cinta
+  const closedTex = T.signTexture('Cerrada', '#7a2a2a');
+  const closed = new THREE.Group();
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.2, 0.03), [MAT.black, MAT.black, MAT.black, MAT.black, std({ map: closedTex }), std({ map: closedTex })]);
+  plate.position.y = 0.1; closed.add(plate);
+  closed.position.set(-0.6, 0.9, 0); closed.visible = false; g.add(closed);
+  // Altavoz (música relajante)
+  const speaker = new THREE.Group();
+  speaker.add(box(0.16, 0.24, 0.14, MAT.black, 0, 0.12, 0));
+  for (const [y, r] of [[0.16, 0.045], [0.06, 0.03]] as const) {
+    const cone = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.6, 0.02, 16), MAT.steel);
+    cone.rotation.x = Math.PI / 2; cone.position.set(0, y, -0.075); speaker.add(cone);
+  }
+  speaker.position.set(0.72, 0.89, -0.25); speaker.visible = false; g.add(speaker);
+  // Bote de propinas (frasco de cristal con monedas)
+  const tipJar = new THREE.Group();
+  const jar = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.14, 18, 1, true), MAT.glass); jar.position.y = 0.07; tipJar.add(jar);
+  const coins = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.04, 18), std({ color: 0xc9961e, roughness: 0.3, metalness: 0.9 })); coins.position.y = 0.02; tipJar.add(coins);
+  const tag = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.04, 0.002), MAT.gold); tag.position.set(0, 0.08, -0.061); tipJar.add(tag);
+  tipJar.position.set(-1.25, 0.89, -0.28); tipJar.visible = false; g.add(tipJar);
+  return { group: g, belt, screen, hit, scanner, closed, speaker, tipJar };
 }
 
 // ---------- Oficina con el ordenador ----------
