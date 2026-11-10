@@ -1,7 +1,7 @@
 // Supermercado: simulación pura (sin DOM ni Three.js), para poder probarla con `npm test`.
 // Todo lo que pasa en la tienda (clientes, existencias, dinero) se decide aquí; main.ts solo lo dibuja.
 
-/** Datos de cada producto. Precios en monedas enteras. */
+/** Datos de cada producto. Precios en pesos dominicanos (RD$), siempre enteros. */
 export interface Product {
   nombre: string;
   /** Unidades que trae cada caja del proveedor. */
@@ -14,6 +14,13 @@ export interface Product {
   capacidad: number;
   /** Probabilidad relativa de que un cliente lo busque. */
   demanda: number;
+  /** Fruta (se vende en mesa de fruta). */
+  fruta?: boolean;
+  /**
+   * Difícil de conseguir: el proveedor solo tiene unas pocas cajas algunos días.
+   * Si un cliente no la encuentra no se enfada (sabe que es difícil de encontrar).
+   */
+  rara?: boolean;
 }
 
 export const PRODUCTS = {
@@ -25,8 +32,15 @@ export const PRODUCTS = {
   galletas: { nombre: 'Galletas', caja: 10, costoCaja: 12, precio: 2, capacidad: 15, demanda: 1 },
   refresco: { nombre: 'Refresco', caja: 12, costoCaja: 14, precio: 2, capacidad: 18, demanda: 1.1 },
   agua: { nombre: 'Agua', caja: 12, costoCaja: 8, precio: 1, capacidad: 18, demanda: 1 },
-  manzanas: { nombre: 'Manzanas', caja: 20, costoCaja: 10, precio: 1, capacidad: 30, demanda: 1 },
+  // Frutas: 10 pesos más que antes. Las difíciles de conseguir, a 50.
+  manzanas: { nombre: 'Manzanas', caja: 20, costoCaja: 60, precio: 11, capacidad: 30, demanda: 1, fruta: true },
+  guineos: { nombre: 'Guineos', caja: 12, costoCaja: 48, precio: 12, capacidad: 24, demanda: 1, fruta: true },
+  fresas: { nombre: 'Fresas', caja: 6, costoCaja: 150, precio: 50, capacidad: 12, demanda: 0.35, fruta: true, rara: true },
+  uvas: { nombre: 'Uvas', caja: 6, costoCaja: 150, precio: 50, capacidad: 12, demanda: 0.35, fruta: true, rara: true },
 } as const satisfies Record<string, Product>;
+
+const isRara = (p: ProductId) => (PRODUCTS[p] as Product).rara === true;
+export const esRara = isRara;
 
 export type ProductId = keyof typeof PRODUCTS;
 export const PRODUCT_IDS = Object.keys(PRODUCTS) as ProductId[];
@@ -55,6 +69,9 @@ export const DISPLAYS: Display[] = [
   { product: 'refresco', tipo: 'gondola', x: -4.7, z: 0, rot: 0, pick: { x: -4.7, z: 0.9 } },
   { product: 'agua', tipo: 'gondola', x: -0.7, z: 0, rot: 0, pick: { x: -0.7, z: 0.9 } },
   { product: 'manzanas', tipo: 'fruta', x: 3.4, z: 0, rot: 0, pick: { x: 3.4, z: 1.1 } },
+  { product: 'guineos', tipo: 'fruta', x: 6.6, z: 0, rot: 0, pick: { x: 6.6, z: 1.1 } },
+  { product: 'fresas', tipo: 'fruta', x: 6.1, z: -3.3, rot: 0, pick: { x: 6.1, z: -2.2 } },
+  { product: 'uvas', tipo: 'fruta', x: 8.25, z: -3.3, rot: 0, pick: { x: 8.25, z: -2.2 } },
   { product: 'leche', tipo: 'nevera', x: -5.6, z: -6.95, rot: 0, pick: { x: -5.6, z: -5.7 } },
   { product: 'yogur', tipo: 'nevera', x: -1.6, z: -6.95, rot: 0, pick: { x: -1.6, z: -5.7 } },
   { product: 'queso', tipo: 'nevera', x: 2.4, z: -6.95, rot: 0, pick: { x: 2.4, z: -5.7 } },
@@ -168,6 +185,8 @@ export interface GameState {
   seed: number;
   nextId: number;
   mejorDia: number;
+  /** Cajas que le quedan hoy al proveedor de cada producto difícil de conseguir. */
+  ofertaRara: Partial<Record<ProductId, number>>;
 }
 
 const emptyStats = (): ShiftStats => ({ clientes: 0, atendidos: 0, perdidos: 0, cansados: 0, articulos: 0, faltas: 0, ingresos: 0, gastos: 0, cambioDeMas: 0 });
@@ -175,9 +194,18 @@ const byProduct = (f: (id: ProductId) => number) => Object.fromEntries(PRODUCT_I
 
 /** Partida nueva: poco dinero y poco género, para que haya que gestionar desde el primer día. */
 export function newGame(seed = 1): GameState {
+  const s = crearPartida(seed);
+  sortearOferta(s);
+  // El primer día siempre hay algo de lo difícil, para que se descubra.
+  for (const p of PRODUCT_IDS) if (isRara(p)) s.ofertaRara[p] = Math.max(1, s.ofertaRara[p] ?? 0);
+  return s;
+}
+
+function crearPartida(seed: number): GameState {
   const start: Partial<Record<ProductId, [number, number]>> = {
     pan: [6, 8], leche: [6, 6], yogur: [8, 0], queso: [4, 0], cereales: [6, 0],
     galletas: [8, 10], refresco: [10, 12], agua: [10, 0], manzanas: [15, 20],
+    guineos: [12, 0], fresas: [4, 0], uvas: [4, 0],
   };
   return {
     fase: 'preparacion',
@@ -195,8 +223,18 @@ export function newGame(seed = 1): GameState {
     seed: seed >>> 0 || 1,
     nextId: 1,
     mejorDia: 0,
+    ofertaRara: {},
   };
 }
+
+/** Lo que tiene hoy el proveedor de los productos difíciles: algunos días nada, otros 1 o 2 cajas. */
+export function sortearOferta(s: GameState) {
+  s.ofertaRara = {};
+  for (const p of PRODUCT_IDS) if (isRara(p)) s.ofertaRara[p] = rand(s) < 0.35 ? 0 : 1 + Math.floor(rand(s) * 2);
+}
+
+/** Cajas que se pueden pedir hoy de un producto (sin límite si no es difícil de conseguir). */
+export const disponibles = (s: GameState, p: ProductId) => (isRara(p) ? s.ofertaRara[p] ?? 0 : Infinity);
 
 /** Generador pseudoaleatorio con la semilla guardada en el estado (mulberry32): partidas reproducibles en los tests. */
 export function rand(s: GameState): number {
@@ -211,13 +249,15 @@ export const displayOf = (p: ProductId) => DISPLAYS.find((d) => d.product === p)
 
 // ---------- Acciones del jugador ----------
 
-export type BuyResult = { ok: true; coste: number } | { ok: false; motivo: 'dinero' | 'cantidad' };
+export type BuyResult = { ok: true; coste: number } | { ok: false; motivo: 'dinero' | 'cantidad' | 'agotado' };
 
 /** Compra cajas en el ordenador. Llegan al almacén al momento. */
 export function comprar(s: GameState, p: ProductId, cajas = 1): BuyResult {
   if (!Number.isInteger(cajas) || cajas <= 0) return { ok: false, motivo: 'cantidad' };
+  if (cajas > disponibles(s, p)) return { ok: false, motivo: 'agotado' };
   const coste = PRODUCTS[p].costoCaja * cajas;
   if (coste > s.dinero) return { ok: false, motivo: 'dinero' };
+  if (isRara(p)) s.ofertaRara[p] = (s.ofertaRara[p] ?? 0) - cajas;
   s.dinero -= coste;
   s.almacen[p] += PRODUCTS[p].caja * cajas;
   s.stats.gastos += coste;
@@ -228,9 +268,10 @@ export function comprar(s: GameState, p: ProductId, cajas = 1): BuyResult {
 export function comprarPedido(s: GameState, pedido: Partial<Record<ProductId, number>>): BuyResult {
   const lineas = PRODUCT_IDS.map((p) => [p, pedido[p] ?? 0] as const).filter(([, n]) => n !== 0);
   if (!lineas.length || lineas.some(([, n]) => !Number.isInteger(n) || n < 0)) return { ok: false, motivo: 'cantidad' };
+  if (lineas.some(([p, n]) => n > disponibles(s, p))) return { ok: false, motivo: 'agotado' };
   const coste = costePedido(pedido);
   if (coste > s.dinero) return { ok: false, motivo: 'dinero' };
-  for (const [p, n] of lineas) comprar(s, p, n);
+  for (const [p, n] of lineas) if (n > 0) comprar(s, p, n);
   return { ok: true, coste };
 }
 
@@ -263,6 +304,7 @@ export function siguienteDia(s: GameState) {
   s.fase = 'preparacion';
   s.dia += 1;
   s.stats = emptyStats();
+  sortearOferta(s);
 }
 
 /** El cliente que está ahora en la caja, si ya ha llegado a ella. */
@@ -284,17 +326,19 @@ export function siguienteArticulo(c: Customer): ProductId | null {
 export const importeEscaneado = (c: Customer) =>
   c.cesta.reduce((t, l) => t + Math.min(l.qty, c.pasados[l.product] ?? 0) * PRODUCTS[l.product].precio, 0);
 
-/** Billetes que usan los clientes. */
-export const BILLETES = [5, 10, 20, 50, 100] as const;
-/** Lo que hay en el cajón para dar el cambio (monedas de 1 y billetes). */
-export const CAMBIO = [1, 5, 10, 20, 50] as const;
+/** Billetes de pesos con los que pagan los clientes. */
+export const BILLETES = [50, 100, 200, 500, 1000, 2000] as const;
+/** Lo que hay en el cajón para dar el cambio: monedas de 1, 5, 10 y 25 y billetes de 50, 100 y 200. */
+export const CAMBIO = [1, 5, 10, 25, 50, 100, 200] as const;
+/** Valores que son moneda (el resto son billetes). */
+export const esMoneda = (v: number) => v < 50;
 
-/** Con qué paga el cliente: el billete justo por encima del total, a veces uno mayor, o el importe exacto. */
+/** Con qué paga el cliente: a veces el importe justo; si no, el billete justo por encima del total o uno mayor. */
 function elegirPago(s: GameState, total: number): number {
   const r = rand(s);
-  if (r < 0.12 && BILLETES.includes(total as (typeof BILLETES)[number])) return total;
+  if (r < 0.12) return total;
   const i = BILLETES.findIndex((b) => b >= total);
-  if (i === -1) return Math.ceil(total / 100) * 100;
+  if (i === -1) return Math.ceil(total / 1000) * 1000;
   return r > 0.7 && i < BILLETES.length - 1 ? BILLETES[i + 1] : BILLETES[i];
 }
 
@@ -583,7 +627,9 @@ function actualizar(s: GameState, c: Customer, dt: number) {
           if (l) l.qty += n; else c.cesta.push({ product, qty: n });
           s.eventos.push({ tipo: 'coge', product, qty: n, id: c.id });
         }
-        if (n < qty) {
+        if (n < qty && isRara(product)) {
+          // Lo difícil de conseguir: si no hay, no pasa nada.
+        } else if (n < qty) {
           s.stats.faltas++;
           c.enfadado = true;
           s.reputacion = Math.max(0, s.reputacion - 2);
@@ -656,11 +702,12 @@ export interface Save {
   estantes: Record<string, number>;
   mejorDia: number;
   seed: number;
+  ofertaRara?: Record<string, number>;
 }
 
 /** Guarda lo necesario para seguir otro día. Solo se guarda entre turnos. */
 export function exportar(s: GameState): Save {
-  return { v: 1, dia: s.dia, dinero: s.dinero, reputacion: s.reputacion, almacen: { ...s.almacen }, estantes: { ...s.estantes }, mejorDia: s.mejorDia, seed: s.seed };
+  return { v: 1, dia: s.dia, dinero: s.dinero, reputacion: s.reputacion, almacen: { ...s.almacen }, estantes: { ...s.estantes }, mejorDia: s.mejorDia, seed: s.seed, ofertaRara: { ...s.ofertaRara } as Record<string, number> };
 }
 
 /** Restaura una partida guardada validando cada dato (si algo no cuadra, partida nueva). */
@@ -672,10 +719,15 @@ export function importar(data: unknown): GameState | null {
   if (d.v !== 1 || dia === null || dinero === null || rep === null || !d.almacen || !d.estantes) return null;
   const s = newGame(int(d.seed, 1, 2 ** 32 - 1) ?? 1);
   for (const p of PRODUCT_IDS) {
-    const a = int(d.almacen[p], 0, 1e6), e = int(d.estantes[p], 0, PRODUCTS[p].capacidad);
+    // Productos añadidos después de guardar la partida: empiezan a cero.
+    const a = d.almacen[p] === undefined ? 0 : int(d.almacen[p], 0, 1e6);
+    const e = d.estantes[p] === undefined ? 0 : int(d.estantes[p], 0, PRODUCTS[p].capacidad);
     if (a === null || e === null) return null;
     s.almacen[p] = a; s.estantes[p] = e;
   }
   s.dia = dia; s.dinero = dinero; s.reputacion = rep; s.mejorDia = int(d.mejorDia, -1e9, 1e9) ?? 0;
+  if (d.ofertaRara && typeof d.ofertaRara === 'object') {
+    for (const p of PRODUCT_IDS) if (isRara(p)) s.ofertaRara[p] = int(d.ofertaRara[p], 0, 9) ?? 0;
+  } else sortearOferta(s);
   return s;
 }

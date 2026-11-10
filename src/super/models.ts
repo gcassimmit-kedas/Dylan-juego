@@ -3,7 +3,8 @@
 // y mostrar las existencias es solo cambiar cuántas instancias se dibujan.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { PRODUCTS, type Display, type ProductId } from './sim.ts';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { PRODUCTS, esRara, type Display, type ProductId } from './sim.ts';
 import * as T from './textures.ts';
 
 const std = (o: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial(o);
@@ -123,6 +124,74 @@ function appleItem(): ItemTemplate {
   };
 }
 
+/** Une varias piezas en una sola geometría (racimos): menos llamadas de dibujo. */
+function merged(parts: [THREE.BufferGeometry, THREE.Matrix4][]): THREE.BufferGeometry {
+  return mergeGeometries(parts.map(([g, m]) => { const c = (g.index ? g.toNonIndexed() : g.clone()); c.deleteAttribute('uv'); return c.applyMatrix4(m); }))!;
+}
+
+/** Mano de guineos: cuatro plátanos curvos unidos por el tallo. */
+function bananaItem(): ItemTemplate {
+  const parts: [THREE.BufferGeometry, THREE.Matrix4][] = [];
+  for (let i = 0; i < 4; i++) {
+    const g = new THREE.TorusGeometry(0.1, 0.019, 8, 14, Math.PI / 2.3);
+    const m = new THREE.Matrix4().makeRotationX(Math.PI / 2)
+      .premultiply(new THREE.Matrix4().makeRotationY((i - 1.5) * 0.28))
+      .premultiply(new THREE.Matrix4().makeTranslation(-0.05, 0.02 + i * 0.012, (i - 1.5) * 0.028));
+    parts.push([g, m]);
+  }
+  const body = merged(parts);
+  const stem = new THREE.CylinderGeometry(0.012, 0.016, 0.05, 8);
+  return {
+    parts: [
+      { geo: body, mat: std({ color: 0xf2cf2e, roughness: 0.55 }), m: at(0, 0, 0) },
+      { geo: stem, mat: std({ color: 0x5a6b2a, roughness: 0.7 }), m: new THREE.Matrix4().makeRotationZ(Math.PI / 2).premultiply(new THREE.Matrix4().makeTranslation(-0.06, 0.04, 0)) },
+    ],
+    w: 0.2, h: 0.08, d: 0.14,
+  };
+}
+
+/** Tarrina de fresas: caja transparente con las fresas dentro y etiqueta encima. */
+function strawberryItem(): ItemTemplate {
+  const w = 0.13, h = 0.065, d = 0.1;
+  const berries: [THREE.BufferGeometry, THREE.Matrix4][] = [];
+  const r = rng(55);
+  for (let i = 0; i < 7; i++) {
+    const g = new THREE.ConeGeometry(0.017, 0.034, 8);
+    const m = new THREE.Matrix4().makeRotationX(Math.PI + (r() - 0.5) * 0.8).premultiply(new THREE.Matrix4().makeTranslation(((i % 4) - 1.5) * 0.028, 0.022, (Math.floor(i / 4) - 0.5) * 0.04));
+    berries.push([g, m]);
+  }
+  const clear = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.1, transparent: true, opacity: 0.25, depthWrite: false });
+  const label = std({ map: T.labelTexture('fresas'), roughness: 0.4, transparent: true, alphaTest: 0.02 });
+  return {
+    parts: [
+      { geo: merged(berries), mat: std({ color: 0xd91e2e, roughness: 0.35 }), m: at(0, 0, 0) },
+      { geo: new THREE.BoxGeometry(w, h, d), mat: [clear, clear, label, clear, clear, clear], m: at(0, h / 2, 0) },
+    ],
+    w, h, d,
+  };
+}
+
+/** Racimo de uvas: bolitas en forma de cono, con su rama. */
+function grapeItem(): ItemTemplate {
+  const parts: [THREE.BufferGeometry, THREE.Matrix4][] = [];
+  const r = rng(66);
+  const rows = [5, 4, 4, 3, 2, 1];
+  rows.forEach((n, row) => {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + row, rad = 0.012 + n * 0.006;
+      parts.push([new THREE.SphereGeometry(0.016, 8, 6), new THREE.Matrix4().makeTranslation(Math.cos(a) * rad * 0.9, 0.03, Math.sin(a) * rad * 0.6 + row * 0.022 - 0.05 + (r() - 0.5) * 0.004)]);
+    }
+  });
+  const stem = new THREE.CylinderGeometry(0.004, 0.004, 0.04, 5);
+  return {
+    parts: [
+      { geo: merged(parts), mat: std({ color: 0x5b2a6e, roughness: 0.3 }), m: at(0, 0, 0) },
+      { geo: stem, mat: std({ color: 0x6b4a22, roughness: 0.8 }), m: new THREE.Matrix4().makeRotationX(Math.PI / 2).premultiply(new THREE.Matrix4().makeTranslation(0, 0.035, -0.07)) },
+    ],
+    w: 0.1, h: 0.05, d: 0.16,
+  };
+}
+
 const templates = new Map<ProductId, ItemTemplate>();
 export function itemTemplate(p: ProductId): ItemTemplate {
   let t = templates.get(p);
@@ -137,6 +206,9 @@ export function itemTemplate(p: ProductId): ItemTemplate {
     case 'queso': t = cheeseItem(); break;
     case 'pan': t = breadItem(); break;
     case 'manzanas': t = appleItem(); break;
+    case 'guineos': t = bananaItem(); break;
+    case 'fresas': t = strawberryItem(); break;
+    case 'uvas': t = grapeItem(); break;
   }
   templates.set(p, t);
   return t;
@@ -292,19 +364,21 @@ function fruitStand(p: ProductId): DisplayModel {
   for (const x of [-W / 2, W / 2]) top.add(box(0.03, 0.14, D, wood(), x, 0.07, 0));
   // Toldo verde con cartel
   g.add(box(0.05, 1.6, 0.05, MAT.metalDark, -W / 2 + 0.05, 0.8, -D / 2)); g.add(box(0.05, 1.6, 0.05, MAT.metalDark, W / 2 - 0.05, 0.8, -D / 2));
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(W, 0.32), std({ map: T.signTexture('Frutas'), roughness: 0.6 }));
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(W, 0.32), std({ map: esRara(p) ? T.signTexture('Especial', '#7a2a52') : T.signTexture('Frutas'), roughness: 0.6 }));
   sign.position.set(0, 1.6, -D / 2 + 0.03); g.add(sign);
   shadow(g);
-  // Montón de manzanas: unidades de dos piezas sobre la caja, apiladas hacia el centro.
+  // Montón de fruta sobre la caja. Las manzanas van de dos en dos para que la mesa se vea llena.
   const cap = PRODUCTS[p].capacidad, slots: Slots = [];
-  const cols = 10, rows = 6, r = rng(77);
+  const tpl = itemTemplate(p), per = p === 'manzanas' ? 2 : 1;
+  const sx = p === 'manzanas' ? 0.16 : tpl.w + 0.03, sz = p === 'manzanas' ? 0.16 : tpl.d + 0.03;
+  const cols = Math.max(1, Math.floor((W - 0.12) / sx)), rows = Math.max(1, Math.floor((D - 0.12) / sz)), r = rng(77);
   for (let u = 0; u < cap; u++) {
     const unit: THREE.Matrix4[] = [];
-    for (let k = 0; k < 2; k++) {
-      const i = u * 2 + k, layer = Math.floor(i / (cols * rows)), j = i % (cols * rows);
+    for (let k = 0; k < per; k++) {
+      const i = u * per + k, layer = Math.floor(i / (cols * rows)), j = i % (cols * rows);
       const cx = (j % cols) - (cols - 1) / 2, cz = Math.floor(j / cols) - (rows - 1) / 2;
-      const x = cx * 0.16 + (r() - 0.5) * 0.03 + (layer ? 0.08 : 0), z = cz * 0.16 + (r() - 0.5) * 0.03 + (layer ? 0.08 : 0);
-      unit.push(at(x, 0.02 + layer * 0.07, z, r() * 6));
+      const x = cx * sx + (r() - 0.5) * 0.03 + (layer ? sx / 2 : 0), z = cz * sz + (r() - 0.5) * 0.03 + (layer ? sz / 2 : 0);
+      unit.push(at(x, 0.02 + layer * (tpl.h * 0.8), z, p === 'fresas' ? (r() - 0.5) * 0.2 : r() * 6));
     }
     slots.push(unit);
   }

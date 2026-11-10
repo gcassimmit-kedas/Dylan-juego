@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import {
-  clienteEnCaja, escanear, darCambio, importe, importeEscaneado, totalArticulos, CAMBIO,
+  clienteEnCaja, escanear, darCambio, importe, importeEscaneado, totalArticulos, CAMBIO, esMoneda,
   type GameState, type ProductId, type Customer,
 } from './sim.ts';
 import * as M from './models.ts';
@@ -24,6 +24,10 @@ const BELT_FRONT = -0.18;
 const TRAY = new THREE.Vector3(-0.32, TOP + 0.012, 0);
 const BILL_SPOT = new THREE.Vector3(-0.62, TOP + 0.004, 0.02);
 const BAG = new THREE.Vector3(0.64, TOP, -0.17);
+/** Centro de cada hueco del cajón (uno por valor de CAMBIO). */
+const SLOT_W = 0.078;
+const slotX = (i: number) => -((CAMBIO.length - 1) * SLOT_W) / 2 + i * SLOT_W;
+const COIN_R: Record<number, number> = { 1: 0.0115, 5: 0.0125, 10: 0.0135, 25: 0.0155 };
 
 export interface TillDeps {
   scene: THREE.Scene;
@@ -65,17 +69,13 @@ export class Till {
   private camStart = { pos: new THREE.Vector3(), target: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0) };
   private leaving = false;
   private billGeo = new THREE.BoxGeometry(0.155, 0.002, 0.066);
-  private coinGeo = new THREE.CylinderGeometry(0.014, 0.014, 0.004, 20);
-  private coinMat: THREE.Material[];
+  private coinGeos = new Map<number, THREE.CylinderGeometry>();
+  private coinMats = new Map<number, THREE.Material[]>();
   private billMats = new Map<number, THREE.Material[]>();
   private bag: THREE.Group;
 
   constructor(d: TillDeps) {
     this.d = d;
-    const coinTex = T.coinTexture();
-    const edge = std({ color: 0xc9961e, roughness: 0.3, metalness: 0.9 });
-    const face = std({ map: coinTex, roughness: 0.35, metalness: 0.6 });
-    this.coinMat = [edge, face, face];
     this.buildDrawer();
     this.bag = this.buildBag();
     const tray = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.012, 0.22), std({ color: 0x1b1c1e, roughness: 0.5 }));
@@ -98,7 +98,17 @@ export class Till {
     return m;
   }
   private money(v: number): THREE.Mesh {
-    const m = v === 1 ? new THREE.Mesh(this.coinGeo, this.coinMat) : new THREE.Mesh(this.billGeo, this.billMat(v));
+    let m: THREE.Mesh;
+    if (esMoneda(v)) {
+      let geo = this.coinGeos.get(v), mat = this.coinMats.get(v);
+      if (!geo || !mat) {
+        geo = new THREE.CylinderGeometry(COIN_R[v] ?? 0.013, COIN_R[v] ?? 0.013, 0.004, 20);
+        const edge = std({ color: 0xc9961e, roughness: 0.3, metalness: 0.9 }), face = std({ map: T.coinTexture(v), roughness: 0.35, metalness: 0.6 });
+        mat = [edge, face, face];
+        this.coinGeos.set(v, geo); this.coinMats.set(v, mat);
+      }
+      m = new THREE.Mesh(geo, mat);
+    } else m = new THREE.Mesh(this.billGeo, this.billMat(v));
     m.castShadow = true;
     return m;
   }
@@ -109,22 +119,23 @@ export class Till {
     const box = (w: number, h: number, dd: number, x: number, y: number, z: number, mat: THREE.Material) => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, dd), mat); m.position.set(x, y, z); m.receiveShadow = true; g.add(m); return m;
     };
-    box(0.56, 0.01, 0.42, 0, 0, 0, dark);
-    box(0.56, 0.08, 0.012, 0, 0.04, 0.21, dark);
-    box(0.56, 0.06, 0.012, 0, 0.03, -0.21, dark);
-    for (const x of [-0.28, 0.28]) box(0.012, 0.06, 0.42, x, 0.03, 0, dark);
+    const DW = CAMBIO.length * SLOT_W + 0.02;
+    box(DW, 0.01, 0.42, 0, 0, 0, dark);
+    box(DW, 0.08, 0.012, 0, 0.04, 0.21, dark);
+    box(DW, 0.06, 0.012, 0, 0.03, -0.21, dark);
+    for (const x of [-DW / 2, DW / 2]) box(0.012, 0.06, 0.42, x, 0.03, 0, dark);
     box(0.18, 0.018, 0.02, 0, 0.05, 0.225, std({ color: 0xb8bcc0, roughness: 0.3, metalness: 0.85 }));
     // Un hueco por valor, con su pila de billetes o monedas
     CAMBIO.forEach((v, i) => {
-      const x = -0.22 + i * 0.11;
-      if (i) box(0.006, 0.05, 0.4, x - 0.055, 0.03, 0, dark);
+      const x = slotX(i);
+      if (i) box(0.006, 0.05, 0.4, x - SLOT_W / 2, 0.03, 0, dark);
       for (let k = 0; k < 6; k++) {
         const m = this.money(v);
-        if (v === 1) m.position.set(x + ((k % 2) - 0.5) * 0.034, 0.008 + Math.floor(k / 2) * 0.005, 0.05 + ((k % 3) - 1) * 0.03);
+        if (esMoneda(v)) m.position.set(x + ((k % 2) - 0.5) * 0.034, 0.008 + Math.floor(k / 2) * 0.005, 0.05 + ((k % 3) - 1) * 0.03);
         else { m.rotation.y = Math.PI / 2; m.position.set(x, 0.007 + k * 0.003, 0); }
         g.add(m);
       }
-      const hit = new THREE.Mesh(new THREE.BoxGeometry(0.105, 0.1, 0.42), new THREE.MeshBasicMaterial({ visible: false }));
+      const hit = new THREE.Mesh(new THREE.BoxGeometry(SLOT_W * 0.98, 0.1, 0.42), new THREE.MeshBasicMaterial({ visible: false }));
       hit.position.set(x, 0.05, 0);
       hit.userData.den = v;
       g.add(hit);
@@ -316,18 +327,18 @@ export class Till {
     if (!this.active || this.phase !== 'pago') return;
     const m = this.money(v);
     const slot = CAMBIO.indexOf(v as (typeof CAMBIO)[number]);
-    const from = new THREE.Vector3(-0.22 + slot * 0.11, 0.05, 0).add(this.drawer.position);
+    const from = new THREE.Vector3(slotX(slot), 0.05, 0).add(this.drawer.position);
     m.position.copy(from);
     const n = this.change.length;
-    const coins = this.change.filter((c) => c.value === 1).length, bills = n - coins;
-    const to = v === 1
+    const coins = this.change.filter((c) => esMoneda(c.value)).length, bills = n - coins;
+    const to = esMoneda(v)
       ? new THREE.Vector3(TRAY.x + 0.09 - (coins % 4) * 0.032, TRAY.y + 0.002 + Math.floor(coins / 4) * 0.004, TRAY.z + 0.07)
       : new THREE.Vector3(TRAY.x - 0.03 + (bills % 3) * 0.012, TRAY.y + 0.001 + bills * 0.0025, TRAY.z - 0.02 + (bills % 2) * 0.012);
     if (v !== 1) m.rotation.y = (bills % 3 - 1) * 0.08;
     this.d.register.add(m);
     this.change.push({ value: v, obj: m });
     this.tween(m, to, 0.28, 0.1);
-    v === 1 ? sfx.coin() : sfx.bill();
+    if (esMoneda(v)) sfx.coin(); else sfx.bill();
     this.d.onChange();
   }
 
@@ -335,7 +346,7 @@ export class Till {
     const last = this.change.pop();
     if (!last) return;
     const slot = CAMBIO.indexOf(last.value as (typeof CAMBIO)[number]);
-    this.tween(last.obj, new THREE.Vector3(-0.22 + slot * 0.11, 0.05, 0).add(this.drawer.position), 0.22, 0.08, 0, () => last.obj.removeFromParent());
+    this.tween(last.obj, new THREE.Vector3(slotX(slot), 0.05, 0).add(this.drawer.position), 0.22, 0.08, 0, () => last.obj.removeFromParent());
     sfx.click();
     this.d.onChange();
   }
@@ -353,13 +364,13 @@ export class Till {
     if (!c) return;
     const r = darCambio(s, this.changeTotal);
     if (!r) { sfx.error(); this.d.toast('Eso es más dinero del que te ha dado', 'bad'); return; }
-    if (!r.ok) { sfx.error(); this.d.toast(`Al cambio le faltan $${r.falta}`, 'bad', 2400); return; }
-    if (r.sobra > 0) this.d.toast(`Le diste $${r.sobra} de más`, 'bad', 2400);
+    if (!r.ok) { sfx.error(); this.d.toast(`Al cambio le faltan RD$${r.falta}`, 'bad', 2400); return; }
+    if (r.sobra > 0) this.d.toast(`Le diste RD$${r.sobra} de más`, 'bad', 2400);
     // El cambio va al cliente, el billete al cajón y la bolsa con la compra se la lleva.
     const toCustomer = new THREE.Vector3(TRAY.x, TOP + 0.4, -0.9);
     for (const ch of this.change) this.tween(ch.obj, toCustomer.clone(), 0.4, 0.15, Math.random() * 0.1, () => ch.obj.removeFromParent());
     this.change = [];
-    if (this.bill) { const b = this.bill; this.tween(b, new THREE.Vector3(-0.22 + 4 * 0.11, 0.06, 0).add(this.drawer.position), 0.35, 0.12, 0.05, () => b.removeFromParent()); this.bill = null; }
+    if (this.bill) { const b = this.bill; this.tween(b, new THREE.Vector3(slotX(CAMBIO.length - 1), 0.06, 0).add(this.drawer.position), 0.35, 0.12, 0.05, () => b.removeFromParent()); this.bill = null; }
     const bagTo = this.bag.position.clone().add(new THREE.Vector3(0, 0.25, -0.8));
     const bagBack = BAG.clone();
     this.tween(this.bag, bagTo, 0.45, 0.1, 0.2, () => { this.bag.visible = false; this.bag.position.copy(bagBack); });

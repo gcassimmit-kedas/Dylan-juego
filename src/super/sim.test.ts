@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   newGame, comprar, comprarPedido, costePedido, reponer, empezarTurno, siguienteDia, tick, escanear, clienteEnCaja,
-  route, importar, darCambio, cambioDebido, importeEscaneado, BILLETES, exportar, horaTienda, totalArticulos, importe, PRODUCTS, PRODUCT_IDS, DISPLAYS, SHIFT_SECONDS, LAYOUT, walkable,
+  route, importar, darCambio, sortearOferta, disponibles, esRara, CAMBIO, cambioDebido, importeEscaneado, BILLETES, exportar, horaTienda, totalArticulos, importe, PRODUCTS, PRODUCT_IDS, DISPLAYS, SHIFT_SECONDS, LAYOUT, walkable,
   type GameState,
 } from './sim.ts';
 
@@ -178,7 +178,7 @@ test('el cliente paga con billetes reales', () => {
     while (!clienteEnCaja(s)) tick(s, 0.1);
     const c = clienteEnCaja(s)!;
     while (!c.pago) escanear(s);
-    assert.ok((BILLETES as readonly number[]).includes(c.pago) || c.pago % 100 === 0, `paga con ${c.pago}`);
+    assert.ok(c.pago === importe(c) || (BILLETES as readonly number[]).includes(c.pago) || c.pago % 1000 === 0, `paga con ${c.pago}`);
     assert.ok(c.pago >= importe(c));
   }
 });
@@ -272,4 +272,55 @@ test('guardar y cargar conserva la partida y rechaza datos manipulados', () => {
   assert.equal(importar({ ...exportar(s), dinero: -5 }), null);
   assert.equal(importar({ ...exportar(s), estantes: { ...s.estantes, pan: 999 } }), null);
   assert.equal(importar({ ...exportar(s), v: 2 }), null);
+});
+
+test('las frutas cuestan 10 pesos más y las difíciles de conseguir, 50', () => {
+  assert.equal(PRODUCTS.manzanas.precio, 11);
+  assert.equal(PRODUCTS.guineos.precio, 12);
+  assert.equal(PRODUCTS.fresas.precio, 50);
+  assert.equal(PRODUCTS.uvas.precio, 50);
+  assert.ok(esRara('fresas') && esRara('uvas') && !esRara('manzanas'));
+});
+
+test('lo difícil de conseguir: el proveedor tiene pocas cajas y algunos días ninguna', () => {
+  const s = newGame(12);
+  assert.ok(disponibles(s, 'fresas') >= 1, 'el primer día siempre hay');
+  assert.equal(disponibles(s, 'leche'), Infinity);
+  s.dinero = 10000;
+  const n = disponibles(s, 'fresas');
+  assert.deepEqual(comprar(s, 'fresas', n + 1), { ok: false, motivo: 'agotado' });
+  assert.deepEqual(comprarPedido(s, { fresas: n + 1, leche: 1 }), { ok: false, motivo: 'agotado' });
+  assert.equal(s.almacen.leche, 6, 'el pedido no se compra a medias');
+  assert.ok(comprar(s, 'fresas', n).ok);
+  assert.equal(disponibles(s, 'fresas'), 0);
+  // A lo largo de muchos días hay días sin nada y días con 1 o 2 cajas.
+  const vistos = new Set<number>();
+  for (let i = 0; i < 60; i++) { sortearOferta(s); vistos.add(disponibles(s, 'uvas')); }
+  assert.deepEqual([...vistos].sort(), [0, 1, 2]);
+});
+
+test('si no hay fresas ni uvas, el cliente no se enfada', () => {
+  const s = newGame(21);
+  for (const p of PRODUCT_IDS) { s.almacen[p] = 300; reponer(s, p); }
+  s.estantes.fresas = 0; s.estantes.uvas = 0; s.almacen.fresas = 0; s.almacen.uvas = 0;
+  empezarTurno(s);
+  run(s, SHIFT_SECONDS + 200, true);
+  assert.equal(s.stats.faltas, 0);
+  assert.ok(s.reputacion >= 50);
+});
+
+test('el cambio se da con monedas y billetes dominicanos', () => {
+  assert.deepEqual([...CAMBIO], [1, 5, 10, 25, 50, 100, 200]);
+});
+
+test('una partida guardada antes de las frutas nuevas se sigue cargando', () => {
+  const s = newGame(4);
+  const viejo = exportar(s) as unknown as Record<string, unknown>;
+  const alm = { ...(viejo.almacen as Record<string, number>) }, est = { ...(viejo.estantes as Record<string, number>) };
+  for (const k of ['guineos', 'fresas', 'uvas']) { delete alm[k]; delete est[k]; }
+  delete viejo.ofertaRara;
+  const c = importar({ ...viejo, almacen: alm, estantes: est })!;
+  assert.ok(c);
+  assert.equal(c.almacen.fresas, 0);
+  assert.ok(disponibles(c, 'fresas') >= 0);
 });

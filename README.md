@@ -129,12 +129,15 @@ Dirige un supermercado en 3D (vista de casa de muñecas: las paredes que tapan e
 - **Empezar turno:** la tienda abre de 8:00 a 20:00 (150 s). Los clientes entran, recorren la tienda con su lista y hacen cola.
 - **Cobrar (en 3D):** "Ir a la caja" acerca la cámara al mostrador. El cliente pone su compra en la cinta y hay que
   **arrastrar cada producto hasta el escáner** (pasarlo por encima del cristal basta). Al pasar el último, paga con un
-  billete: se abre el cajón y hay que **dar la vuelta** sacando monedas de $1 y billetes de $5, $10, $20 y $50 a la bandeja,
+  billete de pesos: se abre el cajón y hay que **dar la vuelta** sacando monedas de 1, 5, 10 y 25 y billetes de 50, 100 y 200 a la bandeja,
   y pulsar "Dar cambio". Si falta, el cliente espera; si sobra, se pierde la diferencia. En vertical la cámara gira para
-  que el mostrador ocupe la pantalla. Teclado: Espacio pasa un producto, 1-5 sacan dinero, Retroceso deshace, Intro da el cambio.
+  que el mostrador ocupe la pantalla. Teclado: Espacio pasa un producto, 1-7 sacan dinero, Retroceso deshace, Intro da el cambio.
 - **Recursos limitados:** el dinero y el género. Si un producto se agota, el cliente se enfada; si espera demasiado en la cola,
   deja la compra y se va. La reputación (0-100) decide cuántos clientes llegan.
 - **Fin de turno:** resumen con clientes, ingresos, gastos y beneficio. La partida se guarda en el dispositivo entre turnos.
+
+Precios en pesos dominicanos (RD$). Las fresas y las uvas son difíciles de conseguir: el proveedor solo tiene 0, 1 o 2 cajas
+al día, y si un cliente no las encuentra no se enfada.
 
 | Producto | Caja (uds.) | Coste caja | Venta/ud. |
 |---|---|---|---|
@@ -146,7 +149,10 @@ Dirige un supermercado en 3D (vista de casa de muñecas: las paredes que tapan e
 | Galletas | 10 | 12 | 2 |
 | Refresco | 12 | 14 | 2 |
 | Agua | 12 | 8 | 1 |
-| Manzanas | 20 | 10 | 1 |
+| Manzanas | 20 | 60 | 11 |
+| Guineos | 12 | 48 | 12 |
+| Fresas (difícil de conseguir) | 6 | 150 | 50 |
+| Uvas (difícil de conseguir) | 6 | 150 | 50 |
 
 Versión de una sola página (todo dentro de un HTML, para publicarla sin servidor): `node scripts/artifact.mjs`
 genera `dist-artifact/supermercado.html`.

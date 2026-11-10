@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import {
-  newGame, tick, comprarPedido, costePedido, reponer, empezarTurno, siguienteDia, clienteEnCaja, CAMBIO,
+  newGame, tick, comprarPedido, costePedido, reponer, empezarTurno, siguienteDia, clienteEnCaja, CAMBIO, esMoneda, esRara, disponibles,
   horaTienda, exportar, importar,
   PRODUCTS, PRODUCT_IDS, DISPLAYS, LAYOUT, SHIFT_SECONDS,
   type GameState, type ProductId, type Customer,
@@ -18,7 +18,7 @@ import '../ui/pwa.ts';
 const $ = <E extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as E;
 const isTouch = matchMedia('(pointer: coarse)').matches;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const money = (n: number) => `$${n}`;
+const money = (n: number) => `RD$${n}`;
 hydrateIcons();
 
 // ---------- Partida guardada (solo en este dispositivo) ----------
@@ -172,6 +172,7 @@ function makeThumbs(): Record<ProductId, string> {
     cereales: [[-0.07, -0.04], [0.07, 0.04]], galletas: [[-0.1, 0], [0, 0.05], [0.1, 0]], refresco: [[-0.06, 0], [0.06, 0], [0, 0.07]],
     agua: [[-0.06, 0], [0.06, 0], [0, 0.07]], leche: [[-0.05, 0], [0.05, 0], [0, 0.07]], yogur: [[-0.04, -0.04], [0.04, -0.04], [-0.04, 0.04], [0.04, 0.04]],
     queso: [[0, 0]], pan: [[0, -0.04], [0.03, 0.08]], manzanas: [[-0.05, 0], [0.05, 0], [0, 0.08], [-0.1, 0.08], [0.1, 0.08]],
+    guineos: [[0, 0]], fresas: [[-0.04, -0.03], [0.05, 0.05]], uvas: [[-0.03, 0], [0.04, 0.03]],
   };
   for (const p of PRODUCT_IDS) {
     const g = new THREE.Group();
@@ -386,12 +387,12 @@ function buildPc() {
     const card = document.createElement('article');
     card.className = 'prod';
     card.innerHTML = `<img alt="" src="${thumbs[p]}" /><h3>${d.nombre}</h3>
-      <div class="meta">Caja de <b>${d.caja}</b> uds. · Venta <b>${money(d.precio)}</b>/ud.<br /><span class="st"></span></div>
+      <div class="meta">${esRara(p) ? '<span class="tag">Difícil de conseguir</span><br />' : ''}Caja de <b>${d.caja}</b> uds. · Venta <b>${money(d.precio)}</b>/ud.<br /><span class="st"></span></div>
       <div class="row"><span class="price">${icon('coins')}${money(d.costoCaja)}<small class="help">&nbsp;/ caja</small></span>
       <div class="stepper"><button class="m" aria-label="Quitar una caja de ${d.nombre}">${icon('minus')}</button><output aria-live="polite">0</output><button class="p" aria-label="Añadir una caja de ${d.nombre}">${icon('plus')}</button></div></div>`;
     const minus = card.querySelector<HTMLButtonElement>('.m')!, plus = card.querySelector<HTMLButtonElement>('.p')!;
     minus.addEventListener('click', () => { cart[p] = Math.max(0, cart[p] - 1); sfx.click(); renderPc(); });
-    plus.addEventListener('click', () => { cart[p] = Math.min(99, cart[p] + 1); sfx.click(); renderPc(); });
+    plus.addEventListener('click', () => { cart[p] = Math.min(99, disponibles(state, p), cart[p] + 1); sfx.click(); renderPc(); });
     body.append(card);
     pcRows.set(p, { card, qty: card.querySelector('output')!, minus, plus, stock: card.querySelector('.st')! });
   }
@@ -402,7 +403,12 @@ function renderPc() {
     r.qty.value = String(cart[p]);
     r.minus.disabled = cart[p] === 0;
     r.card.classList.toggle('sel', cart[p] > 0);
-    r.stock.innerHTML = `Almacén <b>${state.almacen[p]}</b> · Estante <b>${state.estantes[p]}/${PRODUCTS[p].capacidad}</b>`;
+    const disp = disponibles(state, p);
+    if (cart[p] > disp) cart[p] = disp;
+    r.plus.disabled = cart[p] >= disp;
+    r.stock.innerHTML = `Almacén <b>${state.almacen[p]}</b> · Estante <b>${state.estantes[p]}/${PRODUCTS[p].capacidad}</b>`
+      + (esRara(p) ? `<br />${disp > 0 ? `Hoy el proveedor tiene <b>${disp}</b> ${disp === 1 ? 'caja' : 'cajas'}` : 'Hoy no hay: prueba otro día'}` : '');
+    r.qty.value = String(cart[p]);
   }
   $('pcMoney').textContent = String(state.dinero);
   $('pcTotal').textContent = money(total);
@@ -415,7 +421,7 @@ function renderPc() {
 $('pcClear').addEventListener('click', () => { for (const p of PRODUCT_IDS) cart[p] = 0; renderPc(); });
 $('pcPay').addEventListener('click', () => {
   const r = comprarPedido(state, cart);
-  if (!r.ok) { sfx.error(); toast(r.motivo === 'dinero' ? 'No hay dinero suficiente' : 'El pedido está vacío', 'bad'); return; }
+  if (!r.ok) { sfx.error(); toast(r.motivo === 'dinero' ? 'No hay dinero suficiente' : r.motivo === 'agotado' ? 'El proveedor no tiene tantas cajas hoy' : 'El pedido está vacío', 'bad'); return; }
   for (const p of PRODUCT_IDS) cart[p] = 0;
   sfx.buy();
   pulse(hudMoneyEl, 'spend');
@@ -547,7 +553,7 @@ $('cfYes').addEventListener('click', () => {
 });
 $('helpKeys').textContent = isTouch
   ? 'Arrastra con un dedo para girar la vista y con dos para acercarla o moverla. En la caja, arrastra los productos al escáner.'
-  : 'Arrastra para girar la vista, rueda para acercar y botón derecho para moverla. Teclas: O abre el ordenador, R repone, Intro empieza el turno y P pausa. En la caja: Espacio pasa un producto, 1-5 sacan dinero, Retroceso deshace e Intro da el cambio.';
+  : 'Arrastra para girar la vista, rueda para acercar y botón derecho para moverla. Teclas: O abre el ordenador, R repone, Intro empieza el turno y P pausa. En la caja: Espacio pasa un producto, 1-7 sacan dinero, Retroceso deshace e Intro da el cambio.';
 
 startBtn.addEventListener('click', () => {
   if (state.fase !== 'preparacion') return;
@@ -568,7 +574,7 @@ scanBtn.addEventListener('click', doScan);
 // ---------- Panel de la caja ----------
 const tillEl = $('till'), tillMsg = $('tillMsg'), tillCount = $('tillCount'), tillPay = $('tillPay');
 const tGive = $<HTMLButtonElement>('tGive'), tUndo = $<HTMLButtonElement>('tUndo');
-$('tDens').innerHTML = CAMBIO.map((v, i) => `<button class="den d${v}" data-den="${v}" aria-label="Sacar ${v === 1 ? 'una moneda de $1' : `un billete de $${v}`}" title="${i + 1}">${icon(v === 1 ? 'coins' : 'banknote')}$${v}</button>`).join('');
+$('tDens').innerHTML = CAMBIO.map((v, i) => `<button class="den d${v}" data-den="${v}" aria-label="Sacar ${esMoneda(v) ? `una moneda de ${v} pesos` : `un billete de ${v} pesos`}" title="${i + 1}">${icon(esMoneda(v) ? 'coins' : 'banknote')}${v}</button>`).join('');
 $('tDens').addEventListener('click', (e) => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-den]'); if (b) till.addChange(Number(b.dataset.den)); });
 tUndo.addEventListener('click', () => till.undoChange());
 tGive.addEventListener('click', () => till.giveChange());
@@ -688,9 +694,9 @@ addEventListener('keydown', (e) => {
   if (k === 'p') { setPaused(true); return; }
   if (openModal) return;
   if (till.active) {
-    // Teclado en la caja: Espacio pasa el primer producto; 1-5 sacan dinero; Retroceso deshace; Intro da el cambio.
+    // Teclado en la caja: Espacio pasa el primer producto; 1-7 sacan dinero; Retroceso deshace; Intro da el cambio.
     if (k === ' ') { e.preventDefault(); till.scanNext(); }
-    else if (/^[1-5]$/.test(k)) till.addChange(CAMBIO[Number(k) - 1]);
+    else if (/^[1-7]$/.test(k)) till.addChange(CAMBIO[Number(k) - 1]);
     else if (k === 'backspace') { e.preventDefault(); till.undoChange(); }
     else if (k === 'enter' && document.activeElement === document.body) till.giveChange();
     return;

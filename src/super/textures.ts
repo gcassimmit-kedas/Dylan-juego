@@ -146,7 +146,8 @@ export function beltTexture(): THREE.Texture {
 }
 
 const BILL_COLOR: Record<number, [string, string]> = {
-  5: ['#4f9a7a', '#1f4d3c'], 10: ['#4a78c2', '#1d335c'], 20: ['#d9893a', '#6b3a10'], 50: ['#8a5ab8', '#3b2257'], 100: ['#7d8f3c', '#3a4418'],
+  50: ['#8a5ab8', '#3b2257'], 100: ['#d9893a', '#6b3a10'], 200: ['#d0567a', '#6a1f39'], 500: ['#4f9a7a', '#1f4d3c'],
+  1000: ['#4a78c2', '#1d335c'], 2000: ['#7d8f3c', '#3a4418'],
 };
 
 /** Billete de la tienda (dinero de juego, sin imitar ninguna moneda real). */
@@ -160,17 +161,17 @@ export function billTexture(value: number): THREE.Texture {
   g.fillStyle = 'rgba(255,255,255,0.18)'; g.beginPath(); g.arc(150, 55, 34, 0, Math.PI * 2); g.fill();
   g.fillStyle = '#ffffff'; g.font = `700 64px ${DISPLAY}`; g.textBaseline = 'middle';
   g.textAlign = 'left'; g.fillText(String(value), 20, 58);
-  g.font = `700 22px ${DISPLAY}`; g.textAlign = 'right'; g.fillText(String(value), 238, 26); g.fillText('SUPER', 238, 88);
+  g.font = `700 22px ${DISPLAY}`; g.textAlign = 'right'; g.fillText(String(value), 238, 26); g.fillText('PESOS', 238, 88);
   return tex(c);
 }
 
-/** Moneda de 1. */
-export function coinTexture(): THREE.Texture {
+/** Moneda (1, 5, 10 o 25 pesos). */
+export function coinTexture(value = 1): THREE.Texture {
   const [c, g] = canvas(128, 128);
   const grd = g.createRadialGradient(54, 50, 10, 64, 64, 64); grd.addColorStop(0, '#fff0a8'); grd.addColorStop(1, '#c9961e');
   g.fillStyle = grd; g.beginPath(); g.arc(64, 64, 63, 0, Math.PI * 2); g.fill();
   g.strokeStyle = 'rgba(110,70,0,0.6)'; g.lineWidth = 5; g.beginPath(); g.arc(64, 64, 52, 0, Math.PI * 2); g.stroke();
-  g.fillStyle = '#7a5200'; g.font = `700 64px ${DISPLAY}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('1', 64, 68);
+  g.fillStyle = '#7a5200'; g.font = `700 ${value >= 10 ? 54 : 64}px ${DISPLAY}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(value), 64, 68);
   return tex(c);
 }
 
@@ -212,7 +213,7 @@ export function drawRegister(t: THREE.CanvasTexture, total: number, items: numbe
   const c = t.image as HTMLCanvasElement, g = c.getContext('2d')!;
   g.fillStyle = '#0d1a10'; g.fillRect(0, 0, 256, 96);
   g.fillStyle = '#7bd36b'; g.font = `600 20px ${DISPLAY}`; g.fillText(`ARTÍCULOS ${items}`, 14, 30);
-  g.font = `700 44px ${DISPLAY}`; g.textAlign = 'right'; g.fillText(`$${total}`, 242, 80); g.textAlign = 'left';
+  g.font = `700 44px ${DISPLAY}`; g.textAlign = 'right'; g.fillText(`RD$${total}`, 242, 80); g.textAlign = 'left';
   t.needsUpdate = true;
 }
 
@@ -306,6 +307,26 @@ export function labelCanvas(p: ProductId): HTMLCanvasElement {
       g.fillStyle = '#d9a35a'; g.beginPath(); g.roundRect(56, 80, 144, 104, 30); g.fill();
       g.fillStyle = '#f6dfb0'; g.beginPath(); g.roundRect(68, 92, 120, 84, 22); g.fill();
       small('Integral', 228, '#ffffff');
+      break;
+    }
+    case 'guineos': {
+      g.fillStyle = '#2f6b3a'; g.fillRect(0, 0, 256, 256);
+      g.strokeStyle = '#f2cf2e'; g.lineWidth = 26; g.lineCap = 'round';
+      for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(128, 40 + i * 14, 90, 0.35 * Math.PI, 0.75 * Math.PI); g.stroke(); }
+      title('GUINEOS', 226, 40, '#ffffff');
+      break;
+    }
+    case 'fresas': {
+      g.clearRect(0, 0, 256, 256);
+      g.fillStyle = 'rgba(255,255,255,0.92)'; g.fillRect(0, 70, 256, 116);
+      g.fillStyle = '#d91e2e'; g.fillRect(0, 70, 256, 14); g.fillRect(0, 172, 256, 14);
+      title('FRESAS', 128, 128, '#d91e2e');
+      break;
+    }
+    case 'uvas': {
+      g.fillStyle = '#4a1f5c'; g.fillRect(0, 0, 256, 256);
+      for (let row = 0; row < 4; row++) for (let i = 0; i <= 3 - row; i++) { g.fillStyle = '#8d4bb0'; g.beginPath(); g.arc(128 - (3 - row) * 18 + i * 36, 70 + row * 32, 18, 0, Math.PI * 2); g.fill(); }
+      title('UVAS', 214, 54, '#ffffff');
       break;
     }
     case 'manzanas': {
