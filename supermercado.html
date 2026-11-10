@@ -20,6 +20,15 @@
     <p>Abriendo la tienda</p>
   </div>
 
+  <!-- Sin gráficos 3D -->
+  <section id="nogl" class="screen" hidden aria-labelledby="noglTitle">
+    <div class="panel menu-panel" role="alertdialog">
+      <p class="kicker danger">No se puede jugar aquí</p>
+      <h2 id="noglTitle">Sin gráficos 3D</h2>
+      <p class="help">Este navegador o dispositivo no permite mostrar gráficos 3D (WebGL 2). Prueba con una versión reciente de Chrome, Safari, Edge o Firefox, o activa la aceleración por hardware en los ajustes del navegador.</p>
+    </div>
+  </section>
+
   <!-- HUD -->
   <div id="hud">
     <div class="left">
@@ -36,6 +45,7 @@
     <div class="right">
       <div id="money" class="stat" aria-label="Dinero"><span data-icon="coins"></span><span id="moneyN">0</span></div>
       <div id="rep" class="stat rep" aria-label="Reputación"><span data-icon="smile"></span><span id="repN">50</span></div>
+      <button id="fsBtn" class="btn" hidden aria-label="Pantalla completa" title="Pantalla completa"></button>
       <button id="pauseBtn" class="btn" aria-label="Pausar" title="Pausar (P)"></button>
       <button id="mute" class="btn" aria-label="Silenciar"></button>
     </div>
@@ -48,7 +58,7 @@
     <button id="pcBtn" class="tool" aria-label="Ordenador de pedidos" title="Ordenador (O)"><span data-icon="monitor"></span><b>Ordenador</b></button>
     <button id="shelvesBtn" class="tool" aria-label="Estanterías y almacén" title="Estanterías (R)"><span data-icon="warehouse"></span><b>Reponer</b></button>
     <button id="startBtn" class="primary big" title="Empezar turno (Intro)"><span data-icon="store"></span>Empezar turno</button>
-    <button id="scanBtn" class="primary big scan" hidden title="Cobrar (Espacio)"><span data-icon="scanBarcode"></span><span id="scanLbl">Ir a la caja</span><i id="queueN" aria-label="Clientes en la cola">0</i></button>
+    <button id="scanBtn" class="primary big scan" hidden title="Ir a la caja"><span data-icon="scanBarcode"></span><span id="scanLbl">Ir a la caja</span><i id="queueN" aria-label="Clientes en la cola">0</i></button>
   </div>
 
   <!-- Modo caja -->
@@ -160,6 +170,7 @@
       <p class="kicker">Juego en pausa</p>
       <h2 id="pauseTitle">Pausa</h2>
       <button id="resumeBtn" class="primary big"><span data-icon="play"></span>Continuar</button>
+      <button id="qualityBtn" class="ghost"><span data-icon="gauge"></span><span id="qualityLbl">Gráficos: automático</span></button>
       <button id="quitBtn" class="ghost"><span data-icon="house"></span>Salir al menú</button>
       <p class="help" id="quitHelp"></p>
     </div>

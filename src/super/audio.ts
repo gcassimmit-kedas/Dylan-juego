@@ -9,7 +9,12 @@ export function setMuted(m: boolean) {
   try { localStorage.setItem('super.muted', m ? '1' : '0'); } catch { /* sin almacenamiento */ }
 }
 export function unlock() {
-  if (!ctx) { try { ctx = new AudioContext(); } catch { return; } }
+  if (!ctx) {
+    // iOS 14.4 y anteriores solo tienen la versión con prefijo.
+    const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return;
+    try { ctx = new AC(); } catch { return; }
+  }
   if (ctx.state === 'suspended') void ctx.resume();
 }
 

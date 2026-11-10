@@ -41,6 +41,8 @@ export interface TillDeps {
   state: () => GameState;
   toast: (text: string, kind?: '' | 'ok' | 'bad', ms?: number) => void;
   onChange: () => void;
+  /** Fracción de la altura de pantalla libre (sin la barra de arriba ni el panel de la caja). */
+  freeHeight: () => number;
 }
 
 export class Till {
@@ -179,8 +181,10 @@ export class Till {
       out.up.set(-1, 0, 0);
       return;
     }
-    // Horizontal: que quepa de la cinta al cajón (unos 2,4 m de ancho).
-    const dist = THREE.MathUtils.clamp(1.2 / tanH, 2.3, 5.6);
+    // Horizontal: que quepa de la cinta al cajón (unos 2,4 m de ancho) y, en pantallas bajas
+    // (móvil apaisado), también de fondo en el hueco que dejan la barra de arriba y el panel.
+    const free = THREE.MathUtils.clamp(this.d.freeHeight(), 0.3, 1);
+    const dist = THREE.MathUtils.clamp(Math.max(1.2 / tanH, 0.55 / (tanV * free)), 2.3, 7);
     out.target.set(-0.2, TOP - 0.1, 0.18).add(reg);
     out.pos.copy(out.target).addScaledVector(new THREE.Vector3(0.12, 1.15, 1.0).normalize(), dist);
     out.up.set(0, 1, 0);
@@ -221,7 +225,7 @@ export class Till {
 
   /** Mueve la cámara al encuadre de la fase actual (solo cambia en pantallas verticales). */
   private refocus() {
-    if (!this.active || this.leaving || this.d.camera.aspect >= 0.85) return;
+    if (!this.active || this.leaving) return;
     this.startCam({ pos: this.d.camera.position.clone(), target: this.d.controls.target.clone(), up: this.d.camera.up.clone() }, null);
   }
 

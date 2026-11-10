@@ -60,6 +60,8 @@ export default defineConfig({
   // En desarrollo (npm run dev) el WebSocket va al servidor de juego en el puerto 8080
   server: { proxy: { '/ws': { target: 'ws://localhost:8080', ws: true } } },
   build: {
+    // Navegadores de hace unos años (iPhone/iPad con iOS 14 en adelante, Android con Chrome 87+).
+    target: ['es2020', 'safari14', 'chrome87', 'firefox78', 'edge88'],
     chunkSizeWarningLimit: 800,
     rolldownOptions: {
       input: {

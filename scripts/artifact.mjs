@@ -21,6 +21,7 @@ await build({
   publicDir: false,
   build: {
     outDir: tmp,
+    target: ['es2020', 'safari14', 'chrome87', 'firefox78', 'edge88'],
     emptyOutDir: true,
     assetsInlineLimit: 100_000_000, // fuentes como data: URI
     cssCodeSplit: false,

@@ -35,12 +35,52 @@ let state: GameState = loadSave() ?? newGame((Math.random() * 2 ** 32) >>> 0);
 
 // ---------- Render ----------
 const canvas = $<HTMLCanvasElement>('scene');
+/** Sin WebGL 2 no hay juego: se explica en pantalla en lugar de dejarla en negro. */
+function webgl2(): boolean {
+  try { return !!document.createElement('canvas').getContext('webgl2'); } catch { return false; }
+}
+if (!webgl2()) {
+  $('loading').remove();
+  $('title').hidden = true;
+  $('nogl').hidden = false;
+  throw new Error('WebGL 2 no disponible');
+}
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouch ? 1.75 : 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.95;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
+// Si el sistema libera la GPU (app en segundo plano), se permite recuperarla al volver.
+canvas.addEventListener('webglcontextlost', (e) => e.preventDefault());
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// ---------- Calidad gráfica (se adapta sola a cada dispositivo) ----------
+let worldReady = false;
+type Quality = 'auto' | 'alta' | 'baja';
+const QUALITY_KEY = 'super.calidad';
+let quality: Quality = (() => { try { const q = localStorage.getItem(QUALITY_KEY); return q === 'alta' || q === 'baja' ? q : 'auto'; } catch { return 'auto'; } })();
+/** Nivel real: 2 alto, 1 medio (menos resolución), 0 bajo (sin sombras). En automático empieza alto y baja si va lento. */
+let level = quality === 'baja' ? 0 : 2;
+function applyLevel() {
+  const dpr = window.devicePixelRatio || 1;
+  renderer.setPixelRatio(level === 2 ? Math.min(dpr, isTouch ? 1.75 : 2) : level === 1 ? Math.min(dpr, 1.25) : Math.min(dpr, 1));
+  const shadows = level > 0;
+  if (renderer.shadowMap.enabled !== shadows) {
+    renderer.shadowMap.enabled = shadows;
+    scene?.traverse((o) => { const m = (o as THREE.Mesh).material; if (m) (Array.isArray(m) ? m : [m]).forEach((x) => { x.needsUpdate = true; }); });
+  }
+  if (worldReady) fitCamera();
+}
+// Medición de fluidez: media de los últimos fotogramas.
+let fpsTime = 0, fpsFrames = 0, fpsChecks = 0;
+function watchFps(raw: number) {
+  if (quality !== 'auto' || level === 0 || document.hidden || raw > 1) return; // un salto de más de 1 s es una pausa, no lentitud
+  fpsTime += raw; fpsFrames++;
+  if (fpsTime < 2.5) return;
+  const fps = fpsFrames / fpsTime;
+  fpsTime = 0; fpsFrames = 0; fpsChecks++;
+  if (fpsChecks > 1 && fps < 38) { level--; applyLevel(); }
+}
 T.setAnisotropy(Math.min(8, renderer.capabilities.getMaxAnisotropy()));
 
 const scene = new THREE.Scene();
@@ -51,6 +91,7 @@ scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.4;
 
 const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
+applyLevel();
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.dampingFactor = 0.09;
@@ -152,6 +193,11 @@ function buildWorld() {
   till = new Till({
     scene, camera, controls, canvas, register: reg.group, scanner: reg.scanner, belt: reg.belt, cashier: cashier.group,
     state: () => state, toast, onChange: () => { if (inStore) renderTill(); },
+    freeHeight: () => {
+      const h = innerHeight, hud = $('hud').getBoundingClientRect().bottom;
+      const panel = $('till').hidden ? 170 : $('till').getBoundingClientRect().height;
+      return (h - hud - panel) / h;
+    },
   });
 }
 
@@ -591,7 +637,7 @@ function renderTill() {
   }
   if (!on) { if (lastPanelH !== 0) { lastPanelH = 0; applyViewOffset(); } return; }
   const ph = Math.round(tillEl.getBoundingClientRect().height);
-  if (ph !== lastPanelH) { lastPanelH = ph; applyViewOffset(); }
+  if (ph !== lastPanelH) { lastPanelH = ph; applyViewOffset(); till.resize(); }
   const i = till.info();
   tillPay.hidden = i.phase !== 'pago';
   if (i.phase === 'escaneo') {
@@ -666,6 +712,45 @@ $('quitBtn').addEventListener('click', () => {
 });
 // Ciclo de vida: al pasar a segundo plano el turno se pausa solo.
 document.addEventListener('visibilitychange', () => { if (document.hidden && inStore && state.fase === 'turno' && !paused) setPaused(true); });
+
+// Ajuste de gráficos (menú de pausa)
+const qualityLbl = $('qualityLbl');
+const QUALITY_NAME: Record<Quality, string> = { auto: 'automático', alta: 'alta', baja: 'baja' };
+function renderQuality() { qualityLbl.textContent = `Gráficos: ${QUALITY_NAME[quality]}`; }
+$('qualityBtn').addEventListener('click', () => {
+  quality = quality === 'auto' ? 'alta' : quality === 'alta' ? 'baja' : 'auto';
+  try { localStorage.setItem(QUALITY_KEY, quality); } catch { /* sin almacenamiento */ }
+  level = quality === 'baja' ? 0 : 2;
+  fpsTime = 0; fpsFrames = 0; fpsChecks = 0;
+  applyLevel();
+  renderQuality();
+});
+renderQuality();
+
+// Pantalla completa, donde el dispositivo lo permite (en iPhone no existe).
+const fsBtn = $<HTMLButtonElement>('fsBtn');
+const doc = document as Document & { webkitFullscreenEnabled?: boolean; webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => void };
+const fsEnabled = !!(document.fullscreenEnabled || doc.webkitFullscreenEnabled);
+const fsActive = () => !!(document.fullscreenElement || doc.webkitFullscreenElement);
+function renderFs() {
+  fsBtn.innerHTML = icon(fsActive() ? 'minimize' : 'maximize');
+  fsBtn.setAttribute('aria-label', fsActive() ? 'Salir de pantalla completa' : 'Pantalla completa');
+  fsBtn.title = fsBtn.getAttribute('aria-label')!;
+}
+fsBtn.hidden = !fsEnabled;
+fsBtn.addEventListener('click', async () => {
+  try {
+    if (fsActive()) await (document.exitFullscreen ? document.exitFullscreen() : doc.webkitExitFullscreen?.());
+    else {
+      const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
+      await (el.requestFullscreen ? el.requestFullscreen() : el.webkitRequestFullscreen?.());
+    }
+  } catch { toast('Este dispositivo no permite la pantalla completa aquí'); }
+  renderFs();
+});
+document.addEventListener('fullscreenchange', renderFs);
+document.addEventListener('webkitfullscreenchange', renderFs);
+renderFs();
 
 const muteBtn = $('mute');
 function renderMute() {
@@ -811,8 +896,10 @@ let elapsed = 0, loaded = false;
 
 function frame(now: number) {
   timer.update(now);
-  const dt = Math.min(0.1, timer.getDelta());
+  const raw = timer.getDelta();
+  const dt = Math.min(0.1, raw);
   elapsed += dt;
+  watchFps(raw);
   const running = inStore && !paused && $('summary').hidden;
   if (running) {
     // Pasos fijos: la simulación avanza igual en un móvil lento y en un ordenador rápido.
@@ -868,6 +955,7 @@ async function init() {
   buildPc();
   buildShelves();
   placeCamera();
+  worldReady = true;
   controls.autoRotate = !reducedMotion;
   renderTitle();
   requestAnimationFrame(frame);

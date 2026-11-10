@@ -28,6 +28,17 @@ function tex(c: HTMLCanvasElement, repeat?: [number, number], color = true): THR
   return t;
 }
 
+/** Rectángulo redondeado (CanvasRenderingContext2D.roundRect no existe en Safari 15 ni anteriores). */
+function rrect(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
 function speckle(g: CanvasRenderingContext2D, w: number, h: number, n: number, colors: string[], size: [number, number], seed: number) {
   const r = rng(seed);
   for (let i = 0; i < n; i++) {
@@ -304,8 +315,8 @@ export function labelCanvas(p: ProductId): HTMLCanvasElement {
       g.fillStyle = '#f2e7d0'; g.fillRect(0, 0, 256, 256);
       g.fillStyle = '#c0392b'; g.fillRect(0, 0, 256, 54); g.fillRect(0, 202, 256, 54);
       title('PAN DE MOLDE', 28, 34, '#ffffff');
-      g.fillStyle = '#d9a35a'; g.beginPath(); g.roundRect(56, 80, 144, 104, 30); g.fill();
-      g.fillStyle = '#f6dfb0'; g.beginPath(); g.roundRect(68, 92, 120, 84, 22); g.fill();
+      g.fillStyle = '#d9a35a'; rrect(g, 56, 80, 144, 104, 30); g.fill();
+      g.fillStyle = '#f6dfb0'; rrect(g, 68, 92, 120, 84, 22); g.fill();
       small('Integral', 228, '#ffffff');
       break;
     }
