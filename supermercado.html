@@ -50,6 +50,11 @@
       <button id="mute" class="btn" aria-label="Silenciar"></button>
     </div>
   </div>
+  <!-- Primera persona: punto de mira, aviso de lo que se mira y joystick táctil -->
+  <div id="aim" aria-hidden="true"><span></span></div>
+  <div id="prompt" aria-live="polite" hidden><kbd id="promptKey">E</kbd><span id="promptText"></span></div>
+  <button id="actBtn" class="primary act" hidden><span data-icon="check"></span><span id="actLbl">Usar</span></button>
+  <div id="joy" aria-hidden="true"><div class="knob"></div></div>
   <div id="banner" aria-live="polite"><div class="kicker" id="bannerKicker"></div><div class="title" id="bannerTitle"></div><div class="sub" id="bannerSub"></div></div>
   <div id="toast" role="status" aria-live="polite"></div>
 
@@ -115,10 +120,10 @@
       <p class="kicker">Guía rápida</p>
       <h2 id="helpTitle">Cómo se juega</h2>
       <ol class="steps">
-        <li><span data-icon="monitor"></span><div><strong>Compra en el ordenador</strong>Pide cajas al proveedor con el dinero de la caja. Llegan al almacén al momento.</div></li>
-        <li><span data-icon="warehouse"></span><div><strong>Repón las estanterías</strong>Toca un mueble para llenarlo con lo que haya en el almacén. Si un cliente no encuentra algo, se enfada.</div></li>
+        <li><span data-icon="monitor"></span><div><strong>Compra en el ordenador</strong>Camina hasta la oficina (a la izquierda de la entrada) y pide cajas al proveedor. Llegan al almacén al momento.</div></li>
+        <li><span data-icon="warehouse"></span><div><strong>Repón las estanterías</strong>Mira un mueble de cerca y úsalo para llenarlo con lo que haya en el almacén. Si un cliente no encuentra algo, se enfada.</div></li>
         <li><span data-icon="store"></span><div><strong>Empieza el turno</strong>La tienda abre de 8:00 a 20:00 y van llegando clientes.</div></li>
-        <li><span data-icon="scanBarcode"></span><div><strong>Cobra</strong>Ve a la caja y arrastra cada producto de la cinta hasta el escáner. Si los clientes esperan demasiado en la cola, se van sin pagar.</div></li>
+        <li><span data-icon="scanBarcode"></span><div><strong>Cobra</strong>Camina hasta la caja, úsala y arrastra cada producto de la cinta hasta el escáner. Si los clientes esperan demasiado en la cola, se van sin pagar.</div></li>
         <li><span data-icon="banknote"></span><div><strong>Da el cambio</strong>El cliente paga con un billete. Saca del cajón la vuelta en pesos (monedas de 1, 5, 10 y 25 y billetes de 50, 100 y 200) y pulsa Dar cambio. Si das de más, lo pierdes.</div></li>
       </ol>
       <p class="help" id="helpKeys"></p>

@@ -490,6 +490,27 @@ export function building(): Building {
   return { group: g, walls };
 }
 
+/** Techo de placas con pantallas de luz. Solo se ve en primera persona (desde arriba taparía la tienda). */
+export function ceiling(): THREE.Group {
+  const g = new THREE.Group();
+  const { minX, maxX, minZ, maxZ, H } = STORE;
+  const t = T.ceilingTexture();
+  t.repeat.set((maxX - minX) / 0.6, (maxZ - minZ) / 0.6);
+  const plane = new THREE.Mesh(new THREE.PlaneGeometry(maxX - minX, maxZ - minZ), std({ map: t, roughness: 0.95 }));
+  plane.rotation.x = Math.PI / 2;
+  plane.position.set((minX + maxX) / 2, H - 0.005, (minZ + maxZ) / 2);
+  g.add(plane);
+  const lamp = std({ color: 0xffffff, emissive: 0xfff8ec, emissiveIntensity: 2.4 });
+  const frame = std({ color: 0xd9d9d6, roughness: 0.5 });
+  for (let x = -7.2; x <= 7.3; x += 3.6) for (let z = -5.4; z <= 6; z += 2.85) {
+    g.add(box(1.24, 0.03, 0.64, frame, x, H - 0.02, z));
+    g.add(box(1.2, 0.012, 0.6, lamp, x, H - 0.04, z));
+  }
+  g.traverse((o) => { o.castShadow = false; o.receiveShadow = false; });
+  g.visible = false;
+  return g;
+}
+
 /** Cartel colgante de la caja. */
 export function ceilingDecor(): THREE.Group {
   const g = new THREE.Group();

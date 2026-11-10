@@ -411,7 +411,6 @@ export function obstacles(): Rect[] {
   }
   const r = LAYOUT.register;
   out.push({ x0: r.x - 1.45, z0: r.z - 0.38, x1: r.x + 0.85, z1: r.z + 0.38 });
-  out.push({ x0: LAYOUT.cashier.x - 0.3, z0: LAYOUT.cashier.z - 0.3, x1: LAYOUT.cashier.x + 0.3, z1: LAYOUT.cashier.z + 0.3 });
   const pc = LAYOUT.computer;
   out.push({ x0: pc.x - 1.5, z0: pc.z - 0.5, x1: pc.x + 1.4, z1: pc.z + 1.1 });
   const st = LAYOUT.storage;

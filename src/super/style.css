@@ -173,6 +173,27 @@ body.instore #hud, body.instore #actions, body.instore #banner, body.instore #to
 .scan.ready { animation: ready 0.9s ease-in-out infinite; }
 @keyframes ready { 50% { filter: brightness(1.15); transform: translateY(-1px); } }
 
+/* ---------- Primera persona ---------- */
+#aim, #prompt, #actBtn, #joy { display: none; }
+body.fp.instore:not(.attill) #aim { display: block; position: fixed; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; pointer-events: none; }
+#aim span { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55); transition: transform 0.12s; }
+#aim.on span { transform: scale(1.8); background: var(--accent); }
+body.fp.instore:not(.attill) #prompt:not([hidden]) { display: flex; position: fixed; left: 50%; top: calc(50% + 28px); transform: translateX(-50%); align-items: center; gap: 8px;
+  background: var(--panel); border: 1px solid var(--line); padding: 6px 12px; font-family: var(--display); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  font-size: 0.9rem; white-space: nowrap; pointer-events: none; max-width: calc(100% - 32px); }
+#prompt kbd { font-family: var(--display); background: var(--accent); color: #241a00; padding: 0 7px; border-radius: 3px; font-size: 0.85rem; }
+body.touch #prompt kbd { display: none; }
+body.fp.instore:not(.attill) #actBtn:not([hidden]) { display: inline-flex; position: fixed; right: calc(env(safe-area-inset-right) + 16px); bottom: calc(env(safe-area-inset-bottom) + 92px);
+  height: 64px; min-width: 64px; padding: 0 18px; font-size: 1rem; }
+body.fp #pcBtn, body.fp #shelvesBtn, body.fp #scanBtn { display: none; }
+body.fp #actions { justify-content: center; }
+#joy.on { display: block; position: fixed; width: 120px; height: 120px; transform: translate(-50%, -50%); border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.45); background: rgba(0, 0, 0, 0.2); pointer-events: none; }
+#joy .knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; transform: translate(-50%, -50%); border-radius: 50%; background: rgba(255, 255, 255, 0.65); }
+@media (max-height: 500px) and (orientation: landscape) {
+  body.fp.instore:not(.attill) #actBtn:not([hidden]) { bottom: calc(env(safe-area-inset-bottom) + 70px); height: 54px; }
+}
+
 /* ---------- Modo caja ---------- */
 #till { position: fixed; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; justify-content: center;
   padding: 0 calc(env(safe-area-inset-right) + 12px) calc(env(safe-area-inset-bottom) + 12px) calc(env(safe-area-inset-left) + 12px); pointer-events: none; }

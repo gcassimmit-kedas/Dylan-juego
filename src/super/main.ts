@@ -11,6 +11,7 @@ import {
 import * as M from './models.ts';
 import * as T from './textures.ts';
 import { Till, tillScreenPoints } from './checkout.ts';
+import { Player } from './player.ts';
 import { sfx, unlock, isMuted, setMuted } from './audio.ts';
 import { icon, hydrateIcons } from '../ui/icons.ts';
 import '../ui/pwa.ts';
@@ -156,6 +157,9 @@ let store: ReturnType<typeof M.storage>;
 let doors: { left: THREE.Mesh; right: THREE.Mesh; x: number; w: number };
 let thumbs: Record<ProductId, string>;
 let till: Till;
+let ceilingGroup: THREE.Group;
+/** Cámara "virtual" para la caja: en primera persona no se usan los controles orbitales. */
+const tillView = { target: new THREE.Vector3(), enabled: false, autoRotate: false };
 
 function buildWorld() {
   build = M.building();
@@ -166,9 +170,9 @@ function buildWorld() {
     const model = M.displayModel(d);
     scene.add(model.group);
     const tex = T.stockBadge(null, 0, 1, '');
-    const badge = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    const badge = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
     badge.renderOrder = 10;
-    badge.scale.set(1.35, 0.42, 1);
+    badge.scale.set(1.1, 0.34, 1);
     badge.position.set(THREE.MathUtils.lerp(d.x, d.pick.x, 0.55), model.badgeY, THREE.MathUtils.lerp(d.z, d.pick.z, 0.55));
     badge.userData.product = d.product;
     scene.add(badge);
@@ -190,8 +194,10 @@ function buildWorld() {
   cashier.group.position.set(LAYOUT.cashier.x, 0, LAYOUT.cashier.z);
   cashier.group.rotation.y = Math.PI;
   scene.add(cashier.group);
+  ceilingGroup = M.ceiling();
+  scene.add(ceilingGroup);
   till = new Till({
-    scene, camera, controls, canvas, register: reg.group, scanner: reg.scanner, belt: reg.belt, cashier: cashier.group,
+    scene, camera, controls: tillView as unknown as OrbitControls, canvas, register: reg.group, scanner: reg.scanner, belt: reg.belt, cashier: cashier.group,
     state: () => state, toast, onChange: () => { if (inStore) renderTill(); },
     freeHeight: () => {
       const h = innerHeight, hud = $('hud').getBoundingClientRect().bottom;
@@ -250,7 +256,7 @@ function customerView(c: Customer): CustomerView {
   p.group.position.set(c.x, 0, c.z);
   scene.add(p.group);
   const barTex = T.patienceBar(null, 1);
-  const bar = new THREE.Sprite(new THREE.SpriteMaterial({ map: barTex, depthTest: false, transparent: true }));
+  const bar = new THREE.Sprite(new THREE.SpriteMaterial({ map: barTex, transparent: true }));
   bar.scale.set(0.62, 0.12, 1); bar.position.y = 2.1; bar.renderOrder = 11; bar.visible = false;
   p.group.add(bar);
   const bag = new THREE.Mesh(bagGeo, bagMat); bag.position.set(0.3, 0.72, 0.05); bag.visible = false; bag.castShadow = true;
@@ -532,6 +538,7 @@ $('shAll').addEventListener('click', () => {
 let openModal: HTMLElement | null = null, opener: HTMLElement | null = null;
 function open(id: 'pc' | 'shelves' | 'help' | 'confirm') {
   if (openModal) close();
+  player?.unlock(); player?.release();
   const el = $(id);
   opener = document.activeElement as HTMLElement | null;
   if (id === 'pc') renderPc();
@@ -565,9 +572,16 @@ function enterStore() {
   unlock();
   titleEl.hidden = true;
   inStore = true;
-  document.body.classList.add('instore');
+  document.body.classList.add('instore', 'fp');
   controls.autoRotate = false;
+  controls.enabled = false;
+  camera.fov = 70;
+  camera.clearViewOffset();
+  fitCamera();
+  player.place(0.5, 4.2, 0);
+  player.enabled = true;
   prepBanner();
+  toast(isTouch ? 'Joystick a la izquierda para andar · arrastra a la derecha para mirar' : 'Haz clic para mirar con el ratón (L o Esc lo suelta) · WASD para andar', '', 4200);
   startBtn.focus();
 }
 function prepBanner() {
@@ -578,7 +592,13 @@ function goTitle() {
   close();
   setPaused(false);
   inStore = false;
-  document.body.classList.remove('instore');
+  player.enabled = false;
+  player.unlock();
+  player.release();
+  document.body.classList.remove('instore', 'fp');
+  camera.fov = 42;
+  controls.enabled = true;
+  placeCamera();
   hasSave = loadSave() !== null;
   renderTitle();
   titleEl.hidden = false;
@@ -598,8 +618,8 @@ $('cfYes').addEventListener('click', () => {
   enterStore();
 });
 $('helpKeys').textContent = isTouch
-  ? 'Arrastra con un dedo para girar la vista y con dos para acercarla o moverla. En la caja, arrastra los productos al escáner.'
-  : 'Arrastra para girar la vista, rueda para acercar y botón derecho para moverla. Teclas: O abre el ordenador, R repone, Intro empieza el turno y P pausa. En la caja: Espacio pasa un producto, 1-7 sacan dinero, Retroceso deshace e Intro da el cambio.';
+  ? 'Juegas en primera persona. Joystick en la mitad izquierda para andar, arrastra en la derecha para mirar. Apunta con el punto del centro y pulsa el botón amarillo para usar lo que miras. En la caja, arrastra los productos al escáner.'
+  : 'Juegas en primera persona. WASD o flechas para andar (Mayús corre). Haz clic para mirar con el ratón; L o Esc lo sueltan. Apunta con el punto del centro y pulsa E o haz clic para usar lo que miras. Intro empieza el turno y P pausa. En la caja: Espacio pasa un producto, 1-7 sacan dinero, Retroceso deshace e Intro da el cambio.';
 
 startBtn.addEventListener('click', () => {
   if (state.fase !== 'preparacion') return;
@@ -700,7 +720,7 @@ function setPaused(v: boolean) {
   pauseBtn.innerHTML = icon(v ? 'play' : 'pause');
   pauseBtn.setAttribute('aria-label', v ? 'Continuar' : 'Pausar');
   $('quitHelp').textContent = state.fase === 'turno' ? 'Si sales ahora, el turno en curso no se guardará.' : 'La tienda queda guardada en este dispositivo.';
-  if (v) { close(); $('resumeBtn').focus(); }
+  if (v) { close(); player.unlock(); player.release(); $('resumeBtn').focus(); }
   else if (till?.active) applyViewOffset();
 }
 pauseBtn.innerHTML = icon('pause');
@@ -774,6 +794,8 @@ function resetViews() {
 addEventListener('keydown', (e) => {
   if (!inStore) return;
   const k = e.key.toLowerCase();
+  // El Esc que suelta el ratón fijado lo gestiona el navegador: no debe abrir la pausa.
+  if (k === 'escape' && performance.now() - player.unlockedAt < 400 && !openModal) return;
   if (k === 'escape') { if (openModal) close(); else if (!$('summary').hidden) return; else if (till.active && !paused) till.exit(); else setPaused(!paused); e.preventDefault(); return; }
   if (paused || !$('summary').hidden) return;
   if (k === 'p') { setPaused(true); return; }
@@ -786,9 +808,7 @@ addEventListener('keydown', (e) => {
     else if (k === 'enter' && document.activeElement === document.body) till.giveChange();
     return;
   }
-  if (k === ' ' && state.fase === 'turno') { e.preventDefault(); doScan(); }
-  else if (k === 'o') open('pc');
-  else if (k === 'r') open('shelves');
+  if (k === 'e') { const o = aimAt(null, null); if (o) act(o); }
   else if (k === 'enter' && state.fase === 'preparacion' && document.activeElement === document.body) startBtn.click();
 });
 
@@ -806,6 +826,7 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 canvas.addEventListener('pointerup', (e) => {
   if (till.active) { till.pointerUp(); return; }
+  if (player.enabled) return;
   if (!down || !inStore || paused) return;
   const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y), dt = performance.now() - down.t;
   down = null;
@@ -820,9 +841,66 @@ canvas.addEventListener('pointerup', (e) => {
 canvas.addEventListener('pointercancel', () => { if (till.active) till.pointerUp(); });
 canvas.addEventListener('pointermove', (e) => {
   if (till.active) { if (!paused) till.pointerMove(e); return; }
-  if (isTouch || !inStore || e.buttons) return;
+  if (isTouch || !inStore || e.buttons || player.enabled) return;
   canvas.style.cursor = pick(e) ? 'pointer' : '';
 });
+
+// ---------- Primera persona ----------
+const REACH = 3.2;
+/** Lo que hay en el punto de mira (o en el punto tocado) a menos de un brazo y pico. */
+function aimAt(x: number | null, y: number | null): THREE.Object3D | null {
+  if (x === null || y === null) ndc.set(0, 0); else ndc.set((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  ray.far = REACH;
+  const hit = ray.intersectObjects(hitTargets, false)[0]?.object ?? null;
+  ray.far = Infinity;
+  return hit;
+}
+function act(o: THREE.Object3D) {
+  if (o.userData.product) { restock(o.userData.product as ProductId, true); return; }
+  const a = o.userData.action;
+  if (a === 'cobrar') {
+    if (state.fase !== 'turno') { toast('La caja se abre al empezar el turno'); return; }
+    player.unlock(); player.release();
+    // La caja arranca desde donde mira el jugador y vuelve ahí al salir.
+    tillView.target.copy(camera.position).add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(2));
+    camera.up.set(0, 1, 0);
+    till.enter();
+  } else if (a === 'ordenador') open('pc');
+  else if (a === 'almacen') open('shelves');
+}
+function describe(o: THREE.Object3D): string {
+  if (o.userData.product) {
+    const p = o.userData.product as ProductId, d = PRODUCTS[p];
+    return `Reponer ${d.nombre.toLowerCase()} · ${state.estantes[p]}/${d.capacidad} · almacén ${state.almacen[p]}`;
+  }
+  const a = o.userData.action;
+  if (a === 'cobrar') return state.fase === 'turno' ? (state.cola.length ? `Atender la caja · ${state.cola.length} en cola` : 'Atender la caja') : 'Caja (cerrada hasta empezar el turno)';
+  if (a === 'ordenador') return 'Hacer pedidos en el ordenador';
+  return 'Ver el almacén';
+}
+const aimEl = $('aim'), promptEl = $('prompt'), promptText = $('promptText'), actBtn = $<HTMLButtonElement>('actBtn'), actLbl = $('actLbl');
+let aimed: THREE.Object3D | null = null, aimedText = '';
+function updateAim() {
+  const o = player.enabled && canAct() ? aimAt(null, null) : null;
+  aimed = o;
+  aimEl.classList.toggle('on', !!o);
+  const text = o ? describe(o) : '';
+  if (text !== aimedText) {
+    aimedText = text;
+    promptEl.hidden = !o;
+    promptText.textContent = text;
+    actBtn.hidden = !o || !isTouch;
+    if (o) actLbl.textContent = o.userData.product ? 'Reponer' : o.userData.action === 'cobrar' ? 'Atender' : o.userData.action === 'ordenador' ? 'Ordenador' : 'Almacén';
+  }
+}
+actBtn.addEventListener('click', () => { if (aimed) act(aimed); });
+function canAct() { return inStore && !paused && !openModal && $('summary').hidden && !till.active; }
+const player = new Player({
+  canvas, camera, canAct,
+  onInteract: (x, y) => { const o = aimAt(x, y); if (o) act(o); },
+});
+if (isTouch) document.body.classList.add('touch');
 
 // Límites de la cámara: siempre mirando a la tienda.
 controls.addEventListener('change', () => {
@@ -890,7 +968,7 @@ function handleEvents(now: number) {
 }
 
 // ---------- Bucle ----------
-let doorOpen = 0;
+let doorOpen = 0, tillWas = false;
 const timer = new THREE.Timer();
 let elapsed = 0, loaded = false;
 
@@ -910,6 +988,14 @@ function frame(now: number) {
   syncCustomers(running ? dt : 0, elapsed);
   updateWorldState();
   updateFlies(dt);
+
+  // Primera persona
+  const wasTill = tillWas;
+  tillWas = till.active;
+  if (wasTill && !till.active && player.enabled) player.syncFromCamera();
+  if (player.enabled && !till.active) player.update(running ? dt : 0);
+  ceilingGroup.visible = player.enabled && !till.active;
+  cashier.group.visible = !player.enabled && !till.active;
 
   // Caja y cajero
   till.update(running || till.isLeaving ? dt : 0);
@@ -938,7 +1024,8 @@ function frame(now: number) {
   // Pantalla del ordenador con leve parpadeo
   ((pcScreen.material as THREE.Material[])[4] as THREE.MeshStandardMaterial).emissiveIntensity = 1.05 + (reducedMotion ? 0 : Math.sin(elapsed * 3) * 0.05);
 
-  if (!till.active) controls.update();
+  if (!till.active && !player.enabled) controls.update();
+  if (inStore) updateAim();
   renderer.render(scene, camera);
   if (inStore) { renderHud(); renderTill(); }
   if (openModal?.id === 'shelves' && running && Math.floor(elapsed * 4) !== Math.floor((elapsed - dt) * 4)) renderShelves();
@@ -965,5 +1052,6 @@ void init();
 
 // Para pruebas automáticas en el navegador (no forma parte del juego).
 (window as unknown as { __super: () => GameState }).__super = () => state;
+(window as unknown as { __player: Player }).__player = player;
 (window as unknown as { __tillPts: () => unknown }).__tillPts = () => tillScreenPoints(till, camera, reg.group);
 (window as unknown as { __superAvanzar: (s: number) => void }).__superAvanzar = (seg: number) => { for (let t = 0; t < seg; t += 0.05) tick(state, 0.05); };

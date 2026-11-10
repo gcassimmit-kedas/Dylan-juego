@@ -122,7 +122,11 @@ El control "Separar capas" abre el cubo para ver las casillas del interior.
 
 ## Supermercado
 
-Dirige un supermercado en 3D (vista de casa de muñecas: las paredes que tapan el interior se bajan solas).
+Dirige un supermercado en 3D **en primera persona**: eres el empleado y caminas por la tienda (en el menú se ve
+la tienda desde arriba). Ordenador: WASD o flechas (Mayús corre), clic para mirar con el ratón (L o Esc lo sueltan),
+E o clic para usar lo que hay en el punto de mira. Móvil y tableta: joystick en la mitad izquierda, arrastrar en la
+derecha para mirar y botón amarillo para usar. Para reponer, pedir o cobrar hay que ir hasta el mueble, el ordenador
+o la caja.
 
 - **Preparación:** antes de abrir, compra género en el **ordenador** (oficina, abajo a la izquierda) con el dinero de la caja
   y **repón** las estanterías tocando cada mueble (o desde el botón Reponer). Las compras llegan al almacén al momento.
