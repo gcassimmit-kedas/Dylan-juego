@@ -814,12 +814,22 @@ mpList.addEventListener('click', (e) => {
   const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-sala]');
   if (b && !b.disabled) void enterServer(b.dataset.sala!);
 });
+/** El botón se ve siempre que la página está dentro de claude.ai (en la app no existe `window.claude`). */
+const hasClaude = !!(window as unknown as { claude?: { use?: unknown } }).claude?.use;
+$('mpBtn').hidden = !hasClaude;
 async function openLobby() {
-  const room = await getRoom();
-  if (!room) return;
-  mpStatus.textContent = '';
+  mpStatus.textContent = 'Conectando...';
+  mpList.innerHTML = '';
   lobbyKey = '';
   open('mp');
+  const room = await getRoom();
+  if ($('mp').hidden) return;
+  if (!room) {
+    // Sin canal no hay multijugador: se explica en lugar de dejar el botón sin hacer nada.
+    mpStatus.textContent = 'El multijugador no está disponible aquí. Abre el juego dentro de claude.ai con tu sesión iniciada (no como página aparte ni con un enlace público) y vuelve a intentarlo.';
+    return;
+  }
+  mpStatus.textContent = '';
   const refresh = () => { if (!$('mp').hidden) renderLobby(listServers(room.peers())); else clearInterval(lobbyTimer); };
   refresh();
   clearInterval(lobbyTimer);

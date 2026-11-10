@@ -23,6 +23,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
   font-family: var(--body); user-select: none; -webkit-user-select: none; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
 #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 button, a { font: inherit; touch-action: manipulation; }
+/* Lo oculto se oculta siempre, aunque un estilo de botón diga otra cosa. */
+[hidden] { display: none !important; }
 body { -webkit-touch-callout: none; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .ic { width: 1.15em; height: 1.15em; flex: none; vertical-align: -0.2em; }
