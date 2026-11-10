@@ -34,10 +34,10 @@ test('cada producto tiene su mueble y los números son coherentes', () => {
 test('comprar descuenta dinero y mete las cajas en el almacén', () => {
   const s = newGame();
   const antes = s.almacen.leche;
-  assert.deepEqual(comprar(s, 'leche', 2), { ok: true, coste: 24 });
-  assert.equal(s.dinero, 80 - 24);
+  assert.deepEqual(comprar(s, 'leche', 2), { ok: true, coste: 500 });
+  assert.equal(s.dinero, 1500 - 500);
   assert.equal(s.almacen.leche, antes + 12);
-  assert.equal(s.stats.gastos, 24);
+  assert.equal(s.stats.gastos, 500);
 });
 
 test('no se puede comprar sin dinero ni cantidades raras', () => {
@@ -52,14 +52,14 @@ test('no se puede comprar sin dinero ni cantidades raras', () => {
 test('el pedido del ordenador se compra entero o no se compra', () => {
   const s = newGame();
   const pedido = { agua: 2, queso: 1 };
-  assert.equal(costePedido(pedido), 8 * 2 + 14);
-  s.dinero = 20;
+  assert.equal(costePedido(pedido), 360 * 2 + 550);
+  s.dinero = 1000;
   assert.deepEqual(comprarPedido(s, pedido), { ok: false, motivo: 'dinero' });
   assert.equal(s.almacen.agua, 0);
-  s.dinero = 100;
-  assert.deepEqual(comprarPedido(s, pedido), { ok: true, coste: 30 });
+  s.dinero = 1500;
+  assert.deepEqual(comprarPedido(s, pedido), { ok: true, coste: 1270 });
   assert.equal(s.almacen.agua, 24);
-  assert.equal(s.dinero, 70);
+  assert.equal(s.dinero, 230);
   assert.deepEqual(comprarPedido(s, {}), { ok: false, motivo: 'cantidad' });
   assert.deepEqual(comprarPedido(s, { agua: -1 }), { ok: false, motivo: 'cantidad' });
 });
@@ -271,14 +271,18 @@ test('guardar y cargar conserva la partida y rechaza datos manipulados', () => {
   assert.equal(importar(null), null);
   assert.equal(importar({ ...exportar(s), dinero: -5 }), null);
   assert.equal(importar({ ...exportar(s), estantes: { ...s.estantes, pan: 999 } }), null);
-  assert.equal(importar({ ...exportar(s), v: 2 }), null);
+  assert.equal(importar({ ...exportar(s), v: 3 }), null);
+  // Partida de antes de los precios nuevos: el dinero se adapta.
+  assert.equal(importar({ ...exportar(s), v: 1, dinero: 100 })!.dinero, 2000);
 });
 
-test('las frutas cuestan 10 pesos más y las difíciles de conseguir, 50', () => {
-  assert.equal(PRODUCTS.manzanas.precio, 11);
-  assert.equal(PRODUCTS.guineos.precio, 12);
-  assert.equal(PRODUCTS.fresas.precio, 50);
-  assert.equal(PRODUCTS.uvas.precio, 50);
+test('nada cuesta 50 pesos o menos, todo es múltiplo de 5 y lo difícil de conseguir es lo más caro', () => {
+  for (const p of PRODUCT_IDS) {
+    assert.ok(PRODUCTS[p].precio > 50, `${p}: ${PRODUCTS[p].precio}`);
+    assert.equal(PRODUCTS[p].precio % 5, 0, p);
+  }
+  const normales = PRODUCT_IDS.filter((p) => !esRara(p)).map((p) => PRODUCTS[p].precio);
+  assert.ok(PRODUCTS.fresas.precio > Math.max(...normales) && PRODUCTS.uvas.precio > Math.max(...normales));
   assert.ok(esRara('fresas') && esRara('uvas') && !esRara('manzanas'));
 });
 
@@ -310,7 +314,9 @@ test('si no hay fresas ni uvas, el cliente no se enfada', () => {
 });
 
 test('el cambio se da con monedas y billetes dominicanos', () => {
-  assert.deepEqual([...CAMBIO], [1, 5, 10, 25, 50, 100, 200]);
+  assert.deepEqual([...CAMBIO], [5, 10, 25, 50, 100, 200, 500]);
+  // Con precios múltiplos de 5, cualquier cambio se puede dar con lo que hay en el cajón.
+  for (const p of PRODUCT_IDS) assert.equal(PRODUCTS[p].precio % Math.min(...CAMBIO), 0);
 });
 
 test('una partida guardada antes de las frutas nuevas se sigue cargando', () => {

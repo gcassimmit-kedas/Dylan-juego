@@ -133,30 +133,30 @@ o la caja.
 - **Empezar turno:** la tienda abre de 8:00 a 20:00 (150 s). Los clientes entran, recorren la tienda con su lista y hacen cola.
 - **Cobrar (en 3D):** "Ir a la caja" acerca la cámara al mostrador. El cliente pone su compra en la cinta y hay que
   **arrastrar cada producto hasta el escáner** (pasarlo por encima del cristal basta). Al pasar el último, paga con un
-  billete de pesos: se abre el cajón y hay que **dar la vuelta** sacando monedas de 1, 5, 10 y 25 y billetes de 50, 100 y 200 a la bandeja,
+  billete de pesos: se abre el cajón y hay que **dar la vuelta** sacando monedas de 5, 10 y 25 y billetes de 50, 100, 200 y 500 a la bandeja,
   y pulsar "Dar cambio". Si falta, el cliente espera; si sobra, se pierde la diferencia. En vertical la cámara gira para
   que el mostrador ocupe la pantalla. Teclado: Espacio pasa un producto, 1-7 sacan dinero, Retroceso deshace, Intro da el cambio.
 - **Recursos limitados:** el dinero y el género. Si un producto se agota, el cliente se enfada; si espera demasiado en la cola,
   deja la compra y se va. La reputación (0-100) decide cuántos clientes llegan.
 - **Fin de turno:** resumen con clientes, ingresos, gastos y beneficio. La partida se guarda en el dispositivo entre turnos.
 
-Precios en pesos dominicanos (RD$). Las fresas y las uvas son difíciles de conseguir: el proveedor solo tiene 0, 1 o 2 cajas
+Precios en pesos dominicanos (RD$): nada cuesta 50 o menos y todo es múltiplo de 5. Se empieza con RD$1500. Las fresas y las uvas son difíciles de conseguir: el proveedor solo tiene 0, 1 o 2 cajas
 al día, y si un cliente no las encuentra no se enfada.
 
 | Producto | Caja (uds.) | Coste caja | Venta/ud. |
 |---|---|---|---|
-| Pan de molde | 8 | 12 | 3 |
-| Leche | 6 | 12 | 4 |
-| Yogur | 8 | 10 | 2 |
-| Queso | 4 | 14 | 6 |
-| Cereales | 6 | 15 | 5 |
-| Galletas | 10 | 12 | 2 |
-| Refresco | 12 | 14 | 2 |
-| Agua | 12 | 8 | 1 |
-| Manzanas | 20 | 60 | 11 |
-| Guineos | 12 | 48 | 12 |
-| Fresas (difícil de conseguir) | 6 | 150 | 50 |
-| Uvas (difícil de conseguir) | 6 | 150 | 50 |
+| Pan de molde | 8 | 520 | 120 |
+| Leche | 6 | 250 | 75 |
+| Yogur | 8 | 260 | 60 |
+| Queso | 4 | 550 | 250 |
+| Cereales | 6 | 720 | 220 |
+| Galletas | 10 | 360 | 65 |
+| Refresco | 12 | 630 | 95 |
+| Agua | 12 | 360 | 55 |
+| Manzanas | 20 | 660 | 60 |
+| Guineos | 12 | 460 | 70 |
+| Fresas (difícil de conseguir) | 6 | 1150 | 350 |
+| Uvas (difícil de conseguir) | 6 | 1150 | 350 |
 
 Versión de una sola página (todo dentro de un HTML, para publicarla sin servidor): `node scripts/artifact.mjs N`
 genera `dist-artifact/supermercado-vN.html` con el título "Supermercado versión N". Cada actualización se publica

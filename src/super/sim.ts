@@ -24,19 +24,21 @@ export interface Product {
 }
 
 export const PRODUCTS = {
-  pan: { nombre: 'Pan de molde', caja: 8, costoCaja: 12, precio: 3, capacidad: 12, demanda: 1.3 },
-  leche: { nombre: 'Leche', caja: 6, costoCaja: 12, precio: 4, capacidad: 12, demanda: 1.3 },
-  yogur: { nombre: 'Yogur', caja: 8, costoCaja: 10, precio: 2, capacidad: 16, demanda: 0.9 },
-  queso: { nombre: 'Queso', caja: 4, costoCaja: 14, precio: 6, capacidad: 8, demanda: 0.7 },
-  cereales: { nombre: 'Cereales', caja: 6, costoCaja: 15, precio: 5, capacidad: 12, demanda: 0.9 },
-  galletas: { nombre: 'Galletas', caja: 10, costoCaja: 12, precio: 2, capacidad: 15, demanda: 1 },
-  refresco: { nombre: 'Refresco', caja: 12, costoCaja: 14, precio: 2, capacidad: 18, demanda: 1.1 },
-  agua: { nombre: 'Agua', caja: 12, costoCaja: 8, precio: 1, capacidad: 18, demanda: 1 },
-  // Frutas: 10 pesos más que antes. Las difíciles de conseguir, a 50.
-  manzanas: { nombre: 'Manzanas', caja: 20, costoCaja: 60, precio: 11, capacidad: 30, demanda: 1, fruta: true },
-  guineos: { nombre: 'Guineos', caja: 12, costoCaja: 48, precio: 12, capacidad: 24, demanda: 1, fruta: true },
-  fresas: { nombre: 'Fresas', caja: 6, costoCaja: 150, precio: 50, capacidad: 12, demanda: 0.35, fruta: true, rara: true },
-  uvas: { nombre: 'Uvas', caja: 6, costoCaja: 150, precio: 50, capacidad: 12, demanda: 0.35, fruta: true, rara: true },
+  // Precios de supermercado dominicano: nada cuesta menos de 55 pesos y todo es múltiplo de 5.
+  // La caja del proveedor sale a algo más de la mitad de lo que se saca vendiéndola.
+  pan: { nombre: 'Pan de molde', caja: 8, costoCaja: 520, precio: 120, capacidad: 12, demanda: 1.3 },
+  leche: { nombre: 'Leche', caja: 6, costoCaja: 250, precio: 75, capacidad: 12, demanda: 1.3 },
+  yogur: { nombre: 'Yogur', caja: 8, costoCaja: 260, precio: 60, capacidad: 16, demanda: 0.9 },
+  queso: { nombre: 'Queso', caja: 4, costoCaja: 550, precio: 250, capacidad: 8, demanda: 0.7 },
+  cereales: { nombre: 'Cereales', caja: 6, costoCaja: 720, precio: 220, capacidad: 12, demanda: 0.9 },
+  galletas: { nombre: 'Galletas', caja: 10, costoCaja: 360, precio: 65, capacidad: 15, demanda: 1 },
+  refresco: { nombre: 'Refresco', caja: 12, costoCaja: 630, precio: 95, capacidad: 18, demanda: 1.1 },
+  agua: { nombre: 'Agua', caja: 12, costoCaja: 360, precio: 55, capacidad: 18, demanda: 1 },
+  manzanas: { nombre: 'Manzanas', caja: 20, costoCaja: 660, precio: 60, capacidad: 30, demanda: 1, fruta: true },
+  guineos: { nombre: 'Guineos', caja: 12, costoCaja: 460, precio: 70, capacidad: 24, demanda: 1, fruta: true },
+  // Difíciles de conseguir: las más caras de la tienda.
+  fresas: { nombre: 'Fresas', caja: 6, costoCaja: 1150, precio: 350, capacidad: 12, demanda: 0.35, fruta: true, rara: true },
+  uvas: { nombre: 'Uvas', caja: 6, costoCaja: 1150, precio: 350, capacidad: 12, demanda: 0.35, fruta: true, rara: true },
 } as const satisfies Record<string, Product>;
 
 const isRara = (p: ProductId) => (PRODUCTS[p] as Product).rara === true;
@@ -210,7 +212,7 @@ function crearPartida(seed: number): GameState {
   return {
     fase: 'preparacion',
     dia: 1,
-    dinero: 80,
+    dinero: 1500,
     reputacion: 50,
     estantes: byProduct((id) => start[id]?.[0] ?? 0),
     almacen: byProduct((id) => start[id]?.[1] ?? 0),
@@ -328,8 +330,9 @@ export const importeEscaneado = (c: Customer) =>
 
 /** Billetes de pesos con los que pagan los clientes. */
 export const BILLETES = [50, 100, 200, 500, 1000, 2000] as const;
-/** Lo que hay en el cajón para dar el cambio: monedas de 1, 5, 10 y 25 y billetes de 50, 100 y 200. */
-export const CAMBIO = [1, 5, 10, 25, 50, 100, 200] as const;
+/** Lo que hay en el cajón para dar el cambio: monedas de 5, 10 y 25 y billetes de 50, 100, 200 y 500.
+ *  (Los precios son múltiplos de 5, así que la moneda de 1 no hace falta.) */
+export const CAMBIO = [5, 10, 25, 50, 100, 200, 500] as const;
 /** Valores que son moneda (el resto son billetes). */
 export const esMoneda = (v: number) => v < 50;
 
@@ -693,7 +696,7 @@ export function horaTienda(s: GameState): { h: number; m: number } {
 // ---------- Guardado (solo en el dispositivo) ----------
 
 export interface Save {
-  v: 1;
+  v: 1 | 2;
   dia: number;
   dinero: number;
   reputacion: number;
@@ -706,7 +709,7 @@ export interface Save {
 
 /** Guarda lo necesario para seguir otro día. Solo se guarda entre turnos. */
 export function exportar(s: GameState): Save {
-  return { v: 1, dia: s.dia, dinero: s.dinero, reputacion: s.reputacion, almacen: { ...s.almacen }, estantes: { ...s.estantes }, mejorDia: s.mejorDia, seed: s.seed, ofertaRara: { ...s.ofertaRara } as Record<string, number> };
+  return { v: 2, dia: s.dia, dinero: s.dinero, reputacion: s.reputacion, almacen: { ...s.almacen }, estantes: { ...s.estantes }, mejorDia: s.mejorDia, seed: s.seed, ofertaRara: { ...s.ofertaRara } as Record<string, number> };
 }
 
 /** Restaura una partida guardada validando cada dato (si algo no cuadra, partida nueva). */
@@ -715,7 +718,7 @@ export function importar(data: unknown): GameState | null {
   const d = data as Partial<Save>;
   const int = (v: unknown, min: number, max: number) => (typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : null);
   const dia = int(d.dia, 1, 1e6), dinero = int(d.dinero, 0, 1e9), rep = int(d.reputacion, 0, 100);
-  if (d.v !== 1 || dia === null || dinero === null || rep === null || !d.almacen || !d.estantes) return null;
+  if ((d.v !== 1 && d.v !== 2) || dia === null || dinero === null || rep === null || !d.almacen || !d.estantes) return null;
   const s = newGame(int(d.seed, 1, 2 ** 32 - 1) ?? 1);
   for (const p of PRODUCT_IDS) {
     // Productos añadidos después de guardar la partida: empiezan a cero.
@@ -724,7 +727,9 @@ export function importar(data: unknown): GameState | null {
     if (a === null || e === null) return null;
     s.almacen[p] = a; s.estantes[p] = e;
   }
-  s.dia = dia; s.dinero = dinero; s.reputacion = rep; s.mejorDia = int(d.mejorDia, -1e9, 1e9) ?? 0;
+  // Las partidas de antes de los precios nuevos (v1) tenían todo unas 20 veces más barato.
+  const escala = d.v === 1 ? 20 : 1;
+  s.dia = dia; s.dinero = dinero * escala; s.reputacion = rep; s.mejorDia = (int(d.mejorDia, -1e9, 1e9) ?? 0) * escala;
   if (d.ofertaRara && typeof d.ofertaRara === 'object') {
     for (const p of PRODUCT_IDS) if (isRara(p)) s.ofertaRara[p] = int(d.ofertaRara[p], 0, 9) ?? 0;
   } else sortearOferta(s);
