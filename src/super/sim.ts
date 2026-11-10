@@ -114,6 +114,10 @@ export interface Customer {
   paciencia: number;
   pacienciaMax: number;
   escaneados: number;
+  /** Unidades de cada producto ya pasadas por el escáner. */
+  pasados: Partial<Record<ProductId, number>>;
+  /** Billete con el que paga (0 mientras se escanea). */
+  pago: number;
   enfadado: boolean;
   /** Semilla de aspecto (ropa, pelo, piel) para que cada cliente se vea distinto. */
   look: number;
@@ -124,7 +128,8 @@ export type GameEvent =
   | { tipo: 'falta'; product: ProductId; id: number }
   | { tipo: 'coge'; product: ProductId; qty: number; id: number }
   | { tipo: 'escanea'; id: number; product: ProductId }
-  | { tipo: 'venta'; importe: number; id: number }
+  | { tipo: 'paga'; billete: number; total: number; id: number }
+  | { tipo: 'venta'; importe: number; cambio: number; sobra: number; id: number }
   | { tipo: 'seVa'; id: number }
   | { tipo: 'cierre' }
   | { tipo: 'fin' };
@@ -139,6 +144,8 @@ export interface ShiftStats {
   faltas: number;
   ingresos: number;
   gastos: number;
+  /** Dinero perdido por dar cambio de más. */
+  cambioDeMas: number;
 }
 
 export type Phase = 'preparacion' | 'turno' | 'resumen';
@@ -163,7 +170,7 @@ export interface GameState {
   mejorDia: number;
 }
 
-const emptyStats = (): ShiftStats => ({ clientes: 0, atendidos: 0, perdidos: 0, cansados: 0, articulos: 0, faltas: 0, ingresos: 0, gastos: 0 });
+const emptyStats = (): ShiftStats => ({ clientes: 0, atendidos: 0, perdidos: 0, cansados: 0, articulos: 0, faltas: 0, ingresos: 0, gastos: 0, cambioDeMas: 0 });
 const byProduct = (f: (id: ProductId) => number) => Object.fromEntries(PRODUCT_IDS.map((id) => [id, f(id)])) as Record<ProductId, number>;
 
 /** Partida nueva: poco dinero y poco género, para que haya que gestionar desde el primer día. */
@@ -267,32 +274,75 @@ export function clienteEnCaja(s: GameState): Customer | null {
 export const totalArticulos = (c: Customer) => c.cesta.reduce((t, l) => t + l.qty, 0);
 export const importe = (c: Customer) => c.cesta.reduce((t, l) => t + l.qty * PRODUCTS[l.product].precio, 0);
 
-/** Producto que toca escanear ahora en la cesta del cliente. */
+/** Producto que toca escanear ahora en la cesta del cliente (el primero que falte). */
 export function siguienteArticulo(c: Customer): ProductId | null {
-  let n = c.escaneados;
-  for (const l of c.cesta) { if (n < l.qty) return l.product; n -= l.qty; }
+  for (const l of c.cesta) if ((c.pasados[l.product] ?? 0) < l.qty) return l.product;
   return null;
 }
 
-/** El jugador pasa un artículo por el escáner. Al pasar el último, el cliente paga. */
-export function escanear(s: GameState): { cobrado: number } | null {
+/** Lo que suma lo escaneado hasta ahora. */
+export const importeEscaneado = (c: Customer) =>
+  c.cesta.reduce((t, l) => t + Math.min(l.qty, c.pasados[l.product] ?? 0) * PRODUCTS[l.product].precio, 0);
+
+/** Billetes que usan los clientes. */
+export const BILLETES = [5, 10, 20, 50, 100] as const;
+/** Lo que hay en el cajón para dar el cambio (monedas de 1 y billetes). */
+export const CAMBIO = [1, 5, 10, 20, 50] as const;
+
+/** Con qué paga el cliente: el billete justo por encima del total, a veces uno mayor, o el importe exacto. */
+function elegirPago(s: GameState, total: number): number {
+  const r = rand(s);
+  if (r < 0.12 && BILLETES.includes(total as (typeof BILLETES)[number])) return total;
+  const i = BILLETES.findIndex((b) => b >= total);
+  if (i === -1) return Math.ceil(total / 100) * 100;
+  return r > 0.7 && i < BILLETES.length - 1 ? BILLETES[i + 1] : BILLETES[i];
+}
+
+export const cambioDebido = (c: Customer) => (c.pago ? c.pago - importe(c) : 0);
+
+/**
+ * El jugador pasa un producto por el escáner (si no dice cuál, el siguiente que falte).
+ * Al pasar el último, el cliente paga con un billete y hay que darle el cambio.
+ */
+export function escanear(s: GameState, product?: ProductId): { pagaCon: number } | { escaneado: ProductId } | null {
   if (s.fase !== 'turno') return null;
   const c = clienteEnCaja(s);
-  if (!c) return null;
-  const p = siguienteArticulo(c);
-  if (p) { c.escaneados++; s.eventos.push({ tipo: 'escanea', id: c.id, product: p }); }
-  if (c.escaneados < totalArticulos(c)) return { cobrado: 0 };
+  if (!c || c.pago) return null;
+  const p = product ?? siguienteArticulo(c);
+  const linea = p && c.cesta.find((l) => l.product === p);
+  if (!p || !linea || (c.pasados[p] ?? 0) >= linea.qty) return null;
+  c.pasados[p] = (c.pasados[p] ?? 0) + 1;
+  c.escaneados++;
+  s.eventos.push({ tipo: 'escanea', id: c.id, product: p });
+  if (c.escaneados < totalArticulos(c)) return { escaneado: p };
   const total = importe(c);
-  s.dinero += total;
-  s.stats.ingresos += total;
+  c.pago = elegirPago(s, total);
+  s.eventos.push({ tipo: 'paga', billete: c.pago, total, id: c.id });
+  return { pagaCon: c.pago };
+}
+
+/**
+ * Entrega el cambio. Si falta, el cliente no se va. Si sobra, la venta se cierra pero se pierde lo que sobra.
+ */
+export function darCambio(s: GameState, cambio: number): { ok: true; sobra: number } | { ok: false; falta: number } | null {
+  if (s.fase !== 'turno' || !Number.isInteger(cambio) || cambio < 0) return null;
+  const c = clienteEnCaja(s);
+  if (!c || !c.pago) return null;
+  const debido = cambioDebido(c);
+  if (cambio < debido) return { ok: false, falta: debido - cambio };
+  if (cambio > c.pago) return null; // no se puede dar más de lo que entregó... ni tiene sentido
+  const total = importe(c), sobra = cambio - debido;
+  s.dinero += c.pago - cambio;
+  s.stats.ingresos += total - sobra;
+  s.stats.cambioDeMas += sobra;
   s.stats.articulos += totalArticulos(c);
   s.stats.atendidos++;
   s.reputacion = Math.min(100, s.reputacion + (c.enfadado ? 0 : 2));
-  s.eventos.push({ tipo: 'venta', importe: total, id: c.id });
+  s.eventos.push({ tipo: 'venta', importe: total - sobra, cambio, sobra, id: c.id });
   s.cola.shift();
   salir(c, LAYOUT.queue(0));
   avanzarCola(s);
-  return { cobrado: total };
+  return { ok: true, sobra };
 }
 
 // ---------- Simulación ----------
@@ -466,7 +516,7 @@ function nuevoCliente(s: GameState): Customer {
   const c: Customer = {
     id: s.nextId++, x: LAYOUT.street.x + (rand(s) - 0.5) * 0.6, z: LAYOUT.street.z, dir: Math.PI, andando: true,
     path: [LAYOUT.entry], estado: 'entrando', lista, paso: 0, cesta: [], timer: 0,
-    paciencia: QUEUE_PATIENCE, pacienciaMax: QUEUE_PATIENCE, escaneados: 0, enfadado: false, look: Math.floor(rand(s) * 1e6),
+    paciencia: QUEUE_PATIENCE, pacienciaMax: QUEUE_PATIENCE, escaneados: 0, pasados: {}, pago: 0, enfadado: false, look: Math.floor(rand(s) * 1e6),
   };
   s.stats.clientes++;
   s.eventos.push({ tipo: 'entra', id: c.id });
@@ -544,7 +594,8 @@ function actualizar(s: GameState, c: Customer, dt: number) {
       }
       break;
     case 'cola':
-      c.paciencia -= dt;
+      // Mientras se le atiende en la caja no pierde la paciencia.
+      if (!(s.cola[0] === c.id && llegado && c.escaneados > 0)) c.paciencia -= dt;
       if (llegado && s.cola[0] === c.id) c.dir = 0; // mira hacia la caja
       if (c.paciencia <= 0) {
         // Se cansa de esperar: deja la compra y se marcha.

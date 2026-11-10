@@ -445,7 +445,7 @@ export function checkout(x: number, z: number): Checkout {
   g.add(box(2.2, 0.06, 0.02, MAT.gold, -0.3, 0.78, -0.36));
   const belt = T.beltTexture();
   const b = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.5), std({ map: belt, roughness: 0.8 }));
-  b.rotation.x = -Math.PI / 2; b.rotation.z = Math.PI / 2; b.position.set(-0.75, 0.895, 0); g.add(b);
+  b.rotation.x = -Math.PI / 2; b.position.set(-0.75, 0.895, 0); g.add(b);
   const scanner = box(0.36, 0.02, 0.36, std({ color: 0x111111, emissive: 0xff2a2a, emissiveIntensity: 0.25, roughness: 0.1 }), 0.25, 0.9, 0);
   g.add(scanner);
   // Terminal con visor hacia el cliente
@@ -454,8 +454,6 @@ export function checkout(x: number, z: number): Checkout {
   const head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.24, 0.06), [MAT.black, MAT.black, MAT.black, MAT.black, MAT.black, std({ map: screen, emissive: 0xffffff, emissiveMap: screen, emissiveIntensity: 0.9 })]);
   head.position.set(0.7, 1.3, 0.15); head.rotation.y = Math.PI; g.add(head);
   g.add(box(0.45, 0.12, 0.35, MAT.black, 0.6, 0.95, 0.15));
-  // Bolsas y separador
-  g.add(box(0.3, 0.03, 0.06, MAT.gold, -0.6, 0.92, 0));
   shadow(g);
   const hit = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.6, 1.6), hitMat); hit.position.set(-0.2, 0.8, 0.2); g.add(hit);
   return { group: g, belt, screen, hit, scanner };

@@ -172,6 +172,47 @@ body.instore #hud, body.instore #actions, body.instore #banner, body.instore #to
 .scan.ready { animation: ready 0.9s ease-in-out infinite; }
 @keyframes ready { 50% { filter: brightness(1.15); transform: translateY(-1px); } }
 
+/* ---------- Modo caja ---------- */
+#till { position: fixed; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; justify-content: center;
+  padding: 0 calc(env(safe-area-inset-right) + 12px) calc(env(safe-area-inset-bottom) + 12px) calc(env(safe-area-inset-left) + 12px); pointer-events: none; }
+#till[hidden] { display: none; }
+body.attill #actions { display: none; }
+.till-panel { pointer-events: auto; width: min(100%, 640px); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.till-row { display: flex; align-items: center; gap: 12px; }
+.till-row .kicker .ic { width: 18px; height: 18px; }
+.till-msg { margin: 0; flex: 1; font-size: 0.92rem; line-height: 1.35; }
+.till-count { font-family: var(--display); font-weight: 600; font-size: 1.15rem; font-variant-numeric: tabular-nums; color: var(--accent); white-space: nowrap; }
+.till-pay { display: flex; flex-direction: column; gap: 10px; }
+.till-pay[hidden] { display: none; }
+.till-sums { margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.till-sums div { background: rgba(0, 0, 0, 0.25); border: 1px solid var(--line); padding: 6px 10px; }
+.till-sums dt { font-size: 0.66rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.till-sums dd { margin: 0; font-family: var(--display); font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.till-sums .give { border-color: var(--accent); }
+.till-sums .give dd { color: var(--accent); }
+.till-dens { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.den { height: 48px; border: 0; cursor: pointer; color: #fff; font-family: var(--display); font-weight: 700; font-size: 1.2rem; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); }
+.den .ic { width: 18px; height: 18px; opacity: 0.85; }
+.den:active { transform: translateY(1px); filter: brightness(0.92); }
+.den.d1 { background: linear-gradient(180deg, #ffe48a, #c9961e); color: #3d2a00; text-shadow: none; }
+.den.d5 { background: linear-gradient(180deg, #5fae8c, #2f6b52); }
+.den.d10 { background: linear-gradient(180deg, #5b8ad3, #2a4a82); }
+.den.d20 { background: linear-gradient(180deg, #e39a4c, #94541c); }
+.den.d50 { background: linear-gradient(180deg, #9d6cc9, #55327c); }
+.till-btns { display: flex; gap: 8px; }
+.till-btns .ghost { flex: 0 0 auto; }
+.till-btns .primary { flex: 1; }
+.till-panel .exit { align-self: flex-start; padding: 8px 14px; font-size: 0.85rem; }
+@media (max-height: 500px) and (orientation: landscape) {
+  .till-panel { width: min(100%, 760px); padding: 8px 12px; gap: 6px; }
+  .till-pay { display: grid; grid-template-columns: 1fr 1fr; align-items: center; }
+  .till-pay[hidden] { display: none; }
+  .till-sums dd { font-size: 1.2rem; }
+  .den { height: 40px; }
+  .till-btns { grid-column: 1 / -1; }
+}
+
 /* ---------- Ordenador y almacén ---------- */
 .pc-panel { width: min(100%, 760px); max-height: 100%; display: flex; flex-direction: column; }
 .pc-head { display: flex; align-items: center; gap: 14px; padding: 16px 18px 12px; border-bottom: 1px solid var(--line); }

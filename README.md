@@ -127,7 +127,11 @@ Dirige un supermercado en 3D (vista de casa de muñecas: las paredes que tapan e
 - **Preparación:** antes de abrir, compra género en el **ordenador** (oficina, abajo a la izquierda) con el dinero de la caja
   y **repón** las estanterías tocando cada mueble (o desde el botón Reponer). Las compras llegan al almacén al momento.
 - **Empezar turno:** la tienda abre de 8:00 a 20:00 (150 s). Los clientes entran, recorren la tienda con su lista y hacen cola.
-- **Cobrar:** cada toque en la caja (o Espacio) pasa un artículo; al pasar el último, el cliente paga.
+- **Cobrar (en 3D):** "Ir a la caja" acerca la cámara al mostrador. El cliente pone su compra en la cinta y hay que
+  **arrastrar cada producto hasta el escáner** (pasarlo por encima del cristal basta). Al pasar el último, paga con un
+  billete: se abre el cajón y hay que **dar la vuelta** sacando monedas de $1 y billetes de $5, $10, $20 y $50 a la bandeja,
+  y pulsar "Dar cambio". Si falta, el cliente espera; si sobra, se pierde la diferencia. En vertical la cámara gira para
+  que el mostrador ocupe la pantalla. Teclado: Espacio pasa un producto, 1-5 sacan dinero, Retroceso deshace, Intro da el cambio.
 - **Recursos limitados:** el dinero y el género. Si un producto se agota, el cliente se enfada; si espera demasiado en la cola,
   deja la compra y se va. La reputación (0-100) decide cuántos clientes llegan.
 - **Fin de turno:** resumen con clientes, ingresos, gastos y beneficio. La partida se guarda en el dispositivo entre turnos.
@@ -148,7 +152,7 @@ Versión de una sola página (todo dentro de un HTML, para publicarla sin servid
 genera `dist-artifact/supermercado.html`.
 
 Código: `src/super/sim.ts` (reglas puras con tests, caminos A* de los clientes), `models.ts` (modelos 3D),
-`textures.ts` (texturas dibujadas por código, sin imágenes externas) y `main.ts` (escena e interfaz).
+`textures.ts` (texturas dibujadas por código, sin imágenes externas), `checkout.ts` (la caja en 3D) y `main.ts` (escena e interfaz).
 
 ## Apps móviles (Capacitor)
 

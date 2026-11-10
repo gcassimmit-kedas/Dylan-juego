@@ -2,15 +2,23 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   newGame, comprar, comprarPedido, costePedido, reponer, empezarTurno, siguienteDia, tick, escanear, clienteEnCaja,
-  route, importar, exportar, horaTienda, totalArticulos, importe, PRODUCTS, PRODUCT_IDS, DISPLAYS, SHIFT_SECONDS, LAYOUT, walkable,
+  route, importar, darCambio, cambioDebido, importeEscaneado, BILLETES, exportar, horaTienda, totalArticulos, importe, PRODUCTS, PRODUCT_IDS, DISPLAYS, SHIFT_SECONDS, LAYOUT, walkable,
   type GameState,
 } from './sim.ts';
 
-/** Avanza la simulación en pasos de 0.1 s; si `cobrar`, el jugador escanea en cuanto hay alguien en la caja. */
+/** Atiende al cliente de la caja: escanea todo y da el cambio justo. */
+function atender(s: GameState) {
+  while (clienteEnCaja(s)) {
+    const c = clienteEnCaja(s)!;
+    if (!c.pago) escanear(s); else darCambio(s, cambioDebido(c));
+  }
+}
+
+/** Avanza la simulación en pasos de 0.1 s; si `cobrar`, el jugador atiende en cuanto hay alguien en la caja. */
 function run(s: GameState, seconds: number, cobrar = false) {
   for (let t = 0; t < seconds && s.fase === 'turno'; t += 0.1) {
     tick(s, 0.1);
-    if (cobrar) while (clienteEnCaja(s)) escanear(s);
+    if (cobrar) atender(s);
   }
 }
 
@@ -98,7 +106,7 @@ test('un turno completo: entran clientes, compran, pagan y el turno termina', ()
   // Reponemos durante el turno como haría el jugador.
   for (let t = 0; t < SHIFT_SECONDS + 120 && s.fase === 'turno'; t += 0.1) {
     tick(s, 0.1);
-    while (clienteEnCaja(s)) escanear(s);
+    atender(s);
     for (const p of PRODUCT_IDS) reponer(s, p);
   }
   assert.equal(s.fase, 'resumen');
@@ -114,7 +122,7 @@ test('un turno completo: entran clientes, compran, pagan y el turno termina', ()
   assert.equal(s.stats.ingresos, 0);
 });
 
-test('cobrar es un escaneo por artículo y el dinero llega al pasar el último', () => {
+test('cobrar: cada producto pasa por el escáner, el cliente paga con billete y hay que darle el cambio', () => {
   const s = newGame(3);
   for (const p of PRODUCT_IDS) { s.almacen[p] = 100; reponer(s, p); }
   empezarTurno(s);
@@ -123,12 +131,69 @@ test('cobrar es un escaneo por artículo y el dinero llega al pasar el último',
   const c = clienteEnCaja(s)!;
   const n = totalArticulos(c), total = importe(c), dinero = s.dinero;
   assert.ok(n > 0);
-  for (let i = 1; i < n; i++) assert.deepEqual(escanear(s), { cobrado: 0 });
+  // Un producto que no lleva no se puede escanear.
+  const ajeno = PRODUCT_IDS.find((p) => !c.cesta.some((l) => l.product === p))!;
+  assert.equal(escanear(s, ajeno), null);
+  assert.equal(darCambio(s, 0), null, 'no se cobra antes de escanear todo');
+  for (let i = 1; i < n; i++) assert.ok('escaneado' in escanear(s)!);
+  assert.ok(importeEscaneado(c) < total);
+  const r = escanear(s)!;
+  assert.ok('pagaCon' in r);
+  assert.equal(importeEscaneado(c), total);
+  assert.ok(c.pago >= total, 'paga con un billete que cubre el total');
+  assert.equal(escanear(s), null, 'ya no quedan productos');
   assert.equal(s.dinero, dinero, 'todavía no ha pagado');
-  assert.deepEqual(escanear(s), { cobrado: total });
+  const debido = cambioDebido(c);
+  if (debido > 0) {
+    assert.deepEqual(darCambio(s, debido - 1), { ok: false, falta: 1 });
+    assert.equal(clienteEnCaja(s), c, 'si falta cambio no se va');
+  }
+  assert.deepEqual(darCambio(s, debido), { ok: true, sobra: 0 });
   assert.equal(s.dinero, dinero + total);
+  assert.equal(s.stats.ingresos, total);
   assert.equal(c.estado, 'saliendo');
-  assert.notEqual(s.cola[0], c.id);
+});
+
+test('dar cambio de más cierra la venta pero se pierde lo que sobra', () => {
+  const s = newGame(8);
+  for (const p of PRODUCT_IDS) { s.almacen[p] = 100; reponer(s, p); }
+  empezarTurno(s);
+  while (!clienteEnCaja(s)) tick(s, 0.1);
+  const c = clienteEnCaja(s)!;
+  while (!c.pago) escanear(s);
+  // Garantiza que haya margen para dar de más.
+  c.pago = Math.max(c.pago, importe(c) + 5);
+  const dinero = s.dinero, total = importe(c);
+  assert.equal(darCambio(s, c.pago + 1), null, 'no se puede devolver más de lo que entregó');
+  assert.deepEqual(darCambio(s, cambioDebido(c) + 1), { ok: true, sobra: 1 });
+  assert.equal(s.dinero, dinero + total - 1);
+  assert.equal(s.stats.cambioDeMas, 1);
+});
+
+test('el cliente paga con billetes reales', () => {
+  for (let seed = 1; seed < 40; seed++) {
+    const s = newGame(seed);
+    for (const p of PRODUCT_IDS) { s.almacen[p] = 100; reponer(s, p); }
+    empezarTurno(s);
+    while (!clienteEnCaja(s)) tick(s, 0.1);
+    const c = clienteEnCaja(s)!;
+    while (!c.pago) escanear(s);
+    assert.ok((BILLETES as readonly number[]).includes(c.pago) || c.pago % 100 === 0, `paga con ${c.pago}`);
+    assert.ok(c.pago >= importe(c));
+  }
+});
+
+test('mientras se le atiende, el cliente de la caja no pierde la paciencia', () => {
+  const s = newGame(6);
+  for (const p of PRODUCT_IDS) { s.almacen[p] = 100; reponer(s, p); }
+  empezarTurno(s);
+  while (!clienteEnCaja(s)) tick(s, 0.1);
+  const c = clienteEnCaja(s)!;
+  escanear(s);
+  const pac = c.paciencia;
+  for (let i = 0; i < 300; i++) tick(s, 0.1);
+  assert.equal(c.paciencia, pac);
+  assert.equal(clienteEnCaja(s), c);
 });
 
 test('sin género en la estantería el cliente se queja y baja la reputación', () => {
@@ -175,7 +240,7 @@ test('la reputación hace que vengan más clientes', () => {
     empezarTurno(s);
     for (let t = 0; t < SHIFT_SECONDS + 200 && s.fase === 'turno'; t += 0.1) {
       tick(s, 0.1);
-      while (clienteEnCaja(s)) escanear(s);
+      atender(s);
       for (const p of PRODUCT_IDS) reponer(s, p);
       s.reputacion = rep;
     }

@@ -3,13 +3,14 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import {
-  newGame, tick, comprarPedido, costePedido, reponer, empezarTurno, siguienteDia, escanear, clienteEnCaja,
-  totalArticulos, horaTienda, exportar, importar,
+  newGame, tick, comprarPedido, costePedido, reponer, empezarTurno, siguienteDia, clienteEnCaja, CAMBIO,
+  horaTienda, exportar, importar,
   PRODUCTS, PRODUCT_IDS, DISPLAYS, LAYOUT, SHIFT_SECONDS,
   type GameState, type ProductId, type Customer,
 } from './sim.ts';
 import * as M from './models.ts';
 import * as T from './textures.ts';
+import { Till, tillScreenPoints } from './checkout.ts';
 import { sfx, unlock, isMuted, setMuted } from './audio.ts';
 import { icon, hydrateIcons } from '../ui/icons.ts';
 import '../ui/pwa.ts';
@@ -83,8 +84,16 @@ function fitCamera() {
   // En vertical se encuadra el centro de la tienda (los lados se ven girando o arrastrando con dos dedos).
   const half = camera.aspect < 1 ? 8 : 11;
   const d = THREE.MathUtils.clamp(half / Math.tan(hfov / 2), 15, 34);
-  camera.updateProjectionMatrix();
+  applyViewOffset();
   return d;
+}
+/** En modo caja el panel de abajo tapa parte de la pantalla: se centra la imagen en lo que queda visible. */
+function applyViewOffset() {
+  const w = innerWidth, h = innerHeight;
+  const panel = till?.active ? $('till').getBoundingClientRect().height : 0;
+  // Se desplaza la ventana sin cambiar el zoom: el centro de la escena queda en el centro de la zona libre.
+  if (panel > 0) camera.setViewOffset(w, h, 0, panel / 2, w, h); else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
 }
 function placeCamera() {
   const d = fitCamera();
@@ -92,7 +101,7 @@ function placeCamera() {
   camera.position.set(Math.sin(polar) * Math.sin(az) * d, Math.cos(polar) * d, Math.sin(polar) * Math.cos(az) * d + controls.target.z);
   controls.update();
 }
-addEventListener('resize', () => fitCamera());
+addEventListener('resize', () => { fitCamera(); till?.resize(); });
 
 // ---------- Mundo ----------
 interface DisplayView { model: M.DisplayModel; badge: THREE.Sprite; tex: THREE.CanvasTexture; shown: number }
@@ -105,6 +114,7 @@ let pcScreen: THREE.Mesh;
 let store: ReturnType<typeof M.storage>;
 let doors: { left: THREE.Mesh; right: THREE.Mesh; x: number; w: number };
 let thumbs: Record<ProductId, string>;
+let till: Till;
 
 function buildWorld() {
   build = M.building();
@@ -139,6 +149,10 @@ function buildWorld() {
   cashier.group.position.set(LAYOUT.cashier.x, 0, LAYOUT.cashier.z);
   cashier.group.rotation.y = Math.PI;
   scene.add(cashier.group);
+  till = new Till({
+    scene, camera, controls, canvas, register: reg.group, scanner: reg.scanner, belt: reg.belt, cashier: cashier.group,
+    state: () => state, toast, onChange: () => { if (inStore) renderTill(); },
+  });
 }
 
 /** Miniaturas de los productos para el ordenador: se renderizan una vez con los mismos modelos 3D. */
@@ -233,7 +247,7 @@ function syncCustomers(dt: number, t: number) {
     v.p.armR.rotation.x = THREE.MathUtils.lerp(v.p.armR.rotation.x, reach || swing * 0.3, 0.3);
     g.position.y = walking ? Math.abs(Math.sin(v.phase)) * 0.035 : 0;
     // Cesta mientras compra, bolsa al pagar
-    v.p.basket.visible = c.estado !== 'entrando' && !v.bag.visible;
+    v.p.basket.visible = c.estado !== 'entrando' && !v.bag.visible && !(till.active && c.id === state.cola[0] && c.path.length === 0);
     // Paciencia en la cola
     const inQueue = c.estado === 'cola';
     v.bar.visible = inQueue;
@@ -261,10 +275,6 @@ function floatText(text: string, color: string, at: THREE.Vector3) {
   s.scale.set(1.3, 0.37, 1); s.renderOrder = 12; s.position.copy(at);
   scene.add(s);
   flies.push({ obj: s, t: 0, dur: 1.2, from: at.clone(), to: at.clone().add(new THREE.Vector3(0, 0.9, 0)), kind: 'text' });
-}
-function flyItem(p: ProductId, from: THREE.Vector3, to: THREE.Vector3) {
-  const m = M.itemMesh(p); m.position.copy(from); scene.add(m);
-  flies.push({ obj: m, t: 0, dur: 0.38, from, to, kind: 'item' });
 }
 function updateFlies(dt: number) {
   for (let i = flies.length - 1; i >= 0; i--) {
@@ -333,9 +343,8 @@ function renderHud() {
   startBtn.hidden = state.fase !== 'preparacion'; scanBtn.hidden = !turno;
   if (turno) {
     const c = clienteEnCaja(state);
-    scanBtn.disabled = !c;
     scanBtn.classList.toggle('ready', !!c);
-    scanLbl.textContent = c ? `Cobrar ${c.escaneados}/${totalArticulos(c)}` : 'Cobrar';
+    scanLbl.textContent = c ? 'Atender cliente' : 'Ir a la caja';
     queueN.textContent = String(state.cola.length);
     queueN.hidden = state.cola.length === 0;
   }
@@ -537,8 +546,8 @@ $('cfYes').addEventListener('click', () => {
   enterStore();
 });
 $('helpKeys').textContent = isTouch
-  ? 'Arrastra con un dedo para girar la vista y con dos para acercarla o moverla.'
-  : 'Arrastra para girar la vista, rueda para acercar y botón derecho para moverla. Teclas: Espacio cobra, O abre el ordenador, R repone, Intro empieza el turno y P pausa.';
+  ? 'Arrastra con un dedo para girar la vista y con dos para acercarla o moverla. En la caja, arrastra los productos al escáner.'
+  : 'Arrastra para girar la vista, rueda para acercar y botón derecho para moverla. Teclas: O abre el ordenador, R repone, Intro empieza el turno y P pausa. En la caja: Espacio pasa un producto, 1-5 sacan dinero, Retroceso deshace e Intro da el cambio.';
 
 startBtn.addEventListener('click', () => {
   if (state.fase !== 'preparacion') return;
@@ -551,10 +560,50 @@ startBtn.addEventListener('click', () => {
 });
 function doScan() {
   if (state.fase !== 'turno' || paused) return;
-  if (!clienteEnCaja(state)) { toast(state.cola.length ? 'El cliente está llegando a la caja' : 'No hay nadie en la caja'); return; }
-  escanear(state);
+  close();
+  till.enter();
 }
 scanBtn.addEventListener('click', doScan);
+
+// ---------- Panel de la caja ----------
+const tillEl = $('till'), tillMsg = $('tillMsg'), tillCount = $('tillCount'), tillPay = $('tillPay');
+const tGive = $<HTMLButtonElement>('tGive'), tUndo = $<HTMLButtonElement>('tUndo');
+$('tDens').innerHTML = CAMBIO.map((v, i) => `<button class="den d${v}" data-den="${v}" aria-label="Sacar ${v === 1 ? 'una moneda de $1' : `un billete de $${v}`}" title="${i + 1}">${icon(v === 1 ? 'coins' : 'banknote')}$${v}</button>`).join('');
+$('tDens').addEventListener('click', (e) => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-den]'); if (b) till.addChange(Number(b.dataset.den)); });
+tUndo.addEventListener('click', () => till.undoChange());
+tGive.addEventListener('click', () => till.giveChange());
+$('tExit').addEventListener('click', () => till.exit());
+let tillShown = false, lastPanelH = 0;
+function renderTill() {
+  const on = till.active && !till.isLeaving;
+  if (on !== tillShown) {
+    tillShown = on;
+    tillEl.hidden = !on;
+    document.body.classList.toggle('attill', on);
+    lastPanelH = -1;
+    if (!on && inStore && state.fase === 'turno') scanBtn.focus();
+  }
+  if (!on) { if (lastPanelH !== 0) { lastPanelH = 0; applyViewOffset(); } return; }
+  const ph = Math.round(tillEl.getBoundingClientRect().height);
+  if (ph !== lastPanelH) { lastPanelH = ph; applyViewOffset(); }
+  const i = till.info();
+  tillPay.hidden = i.phase !== 'pago';
+  if (i.phase === 'escaneo') {
+    tillMsg.textContent = 'Arrastra cada producto de la cinta hasta el escáner.';
+    tillCount.textContent = `${i.scanned}/${i.total} · ${money(i.sub)}`;
+  } else if (i.phase === 'pago') {
+    tillMsg.textContent = i.paid === i.due ? 'Paga con el importe justo: no hay que dar cambio.' : `Paga con un billete de ${money(i.paid)}. Saca la vuelta del cajón.`;
+    tillCount.textContent = '';
+    $('tTotal').textContent = money(i.due);
+    $('tPaid').textContent = money(i.paid);
+    $('tChange').textContent = money(till.changeTotal);
+    tUndo.disabled = till.change.length === 0;
+  } else {
+    const n = state.cola.length;
+    tillMsg.textContent = n ? 'El siguiente cliente está llegando a la caja.' : state.reloj >= SHIFT_SECONDS ? 'No queda nadie: la tienda está cerrada.' : 'No hay nadie en la cola.';
+    tillCount.textContent = n ? `${n} en cola` : '';
+  }
+}
 
 function showSummary() {
   const s = state.stats;
@@ -572,6 +621,7 @@ function showSummary() {
   $('sumRecord').hidden = !(profit > 0 && profit >= state.mejorDia);
   const tips: string[] = [];
   if (s.faltas > 0) tips.push(`${s.faltas === 1 ? 'Una vez' : `${s.faltas} veces`} un cliente no encontró lo que buscaba: compra más género en el ordenador.`);
+  if (s.cambioDeMas > 0) tips.push(`Diste ${money(s.cambioDeMas)} de más en cambios.`);
   if (s.cansados > 0) tips.push('Hubo clientes que se cansaron de esperar en la caja: cóbrales más rápido.');
   $('sumTip').textContent = tips.length ? tips.join(' ') : 'Día perfecto: todos los clientes se fueron contentos.';
   close();
@@ -599,6 +649,7 @@ function setPaused(v: boolean) {
   pauseBtn.setAttribute('aria-label', v ? 'Continuar' : 'Pausar');
   $('quitHelp').textContent = state.fase === 'turno' ? 'Si sales ahora, el turno en curso no se guardará.' : 'La tienda queda guardada en este dispositivo.';
   if (v) { close(); $('resumeBtn').focus(); }
+  else if (till?.active) applyViewOffset();
 }
 pauseBtn.innerHTML = icon('pause');
 pauseBtn.addEventListener('click', () => setPaused(!paused));
@@ -620,6 +671,7 @@ muteBtn.addEventListener('click', () => { setMuted(!isMuted()); renderMute(); })
 renderMute();
 
 function resetViews() {
+  if (till.active) till.exit();
   for (const v of views.values()) scene.remove(v.p.group);
   views.clear();
   for (const v of displays.values()) v.shown = -1;
@@ -631,10 +683,18 @@ function resetViews() {
 addEventListener('keydown', (e) => {
   if (!inStore) return;
   const k = e.key.toLowerCase();
-  if (k === 'escape') { if (openModal) close(); else if (!$('summary').hidden) return; else setPaused(!paused); e.preventDefault(); return; }
+  if (k === 'escape') { if (openModal) close(); else if (!$('summary').hidden) return; else if (till.active && !paused) till.exit(); else setPaused(!paused); e.preventDefault(); return; }
   if (paused || !$('summary').hidden) return;
   if (k === 'p') { setPaused(true); return; }
   if (openModal) return;
+  if (till.active) {
+    // Teclado en la caja: Espacio pasa el primer producto; 1-5 sacan dinero; Retroceso deshace; Intro da el cambio.
+    if (k === ' ') { e.preventDefault(); till.scanNext(); }
+    else if (/^[1-5]$/.test(k)) till.addChange(CAMBIO[Number(k) - 1]);
+    else if (k === 'backspace') { e.preventDefault(); till.undoChange(); }
+    else if (k === 'enter' && document.activeElement === document.body) till.giveChange();
+    return;
+  }
   if (k === ' ' && state.fase === 'turno') { e.preventDefault(); doScan(); }
   else if (k === 'o') open('pc');
   else if (k === 'r') open('shelves');
@@ -649,8 +709,12 @@ function pick(e: PointerEvent): THREE.Object3D | null {
   ray.setFromCamera(ndc, camera);
   return ray.intersectObjects(hitTargets, false)[0]?.object ?? null;
 }
-canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+canvas.addEventListener('pointerdown', (e) => {
+  if (till.active) { down = null; if (!paused) till.pointerDown(e); return; }
+  down = { x: e.clientX, y: e.clientY, t: performance.now() };
+});
 canvas.addEventListener('pointerup', (e) => {
+  if (till.active) { till.pointerUp(); return; }
   if (!down || !inStore || paused) return;
   const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y), dt = performance.now() - down.t;
   down = null;
@@ -662,7 +726,9 @@ canvas.addEventListener('pointerup', (e) => {
   else if (o.userData.action === 'ordenador') open('pc');
   else if (o.userData.action === 'almacen') open('shelves');
 });
+canvas.addEventListener('pointercancel', () => { if (till.active) till.pointerUp(); });
 canvas.addEventListener('pointermove', (e) => {
+  if (till.active) { if (!paused) till.pointerMove(e); return; }
   if (isTouch || !inStore || e.buttons) return;
   canvas.style.cursor = pick(e) ? 'pointer' : '';
 });
@@ -704,11 +770,6 @@ function handleEvents(now: number) {
         const v = views.get(ev.id);
         const it = v?.inBasket.pop();
         if (it) it.removeFromParent();
-        const from = new THREE.Vector3(LAYOUT.register.x - 0.3, 0.95, LAYOUT.register.z);
-        const to = new THREE.Vector3(LAYOUT.register.x + 0.25, 0.95, LAYOUT.register.z);
-        flyItem(ev.product, from, to);
-        scanFlash = 1;
-        beltKick = 0.4;
         break;
       }
       case 'venta': {
@@ -728,6 +789,7 @@ function handleEvents(now: number) {
         break;
       case 'fin':
         lowWarned.clear();
+        till.exit();
         setTimeout(showSummary, 600);
         break;
     }
@@ -737,7 +799,7 @@ function handleEvents(now: number) {
 }
 
 // ---------- Bucle ----------
-let scanFlash = 0, beltKick = 0, doorOpen = 0;
+let doorOpen = 0;
 const timer = new THREE.Timer();
 let elapsed = 0, loaded = false;
 
@@ -756,12 +818,9 @@ function frame(now: number) {
   updateWorldState();
   updateFlies(dt);
 
-  // Escáner, cinta y cajero
-  scanFlash = Math.max(0, scanFlash - dt * 5);
-  (reg.scanner.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.25 + scanFlash * 2.5;
-  beltKick = Math.max(0, beltKick - dt);
-  if (beltKick > 0) reg.belt.offset.y -= dt * 0.8;
-  cashier.armR.rotation.x = THREE.MathUtils.lerp(cashier.armR.rotation.x, scanFlash > 0.2 ? -1.1 : -0.25, 0.3);
+  // Caja y cajero
+  till.update(running || till.isLeaving ? dt : 0);
+  cashier.armR.rotation.x = -0.25;
   cashier.armL.rotation.x = -0.2 + (reducedMotion ? 0 : Math.sin(elapsed * 1.3) * 0.04);
   const atReg = clienteEnCaja(state);
   cashier.group.rotation.y = Math.PI + (atReg ? 0 : Math.sin(elapsed * 0.4) * 0.25);
@@ -786,9 +845,9 @@ function frame(now: number) {
   // Pantalla del ordenador con leve parpadeo
   ((pcScreen.material as THREE.Material[])[4] as THREE.MeshStandardMaterial).emissiveIntensity = 1.05 + (reducedMotion ? 0 : Math.sin(elapsed * 3) * 0.05);
 
-  controls.update();
+  if (!till.active) controls.update();
   renderer.render(scene, camera);
-  if (inStore) renderHud();
+  if (inStore) { renderHud(); renderTill(); }
   if (openModal?.id === 'shelves' && running && Math.floor(elapsed * 4) !== Math.floor((elapsed - dt) * 4)) renderShelves();
   if (openModal?.id === 'pc' && running && Math.floor(elapsed * 2) !== Math.floor((elapsed - dt) * 2)) renderPc();
   if (!loaded) { loaded = true; const l = $('loading'); l.classList.add('done'); setTimeout(() => l.remove(), 450); }
@@ -811,5 +870,6 @@ async function init() {
 void init();
 
 // Para pruebas automáticas en el navegador (no forma parte del juego).
-(window as unknown as { __super: () => GameState; __superAvanzar: (s: number) => void }).__super = () => state;
+(window as unknown as { __super: () => GameState }).__super = () => state;
+(window as unknown as { __tillPts: () => unknown }).__tillPts = () => tillScreenPoints(till, camera, reg.group);
 (window as unknown as { __superAvanzar: (s: number) => void }).__superAvanzar = (seg: number) => { for (let t = 0; t < seg; t += 0.05) tick(state, 0.05); };

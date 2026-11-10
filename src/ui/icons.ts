@@ -70,6 +70,7 @@ import trendingUp from 'lucide-static/icons/trending-up.svg?raw';
 import packagePlus from 'lucide-static/icons/package-plus.svg?raw';
 import userX from 'lucide-static/icons/user-x.svg?raw';
 import circleHelp from 'lucide-static/icons/circle-question-mark.svg?raw';
+import banknote from 'lucide-static/icons/banknote.svg?raw';
 
 /** Extrae solo el contenido interior de un SVG de Lucide (sin comentario de licencia ni atributos). */
 const inner = (svg: string) => svg.replace(/<!--[\s\S]*?-->/g, '').replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '').trim();
@@ -111,7 +112,7 @@ const LUCIDE = {
   footprints, magnet, drone, shieldCheck, brickWall, settings, x, chevronRight, arrowLeft,
   trophy, check, fileText, info, crosshair, grid, rotateCcw, hammer, fence, castle, hospital, plane, zapOff, userRound, shieldOff,
   globe, search, lock, users, flag, copy, refreshCw, logIn, logOut, plus, wifiOff, ban, keyRound,
-  store, shoppingCart, shoppingBasket, monitor, packageIc, scanBarcode, clock, truck, warehouse, smile, receipt, minus, refrigerator, trendingUp, packagePlus, userX, circleHelp,
+  store, shoppingCart, shoppingBasket, monitor, packageIc, scanBarcode, clock, truck, warehouse, smile, receipt, minus, refrigerator, trendingUp, packagePlus, userX, circleHelp, banknote,
 };
 
 export type IconName = keyof typeof LUCIDE | keyof typeof CUSTOM;

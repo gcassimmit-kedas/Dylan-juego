@@ -48,7 +48,31 @@
     <button id="pcBtn" class="tool" aria-label="Ordenador de pedidos" title="Ordenador (O)"><span data-icon="monitor"></span><b>Ordenador</b></button>
     <button id="shelvesBtn" class="tool" aria-label="Estanterías y almacén" title="Estanterías (R)"><span data-icon="warehouse"></span><b>Reponer</b></button>
     <button id="startBtn" class="primary big" title="Empezar turno (Intro)"><span data-icon="store"></span>Empezar turno</button>
-    <button id="scanBtn" class="primary big scan" hidden title="Cobrar (Espacio)"><span data-icon="scanBarcode"></span><span id="scanLbl">Cobrar</span><i id="queueN" aria-label="Clientes en la cola">0</i></button>
+    <button id="scanBtn" class="primary big scan" hidden title="Cobrar (Espacio)"><span data-icon="scanBarcode"></span><span id="scanLbl">Ir a la caja</span><i id="queueN" aria-label="Clientes en la cola">0</i></button>
+  </div>
+
+  <!-- Modo caja -->
+  <div id="till" hidden>
+    <div class="panel till-panel">
+      <div class="till-row">
+        <p class="kicker"><span data-icon="scanBarcode"></span>Caja</p>
+        <p id="tillMsg" class="till-msg" aria-live="polite"></p>
+        <span id="tillCount" class="till-count"></span>
+      </div>
+      <div id="tillPay" class="till-pay" hidden>
+        <dl class="till-sums">
+          <div><dt>Total</dt><dd id="tTotal">$0</dd></div>
+          <div><dt>Paga con</dt><dd id="tPaid">$0</dd></div>
+          <div class="give"><dt>Cambio que das</dt><dd id="tChange">$0</dd></div>
+        </dl>
+        <div class="till-dens" id="tDens" role="group" aria-label="Sacar dinero del cajón"></div>
+        <div class="till-btns">
+          <button id="tUndo" class="ghost"><span data-icon="rotateCcw"></span>Deshacer</button>
+          <button id="tGive" class="primary"><span data-icon="check"></span>Dar cambio</button>
+        </div>
+      </div>
+      <button id="tExit" class="ghost exit"><span data-icon="arrowLeft"></span>Volver a la tienda</button>
+    </div>
   </div>
 
   <!-- Título -->
@@ -84,7 +108,8 @@
         <li><span data-icon="monitor"></span><div><strong>Compra en el ordenador</strong>Pide cajas al proveedor con el dinero de la caja. Llegan al almacén al momento.</div></li>
         <li><span data-icon="warehouse"></span><div><strong>Repón las estanterías</strong>Toca un mueble para llenarlo con lo que haya en el almacén. Si un cliente no encuentra algo, se enfada.</div></li>
         <li><span data-icon="store"></span><div><strong>Empieza el turno</strong>La tienda abre de 8:00 a 20:00 y van llegando clientes.</div></li>
-        <li><span data-icon="scanBarcode"></span><div><strong>Cobra</strong>Toca la caja o el botón Cobrar para pasar cada artículo. Si esperan demasiado, se van sin pagar.</div></li>
+        <li><span data-icon="scanBarcode"></span><div><strong>Cobra</strong>Ve a la caja y arrastra cada producto de la cinta hasta el escáner. Si los clientes esperan demasiado en la cola, se van sin pagar.</div></li>
+        <li><span data-icon="banknote"></span><div><strong>Da el cambio</strong>El cliente paga con un billete. Saca del cajón las monedas y billetes de la vuelta y pulsa Dar cambio. Si das de más, lo pierdes.</div></li>
       </ol>
       <p class="help" id="helpKeys"></p>
       <button class="primary" data-close="help"><span data-icon="check"></span>Entendido</button>

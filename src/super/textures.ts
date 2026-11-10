@@ -135,14 +135,43 @@ export function woodTexture(): THREE.Texture {
   return tex(c);
 }
 
-/** Cinta transportadora de la caja (se desplaza al cobrar). */
+/** Cinta transportadora de la caja: franjas transversales; avanza moviendo offset.x. */
 export function beltTexture(): THREE.Texture {
-  const [c, g] = canvas(64, 256);
-  g.fillStyle = '#1c1d1f'; g.fillRect(0, 0, 64, 256);
-  g.fillStyle = '#2a2b2e';
-  for (let y = 0; y < 256; y += 16) g.fillRect(0, y, 64, 3);
-  speckle(g, 64, 256, 300, ['#26272a', '#18191b'], [1, 2], 23);
-  return tex(c, [1, 3]);
+  const [c, g] = canvas(256, 64);
+  g.fillStyle = '#1c1d1f'; g.fillRect(0, 0, 256, 64);
+  g.fillStyle = '#2c2d30';
+  for (let x = 0; x < 256; x += 16) g.fillRect(x, 0, 3, 64);
+  speckle(g, 256, 64, 300, ['#26272a', '#18191b'], [1, 2], 23);
+  return tex(c, [3, 1]);
+}
+
+const BILL_COLOR: Record<number, [string, string]> = {
+  5: ['#4f9a7a', '#1f4d3c'], 10: ['#4a78c2', '#1d335c'], 20: ['#d9893a', '#6b3a10'], 50: ['#8a5ab8', '#3b2257'], 100: ['#7d8f3c', '#3a4418'],
+};
+
+/** Billete de la tienda (dinero de juego, sin imitar ninguna moneda real). */
+export function billTexture(value: number): THREE.Texture {
+  const [c, g] = canvas(256, 110);
+  const [light, dark] = BILL_COLOR[value] ?? BILL_COLOR[100];
+  const grd = g.createLinearGradient(0, 0, 256, 110); grd.addColorStop(0, light); grd.addColorStop(1, dark);
+  g.fillStyle = grd; g.fillRect(0, 0, 256, 110);
+  speckle(g, 256, 110, 600, ['rgba(255,255,255,0.08)', 'rgba(0,0,0,0.08)'], [1, 2], value);
+  g.strokeStyle = 'rgba(255,255,255,0.7)'; g.lineWidth = 4; g.strokeRect(8, 8, 240, 94);
+  g.fillStyle = 'rgba(255,255,255,0.18)'; g.beginPath(); g.arc(150, 55, 34, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#ffffff'; g.font = `700 64px ${DISPLAY}`; g.textBaseline = 'middle';
+  g.textAlign = 'left'; g.fillText(String(value), 20, 58);
+  g.font = `700 22px ${DISPLAY}`; g.textAlign = 'right'; g.fillText(String(value), 238, 26); g.fillText('SUPER', 238, 88);
+  return tex(c);
+}
+
+/** Moneda de 1. */
+export function coinTexture(): THREE.Texture {
+  const [c, g] = canvas(128, 128);
+  const grd = g.createRadialGradient(54, 50, 10, 64, 64, 64); grd.addColorStop(0, '#fff0a8'); grd.addColorStop(1, '#c9961e');
+  g.fillStyle = grd; g.beginPath(); g.arc(64, 64, 63, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = 'rgba(110,70,0,0.6)'; g.lineWidth = 5; g.beginPath(); g.arc(64, 64, 52, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = '#7a5200'; g.font = `700 64px ${DISPLAY}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('1', 64, 68);
+  return tex(c);
 }
 
 /** Cartel colgante de sección. */
