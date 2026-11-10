@@ -144,6 +144,9 @@ Dirige un supermercado en 3D (vista de casa de muñecas: las paredes que tapan e
 | Agua | 12 | 8 | 1 |
 | Manzanas | 20 | 10 | 1 |
 
+Versión de una sola página (todo dentro de un HTML, para publicarla sin servidor): `node scripts/artifact.mjs`
+genera `dist-artifact/supermercado.html`.
+
 Código: `src/super/sim.ts` (reglas puras con tests, caminos A* de los clientes), `models.ts` (modelos 3D),
 `textures.ts` (texturas dibujadas por código, sin imágenes externas) y `main.ts` (escena e interfaz).
 
