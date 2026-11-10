@@ -154,8 +154,9 @@ al día, y si un cliente no las encuentra no se enfada.
 | Fresas (difícil de conseguir) | 6 | 150 | 50 |
 | Uvas (difícil de conseguir) | 6 | 150 | 50 |
 
-Versión de una sola página (todo dentro de un HTML, para publicarla sin servidor): `node scripts/artifact.mjs`
-genera `dist-artifact/supermercado.html`.
+Versión de una sola página (todo dentro de un HTML, para publicarla sin servidor): `node scripts/artifact.mjs N`
+genera `dist-artifact/supermercado-vN.html` con el título "Supermercado versión N". Cada actualización se publica
+como una página nueva con el número siguiente, así las versiones anteriores siguen disponibles.
 
 Código: `src/super/sim.ts` (reglas puras con tests, caminos A* de los clientes), `models.ts` (modelos 3D),
 `textures.ts` (texturas dibujadas por código, sin imágenes externas), `checkout.ts` (la caja en 3D) y `main.ts` (escena e interfaz).
