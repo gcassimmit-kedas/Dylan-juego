@@ -7,7 +7,8 @@
 // - Denuncias guardadas 30 días como máximo (sin identidad ni IP del denunciante) y retirada automática
 //   tras varias denuncias de jugadores distintos.
 //
-// Uso:  npm run build && npm run server      (PORT=8080 por defecto; REPORTS_FILE para el fichero de denuncias)
+// Uso:  npm run build && npm run server      (PORT=8080 por defecto; REPORTS_FILE para el fichero de denuncias,
+//                                             VISITS_FILE para el contador de jugadores)
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile, stat, appendFile, writeFile } from 'node:fs/promises';
@@ -23,11 +24,13 @@ import {
   encode, clampInput, roomState, roomPaused, randomServerName, MAX_PLAYERS, SIM_HZ, SNAPSHOT_EVERY, SHOP_SECONDS, RESTART_SECONDS, reportsToKick,
   type ClientMsg, type ServerMsg, type RoomInfo,
 } from '../src/shooter/protocol.ts';
+import { createThrottle } from '../src/shooter/visits.ts';
 
 const PORT = Number(process.env.PORT) || 8080;
 const DIST = resolve(process.env.DIST_DIR || join(import.meta.dirname, '..', 'dist'));
 const REPORTS_FILE = resolve(process.env.REPORTS_FILE || join(import.meta.dirname, 'reports.jsonl'));
 const REPORT_TTL_MS = 30 * 24 * 3600 * 1000; // la política de privacidad promete 30 días como máximo
+const VISITS_FILE = resolve(process.env.VISITS_FILE || join(import.meta.dirname, 'visits.json'));
 
 // ---------------- Salas ----------------
 
@@ -238,9 +241,43 @@ const MIME: Record<string, string> = {
   '.webmanifest': 'application/manifest+json', '.woff2': 'font/woff2',
 };
 
+// ---------------- Contador de jugadores ----------------
+// Solo se guarda un número. Cada aparato se cuenta una vez (lo recuerda el propio aparato); el servidor no recibe
+// ningún identificador. Para que no se pueda inflar a mano, cada dirección puede sumar como mucho 30 por hora
+// (varias personas pueden compartir dirección, por ejemplo en una misma Wi-Fi);
+// esas direcciones solo están en memoria durante la hora y nunca se escriben.
+let visits = 0;
+try { visits = Math.max(0, Math.floor(Number(JSON.parse(readFileSync(VISITS_FILE, 'utf8')).total)) || 0); } catch { /* primera vez */ }
+const visitAllowed = createThrottle(30, 3600 * 1000);
+let visitsSaving = false;
+function saveVisits() {
+  if (visitsSaving) return;
+  visitsSaving = true;
+  setTimeout(() => {
+    visitsSaving = false;
+    void writeFile(VISITS_FILE, JSON.stringify({ total: visits })).catch(() => { /* sin disco: el número sigue en memoria */ });
+  }, 2000);
+}
+function serveVisits(req: IncomingMessage, res: ServerResponse) {
+  // La web y la app pueden estar en otro dominio que el servidor: se permite leer el número desde cualquier origen.
+  const headers = { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' };
+  if (req.method === 'OPTIONS') { res.writeHead(204, { ...headers, 'access-control-allow-methods': 'GET, POST' }); return res.end(); }
+  if (req.method === 'POST') {
+    req.resume(); // sin cuerpo: no se lee nada de lo que envíe el aparato
+    const ip = (req.socket.remoteAddress ?? '') + '|' + String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
+    const counted = visitAllowed(ip, Date.now());
+    if (counted) { visits++; saveVisits(); }
+    res.writeHead(200, headers);
+    return res.end(JSON.stringify({ total: visits, counted }));
+  } else if (req.method !== 'GET') { res.writeHead(405, headers); return res.end('{}'); }
+  res.writeHead(200, headers);
+  res.end(JSON.stringify({ total: visits }));
+}
+
 async function serveStatic(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', 'http://x');
   if (url.pathname === '/health') { res.writeHead(200); return res.end('ok'); }
+  if (url.pathname === '/api/visitas') return serveVisits(req, res);
   let path = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, '');
   if (!path || path.endsWith('/')) path += 'index.html';
   const file = resolve(DIST, path);

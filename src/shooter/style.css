@@ -91,6 +91,12 @@ h1, h2 { font-family: var(--display); font-weight: 700; text-transform: uppercas
 .records div { display: flex; flex-direction: column; align-items: center; }
 .records dt { font-size: 0.7rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
 .records dd { margin: 0; font-family: var(--display); font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.visits { position: absolute; left: calc(env(safe-area-inset-left) + 14px); top: calc(env(safe-area-inset-top) + 12px); margin: 0;
+  display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px 6px 10px; background: rgba(20, 26, 15, 0.72); border: 1px solid rgba(255, 200, 61, 0.35);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  font-family: var(--display); font-weight: 600; font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; font-variant-numeric: tabular-nums; color: var(--text); }
+.visits svg { width: 16px; height: 16px; color: var(--accent); }
+.visits[hidden] { display: none; }
 .version { position: absolute; right: calc(env(safe-area-inset-right) + 14px); bottom: calc(env(safe-area-inset-bottom) + 10px); color: rgba(244, 241, 228, 0.35); font-size: 0.75rem; }
 
 /* Fin de partida */

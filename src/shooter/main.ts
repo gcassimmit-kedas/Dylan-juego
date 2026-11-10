@@ -7,7 +7,8 @@ import {
 } from './sim.ts';
 import { sfx, unlock, isMuted, setMuted } from './audio.ts';
 import { MAT, makeSoldier, animateSoldier, showWeapon, makeRobot, animateRobot, makeTurret, makeDrone, makeMine, makeObstacle, makeSpikes, makeLabel, type Robot, type Soldier } from './models.ts';
-import { NetSession } from './net.ts';
+import { NetSession, serverUrl } from './net.ts';
+import { VISIT_KEY, visitsUrl, parseTotal, visitsLabel } from './visits.ts';
 import { normalizeForFilter } from './moderation.ts';
 import type { RoomInfo } from './protocol.ts';
 import { Effects, SOFT } from './fx.ts';
@@ -806,6 +807,31 @@ function renderRecords() {
   $('records').hidden = best === 0;
 }
 renderRecords();
+
+/**
+ * Contador de jugadores en la esquina del título. Cada aparato suma 1 solo la primera vez (lo recuerda en su
+ * almacenamiento local); las demás veces solo lee el total. Sin servidor, el contador no se muestra.
+ */
+async function showVisits() {
+  const url = visitsUrl(serverUrl());
+  if (!url) return;
+  let counted = false;
+  try { counted = localStorage.getItem(VISIT_KEY) === '1'; } catch { /* sin almacenamiento: solo se lee */ counted = true; }
+  const ctrl = new AbortController();
+  const timer = window.setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const r = await fetch(url, { method: counted ? 'GET' : 'POST', signal: ctrl.signal, cache: 'no-store' });
+    const body: unknown = r.ok ? await r.json() : null;
+    const total = parseTotal(body);
+    if (total === null) return;
+    // Solo se marca si el servidor lo sumó de verdad; si no (límite por hora), se vuelve a intentar la próxima vez.
+    if (!counted && (body as { counted?: unknown }).counted === true) { try { localStorage.setItem(VISIT_KEY, '1'); } catch { /* sin almacenamiento */ } }
+    $('visitsN').textContent = visitsLabel(total);
+    $('visits').setAttribute('aria-label', `Han jugado ${visitsLabel(total)}`);
+    $('visits').hidden = false;
+  } catch { /* sin conexión: no se muestra */ } finally { clearTimeout(timer); }
+}
+void showVisits();
 /**
  * Jugar: con conexión, la partida es un servidor público con nombre aleatorio al que pueden unirse otros (hasta 7).
  * Sin conexión (o si el servidor no responde enseguida), se juega solo en el dispositivo.

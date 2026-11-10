@@ -66,6 +66,7 @@ Con conexión, **Jugar** crea un **servidor público** en el servidor de partida
 - [x] **Bloquear** a un jugador: solo afecta a lo que se ve en ese dispositivo.
 - [x] `src/shooter/moderation.ts` (filtro de palabras) queda listo por si algún día se permite escribir nombres: tendría que aplicarse en el servidor y actualizar antes la política de privacidad.
 - [x] Las denuncias se guardan como máximo 30 días, sin IP ni identidad de quien denuncia (`server/reports.jsonl`).
+- [x] **Contador de jugadores** en la esquina del título (`/api/visitas`): cada aparato suma 1 una sola vez (lo recuerda en `localStorage`, clave `shooter.contado`). No se envía ningún identificador; el servidor guarda solo el total (`server/visits.json`) y, contra abusos, recuerda en memoria durante una hora la IP de cada alta (máximo 30 por IP y hora). Sin servidor, el contador no se muestra.
 - [ ] **Contacto para quejas** visible en la ficha y en la política (Apple exige poder contactar con el desarrollador): pendiente del correo del responsable.
 - [ ] Revisar las denuncias guardadas de forma periódica.
 
@@ -84,12 +85,12 @@ Con conexión, **Jugar** crea un **servidor público** en el servidor de partida
 2. New > Blueprint > elegir el repositorio > Apply. Render da una dirección `https://<servicio>.onrender.com`.
 3. La web de `dylanj.kedasrd.com` sigue en su alojamiento actual: se compila con `VITE_SERVER_URL=wss://<servicio>.onrender.com/ws npm run build` y se sube `dist/`. Así el juego de la web (y las apps) se conecta a ese servidor.
 
-Plan gratuito: el servidor se duerme tras 15 minutos sin visitas y tarda alrededor de un minuto en despertar; el fichero de denuncias se pierde al reiniciarse (se guardan menos días, nunca más de 30). Para un servidor siempre despierto y denuncias persistentes, plan de pago con disco.
+Plan gratuito: el servidor se duerme tras 15 minutos sin visitas y tarda alrededor de un minuto en despertar; el fichero de denuncias se pierde al reiniciarse (se guardan menos días, nunca más de 30), y **el contador de jugadores vuelve a cero en cada reinicio o publicación**. Para un servidor siempre despierto y denuncias persistentes, plan de pago con disco.
 
 ## Formularios de las tiendas (respuestas según el estado actual)
 
-- **Apple, privacidad de la app:** los jugadores no escriben nada y los nombres son automáticos, así que la respuesta probable es "Datos no recopilados". La dirección IP se usa solo para mantener la conexión y no se guarda **(comprobar si Apple pide declararla)**.
-- **Google, seguridad de los datos:** no recopila datos personales ni contenido de usuarios; los datos de la partida se tratan de forma efímera y cifrados en tránsito (WSS). Las denuncias guardan 30 días el nombre automático del jugador denunciado, sin identificar a nadie **(comprobar si Google pide declararlo)**.
+- **Apple, privacidad de la app:** los jugadores no escriben nada y los nombres son automáticos, así que la respuesta probable es "Datos no recopilados". La dirección IP se usa solo para mantener la conexión y no se guarda **(comprobar si Apple pide declararla)**. El contador de jugadores es un total anónimo sin identificador ni vínculo con nadie; según la definición de Apple no debería contar como recopilación, pero **conviene revisarlo al rellenar el formulario** (si se declara, sería "Analítica", no vinculada al usuario y sin rastreo).
+- **Google, seguridad de los datos:** no recopila datos personales ni contenido de usuarios; los datos de la partida se tratan de forma efímera y cifrados en tránsito (WSS). Las denuncias guardan 30 días el nombre automático del jugador denunciado, sin identificar a nadie **(comprobar si Google pide declararlo)**. El contador de jugadores solo suma un total anónimo; si se declara, "Analítica de la aplicación", no compartida, sin identificar al usuario.
 - **Clasificación por edades:** violencia de fantasía/dibujos contra robots, sin sangre, sin compras, sin publicidad. **Marcar "los usuarios pueden interactuar"** (juegan juntos en línea, aunque sin chat ni nombres escritos). Resultado probable: 9+ en Apple y PEGI 7 en Google, con el aviso de interacción en línea **(se confirma al rellenar el cuestionario)**.
 - **Anuncios:** no contiene anuncios. **Compras integradas:** no.
 
