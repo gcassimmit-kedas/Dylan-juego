@@ -31,29 +31,29 @@ export function getRoom(): Promise<RoomApi | null> {
   return roomPromise;
 }
 
-export interface OpenGame { sala: string; nombre: string; dia: number; n: number }
+/** Servidores fijos: siempre están en la lista, aunque no haya nadie. Los nombres los pone el juego. */
+export const SERVERS = Array.from({ length: 6 }, (_, i) => ({ sala: `servidor-${i + 1}`, nombre: `Servidor ${i + 1}` }));
 
-/** Partidas abiertas que anuncian los anfitriones en el vestíbulo. */
-export function listGames(room: RoomApi): OpenGame[] {
-  const out: OpenGame[] = [];
-  for (const p of room.peers()) {
+export interface ServerInfo { sala: string; nombre: string; /** Jugadores dentro: 0, 1 o 2. */ n: 0 | 1 | 2; /** Día de la partida, si hay alguien. */ dia: number | null }
+
+interface LobbyPeer { isMe: boolean; presence: Readonly<Record<string, unknown>> }
+
+/** Estado de cada servidor según lo que anuncian sus anfitriones en el vestíbulo. */
+export function listServers(peers: readonly LobbyPeer[]): ServerInfo[] {
+  const out: ServerInfo[] = SERVERS.map((s) => ({ ...s, n: 0, dia: null }));
+  for (const p of peers) {
     if (p.isMe) continue;
     const h = p.presence.host as Record<string, unknown> | undefined;
-    if (!h || typeof h.sala !== 'string' || !/^tienda-[a-z0-9]{6}$/.test(h.sala)) continue;
-    out.push({
-      sala: h.sala,
-      nombre: typeof h.nombre === 'string' ? h.nombre.slice(0, 40) : 'Tienda',
-      dia: typeof h.dia === 'number' ? Math.max(1, Math.min(9999, Math.round(h.dia))) : 1,
-      n: h.n === 2 ? 2 : 1,
-    });
+    if (!h || typeof h.sala !== 'string') continue;
+    const s = out.find((x) => x.sala === h.sala);
+    if (!s) continue; // un nombre que no es de la lista se ignora
+    s.n = h.n === 2 ? 2 : Math.max(s.n, 1) as 1 | 2;
+    s.dia = typeof h.dia === 'number' && Number.isFinite(h.dia) ? Math.max(1, Math.min(9999, Math.round(h.dia))) : 1;
   }
   return out;
 }
 
-// Nombres automáticos (los jugadores no escriben nada).
-const FRUTAS = ['Mango', 'Coco', 'Piña', 'Guayaba', 'Limón', 'Cereza', 'Chinola', 'Lechosa', 'Tamarindo', 'Guanábana'];
-export const randomName = () => `Tienda ${FRUTAS[Math.floor(Math.random() * FRUTAS.length)]} ${10 + Math.floor(Math.random() * 90)}`;
-const randomSala = () => 'tienda-' + Array.from({ length: 6 }, () => 'abcdefghijkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 32)]).join('');
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Posición del jugador para que el otro lo vea: [x, z, yaw, en la caja (0/1)]. */
 export type Pos = [number, number, number, number];
@@ -63,6 +63,9 @@ const readPos = (v: unknown): Pos | null => {
   return [Math.max(-12, Math.min(12, n[0])), Math.max(-10, Math.min(12, n[1])), n[2], n[3] ? 1 : 0];
 };
 
+/** retry: dos jugadores entraron a la vez en un servidor vacío; el que sobra vuelve a entrar como invitado. */
+export type EndReason = 'host-gone' | 'full' | 'kicked' | 'lost' | 'retry';
+
 export interface SessionHooks {
   /** Anfitrión: entra o sale el segundo jugador. */
   onPartner(present: boolean): void;
@@ -71,7 +74,7 @@ export interface SessionHooks {
   /** Invitado: ha llegado una foto nueva (ya volcada en el estado). */
   onSnap(x: SnapExtra): void;
   /** La partida terminó para este jugador (el anfitrión se fue, está llena, le sacaron...). */
-  onEnd(reason: 'host-gone' | 'full' | 'kicked' | 'lost'): void;
+  onEnd(reason: EndReason): void;
 }
 
 /** Una partida en marcha, como anfitrión o como invitado. */
@@ -113,15 +116,33 @@ export class Session {
     this.hostSeenAt = performance.now();
   }
 
-  static async host(room: RoomApi, hooks: SessionHooks, state: () => GameState): Promise<Session> {
-    const sala = await room.join(randomSala());
-    return new Session('host', room, sala, randomName(), hooks, state);
+  /**
+   * Entra en uno de los servidores fijos. Si ya hay alguien jugando, se une a su partida (caja 2);
+   * si está vacío, la partida es la de este jugador (caja 1) y el siguiente que entre se une a ella.
+   */
+  static async enter(room: RoomApi, salaName: string, hooks: SessionHooks, state: () => GameState, beforeGuest: () => void = () => {}): Promise<Session> {
+    const srv = SERVERS.find((s) => s.sala === salaName);
+    if (!srv) throw new Error('servidor');
+    const sala = await room.join(srv.sala);
+    // El canal presenta a los que ya están durante el primer segundo: se espera un momento antes de decidir.
+    const t0 = performance.now();
+    let host = false;
+    while (performance.now() - t0 < 1500) {
+      host = sala.peers().some((p) => !p.isMe && p.presence.rol === 'host');
+      if (host) break;
+      await sleep(150);
+    }
+    // Como invitado se dibuja la tienda del anfitrión: quien llama prepara un estado aparte.
+    if (host) { beforeGuest(); return Session.joinAsGuest(room, sala, srv.nombre, hooks, state); }
+    const s = new Session('host', room, sala, srv.nombre, hooks, state);
+    void sala.presence({ rol: 'host', pos: s.myPos }).catch(() => {});
+    s.lastLobby = 0;
+    return s;
   }
 
-  /** Se une a una partida y espera la primera foto del anfitrión (o falla a los 10 s). */
-  static async join(room: RoomApi, salaName: string, hooks: SessionHooks, state: () => GameState): Promise<Session> {
-    const sala = await room.join(salaName);
-    const s = new Session('guest', room, sala, salaName, hooks, state);
+  /** Se une a la partida del anfitrión y espera su primera foto (o falla a los 10 s). */
+  private static async joinAsGuest(room: RoomApi, sala: NamedRoom, nombre: string, hooks: SessionHooks, state: () => GameState): Promise<Session> {
+    const s = new Session('guest', room, sala, nombre, hooks, state);
     void sala.presence({ rol: 'guest', t: Date.now(), pos: s.myPos, acts: [], pausa: false });
     const t0 = performance.now();
     while (!s.gotSnap && !s.ended && performance.now() - t0 < 10000) {
@@ -140,6 +161,9 @@ export class Session {
     if (this.ended) return;
     const peers = this.sala.peers();
     if (this.role === 'host') {
+      // Dos anfitriones a la vez en el mismo servidor: se queda el de etiqueta menor; el otro vuelve a entrar.
+      const me = this.myPeer();
+      if (me && peers.some((p) => !p.isMe && p.presence.rol === 'host' && p.peer < me)) { this.end('retry'); return; }
       // Admite al primer invitado que llegue (el más antiguo) y a nadie más.
       const guests = peers.filter((p) => !p.isMe && p.presence.rol === 'guest' && !this.blocked.has(p.peer));
       if (this.guest && !guests.some((p) => p.peer === this.guest)) { this.guest = null; this.ack = 0; this.hooks.onPartner(false); }
@@ -240,7 +264,7 @@ export class Session {
   /** Anfitrión: el invitado pidió quitar la pausa o el anfitrión la quita. */
   clearPause() { this.pausa = 0; }
 
-  private end(reason: 'host-gone' | 'full' | 'kicked' | 'lost') {
+  private end(reason: EndReason) {
     if (this.ended) return;
     this.ended = true;
     void this.leave();

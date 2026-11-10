@@ -163,8 +163,10 @@ genera `dist-artifact/supermercado-vN.html` con el título "Supermercado versió
 como una página nueva con el número siguiente, así las versiones anteriores siguen disponibles.
 
 **Dos cajas y multijugador de dos personas** (solo en la página publicada en claude.ai, con la capacidad `room`):
-el botón "Multijugador" del menú crea una partida con nombre automático o se une a una abierta. El anfitrión
-juega con su tienda guardada y cobra en la caja 1; el invitado cobra en la caja 2. Cada uno tiene su dinero
+el botón "Multijugador" abre una lista fija de 6 servidores con su estado (vacío, 1 jugador esperando y su día,
+o lleno); los que tienen a alguien esperando salen primero. Al entrar en un servidor vacío, la partida es la tuya
+(con tu tienda guardada, caja 1); si tu amigo entra en el mismo servidor desde otro dispositivo, se une a ella
+(caja 2). Si dos entran a la vez en uno vacío, el juego decide solo quién es el anfitrión. Cada uno tiene su dinero
 (lo que cobra en su caja y lo que gasta en el ordenador); el almacén y las estanterías son de los dos y cada
 uno ve las compras del otro. En el ordenador hay **mejoras de caja** (música relajante, bote de propinas) que
 se pueden comprar para la propia caja o regalar a la del otro. La pausa es compartida y el anfitrión puede

@@ -13,7 +13,7 @@ import * as M from './models.ts';
 import * as T from './textures.ts';
 import { Till, tillScreenPoints } from './checkout.ts';
 import { Player } from './player.ts';
-import { Session, getRoom, listGames, type OpenGame } from './multi.ts';
+import { Session, getRoom, listServers, SERVERS, type ServerInfo, type EndReason } from './multi.ts';
 import { aplicarAccion, type Accion } from './sync.ts';
 import { sfx, unlock, isMuted, setMuted } from './audio.ts';
 import { icon, hydrateIcons } from '../ui/icons.ts';
@@ -728,8 +728,15 @@ const sessionHooks = {
       else if (MOTIVOS[m]) toast(MOTIVOS[m], 'bad');
     }
   },
-  onEnd(reason: 'host-gone' | 'full' | 'kicked' | 'lost') {
-    const msg = { 'host-gone': 'Tu compañero ha cerrado la partida', full: 'Esa partida ya tiene dos jugadores', kicked: 'El anfitrión te ha sacado de la partida', lost: 'Se ha perdido la conexión con la partida' }[reason];
+  onEnd(reason: EndReason) {
+    if (reason === 'retry') {
+      // Tu amigo entró en el mismo servidor justo a la vez: se vuelve a entrar, ya como invitado.
+      const sala = SERVERS.find((x) => x.nombre === session?.nombre)?.sala;
+      endSession();
+      if (sala) void enterServer(sala);
+      return;
+    }
+    const msg = { 'host-gone': 'Tu compañero ha salido del servidor', full: 'Ese servidor ya tiene dos jugadores', kicked: 'El anfitrión te ha sacado del servidor', lost: 'Se ha perdido la conexión con el servidor' }[reason];
     goTitle();
     toast(msg, 'bad', 3600);
   },
@@ -785,66 +792,66 @@ function updatePartner(dt: number) {
   partner.armL.rotation.x = -sw * 0.7; partner.armR.rotation.x = p[3] ? -0.9 : sw * 0.7;
 }
 
-// Vestíbulo
+// Servidores (lista fija)
 const mpStatus = $('mpStatus'), mpList = $('mpList');
 let lobbyTimer = 0;
 let lobbyKey = '';
-function renderLobby(games: OpenGame[]) {
-  // Solo se redibuja si cambia algo: así un toque en "Unirse" nunca cae justo en un redibujado.
-  const key = JSON.stringify(games);
+let entering = false;
+function renderLobby(servers: ServerInfo[]) {
+  // Solo se redibuja si cambia algo: así un toque en "Entrar" nunca cae justo en un redibujado.
+  const key = JSON.stringify(servers) + entering;
   if (key === lobbyKey) return;
   lobbyKey = key;
-  mpList.innerHTML = games.length
-    ? games.map((g, i) => `<li><div><strong></strong><span>Día ${g.dia} · ${g.n === 2 ? 'llena' : '1 de 2 jugadores'}</span></div><button class="ghost" data-i="${i}" ${g.n === 2 ? 'disabled' : ''}>${icon('logIn')}Unirse</button></li>`).join('')
-    : '<li class="empty">Todavía no hay partidas abiertas. Crea una o espera a que tu amigo cree la suya.</li>';
-  // El nombre de la partida llega de otro jugador: se pone como texto, nunca como HTML.
-  mpList.querySelectorAll('li strong').forEach((el, i) => { el.textContent = games[i].nombre; });
-  mpList.querySelectorAll<HTMLButtonElement>('button[data-i]').forEach((b) => b.addEventListener('click', () => void joinGame(games[Number(b.dataset.i)])));
+  // Primero los que tienen a alguien esperando (ahí está tu amigo), luego los vacíos y al final los llenos.
+  const orden = (n: number) => (n === 1 ? 0 : n === 0 ? 1 : 2);
+  mpList.innerHTML = [...servers].sort((a, b) => orden(a.n) - orden(b.n) || a.sala.localeCompare(b.sala, 'es', { numeric: true })).map((s) => {
+    const estado = s.n === 0 ? 'Vacío: entra y espera a tu amigo' : s.n === 1 ? `1 jugador esperando · Día ${s.dia}` : `Lleno · Día ${s.dia}`;
+    return `<li class="srv n${s.n}"><span class="dot" aria-hidden="true"></span><div><strong>${s.nombre}</strong><span>${estado}</span></div>
+      <button class="${s.n === 1 ? 'primary' : 'ghost'}" data-sala="${s.sala}" ${s.n === 2 || entering ? 'disabled' : ''} aria-label="Entrar en ${s.nombre}">${icon('logIn')}${s.n === 1 ? 'Unirse' : 'Entrar'}</button></li>`;
+  }).join('');
 }
+mpList.addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-sala]');
+  if (b && !b.disabled) void enterServer(b.dataset.sala!);
+});
 async function openLobby() {
   const room = await getRoom();
   if (!room) return;
   mpStatus.textContent = '';
   lobbyKey = '';
   open('mp');
-  const refresh = () => { if (!$('mp').hidden) renderLobby(listGames(room)); else clearInterval(lobbyTimer); };
+  const refresh = () => { if (!$('mp').hidden) renderLobby(listServers(room.peers())); else clearInterval(lobbyTimer); };
   refresh();
   clearInterval(lobbyTimer);
   lobbyTimer = window.setInterval(refresh, 1000);
 }
 $('mpBtn').addEventListener('click', () => void openLobby());
-$('mpCreate').addEventListener('click', async () => {
+
+/** Entra en un servidor: si está vacío, la partida es la tuya; si tu amigo ya está, te unes a la suya. */
+async function enterServer(sala: string) {
   const room = await getRoom();
-  if (!room || session) return;
-  const btn = $<HTMLButtonElement>('mpCreate');
-  btn.disabled = true;
-  mpStatus.textContent = 'Creando la partida...';
-  try {
-    const s = await Session.host(room, sessionHooks, () => state);
-    startSession(s);
-    toast(`Partida «${s.nombre}» creada: espera a tu compañero`, 'ok', 4200);
-  } catch {
-    mpStatus.textContent = 'No se pudo crear la partida. Inténtalo de nuevo.';
-  } finally { btn.disabled = false; }
-});
-async function joinGame(g: OpenGame) {
-  const room = await getRoom();
-  if (!room || session) return;
-  mpStatus.textContent = 'Uniéndote a la partida...';
-  mpList.querySelectorAll('button').forEach((b) => { b.disabled = true; });
-  // El invitado dibuja la tienda del anfitrión: su propia partida guardada no se toca.
+  if (!room || session || entering) return;
+  const nombre = SERVERS.find((s) => s.sala === sala)?.nombre ?? 'el servidor';
+  entering = true;
+  lobbyKey = '';
+  mpStatus.textContent = `Entrando en ${nombre}...`;
   const mine = state;
-  state = newGame(1);
-  resetViews();
+  let guest = false;
   try {
-    const s = await Session.join(room, g.sala, sessionHooks, () => state);
+    const s = await Session.enter(room, sala, sessionHooks, () => state, () => {
+      // Invitado: se dibuja la tienda del anfitrión; tu partida guardada no se toca.
+      guest = true;
+      state = newGame(1);
+      resetViews();
+    });
     startSession(s);
-    toast(`Te has unido a ${g.nombre}: tú cobras en la caja 2`, 'ok', 4200);
+    toast(s.role === 'host' ? `Estás en ${s.nombre}. Cuando tu amigo entre en el mismo servidor, jugaréis juntos.` : `Te has unido a tu amigo en ${s.nombre}: tú cobras en la caja 2`, 'ok', 4600);
   } catch (e) {
-    state = mine;
-    resetViews();
-    mpStatus.textContent = (e as Error).message === 'full' ? 'Esa partida ya tiene dos jugadores.' : 'No se pudo conectar con esa partida.';
-    mpList.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+    if (guest) { state = mine; resetViews(); }
+    mpStatus.textContent = (e as Error).message === 'full' ? `${nombre} ya tiene dos jugadores: elige otro.` : `No se pudo entrar en ${nombre}. Inténtalo de nuevo.`;
+  } finally {
+    entering = false;
+    lobbyKey = '';
   }
 }
 
