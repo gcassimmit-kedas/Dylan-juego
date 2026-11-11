@@ -72,7 +72,8 @@ export type Pos = [number, number, number, number];
 const readPos = (v: unknown): Pos | null => {
   if (!Array.isArray(v) || v.length < 4) return null;
   const n = v.slice(0, 4).map((x) => (typeof x === 'number' && Number.isFinite(x) ? x : 0));
-  return [Math.max(-12, Math.min(12, n[0])), Math.max(-10, Math.min(12, n[1])), n[2], n[3] ? 1 : 0];
+  // Todo el mundo: la tienda, la calle, la casa y las otras tiendas.
+  return [Math.max(-35, Math.min(35, n[0])), Math.max(-15, Math.min(47, n[1])), n[2], n[3] ? 1 : 0];
 };
 
 /** retry: dos jugadores entraron a la vez en un servidor vacío; el que sobra vuelve a entrar como invitado. */

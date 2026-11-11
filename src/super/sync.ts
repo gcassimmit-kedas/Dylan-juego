@@ -2,7 +2,7 @@
 // el segundo jugador la dibuja y le manda sus acciones. Todo es código puro (se prueba con npm test).
 // Lo que llega del otro jugador nunca se da por bueno: se valida campo a campo.
 import {
-  PRODUCT_IDS, PRODUCTS, MEJORAS, CAMBIO, comprarPedido, reponer, escanear, darCambio, cobrarTarjeta, mejorar, empezarTurno, siguienteDia,
+  PRODUCT_IDS, PRODUCTS, MEJORAS, CAMBIO, esProveedor, type ProveedorId, comprarPedido, reponer, escanear, darCambio, cobrarTarjeta, mejorar, empezarTurno, siguienteDia,
   type GameState, type Customer, type CustomerState, type GameEvent, type ProductId, type MejoraId,
 } from './sim.ts';
 
@@ -47,7 +47,7 @@ export function encodeSnap(s: GameState, x: SnapExtra): Record<string, unknown> 
     est: PRODUCT_IDS.map((p) => s.estantes[p]), alm: PRODUCT_IDS.map((p) => s.almacen[p]),
     of: PRODUCT_IDS.map((p) => s.ofertaRara[p] ?? -1),
     j: s.jugadores.map((j) => [j.dinero, j.ingresos, j.gastos, j.cambioDeMas]),
-    k: s.cajas.map((k) => [k.abierta ? 1 : 0, k.musica ? 1 : 0, k.propinas ? 1 : 0, k.cola]),
+    k: s.cajas.map((k) => [k.abierta ? 1 : 0, k.musica ? 1 : 0, k.propinas ? 1 : 0, k.cola, k.sucio ? 1 : 0]),
     st: [s.stats.clientes, s.stats.atendidos, s.stats.perdidos, s.stats.cansados, s.stats.articulos, s.stats.faltas],
     md: s.mejorDia,
     c: s.clientes.map(encodeCustomer),
@@ -120,8 +120,8 @@ export function decodeSnap(raw: unknown, s: GameState): SnapExtra | null {
     Object.assign(s.jugadores[i], { dinero: int(d, -1e9, 1e9), ingresos: int(ing, -1e9, 1e9), gastos: int(gas, 0, 1e9), cambioDeMas: int(cdm, 0, 1e9) });
   });
   k.forEach((row, i) => {
-    const [ab, mu, pr, cola] = arr(row, 4);
-    Object.assign(s.cajas[i], { abierta: ab === 1, musica: mu === 1, propinas: pr === 1, cola: arr(cola, 12).map((v) => int(v, 0, 1e9)) });
+    const [ab, mu, pr, cola, su] = arr(row, 5);
+    Object.assign(s.cajas[i], { abierta: ab === 1, musica: mu === 1, propinas: pr === 1, sucio: su === 1, cola: arr(cola, 12).map((v) => int(v, 0, 1e9)) });
   });
   const [cl, at, pe, ca, ar, fa] = st;
   s.stats = { clientes: int(cl, 0, 1e6), atendidos: int(at, 0, 1e6), perdidos: int(pe, 0, 1e6), cansados: int(ca, 0, 1e6), articulos: int(ar, 0, 1e6), faltas: int(fa, 0, 1e6) };
@@ -159,7 +159,8 @@ export function decodeSnap(raw: unknown, s: GameState): SnapExtra | null {
 
 export type Accion =
   | { n: number; t: 'reponer'; p: ProductId }
-  | { n: number; t: 'comprar'; pedido: Partial<Record<ProductId, number>> }
+  | { n: number; t: 'comprar'; pedido: Partial<Record<ProductId, number>>; prov: ProveedorId }
+  | { n: number; t: 'sucio'; v: boolean }
   | { n: number; t: 'escanear'; p: ProductId }
   | { n: number; t: 'cambio'; v: number }
   | { n: number; t: 'tarjeta' }
@@ -186,11 +187,14 @@ export function parseAccion(raw: unknown): Accion | null {
         if (!(PRODUCT_IDS as string[]).includes(p) || typeof q !== 'number' || !Number.isInteger(q) || q < 0 || q > 99) return null;
         pedido[p as ProductId] = q;
       }
-      return { n, t: 'comprar', pedido };
+      const prov = o.prov === undefined ? 'ordenador' : o.prov;
+      if (!esProveedor(prov)) return null;
+      return { n, t: 'comprar', pedido, prov };
     }
     case 'mejorar': return typeof o.m === 'string' && o.m in MEJORAS && (o.k === 0 || o.k === 1) ? { n, t: 'mejorar', m: o.m as MejoraId, k: o.k } : null;
     case 'empezar': case 'siguiente': case 'tarjeta': return { n, t: o.t };
     case 'pausa': return typeof o.v === 'boolean' ? { n, t: 'pausa', v: o.v } : null;
+    case 'sucio': return typeof o.v === 'boolean' ? { n, t: 'sucio', v: o.v } : null;
   }
   return null;
 }
@@ -202,7 +206,8 @@ export function parseAccion(raw: unknown): Accion | null {
 export function aplicarAccion(s: GameState, a: Accion, j: number): [0 | 1, string] {
   switch (a.t) {
     case 'reponer': return reponer(s, a.p) > 0 ? [1, ''] : [0, 'reponer'];
-    case 'comprar': { const r = comprarPedido(s, a.pedido, j); return r.ok ? [1, ''] : [0, r.motivo]; }
+    case 'comprar': { const r = comprarPedido(s, a.pedido, j, a.prov); return r.ok ? [1, ''] : [0, r.motivo]; }
+    case 'sucio': s.cajas[j].sucio = a.v; return [1, ''];
     case 'escanear': return escanear(s, a.p, j) ? [1, ''] : [0, 'escanear'];
     case 'cambio': { const r = darCambio(s, a.v, j); return r && r.ok ? [1, ''] : [0, r ? `falta:${r.falta}` : 'cambio']; }
     case 'tarjeta': return cobrarTarjeta(s, j)?.ok ? [1, ''] : [0, 'tarjeta'];

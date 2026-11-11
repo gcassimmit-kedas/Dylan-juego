@@ -41,6 +41,17 @@ export const sfx = {
   open() { tone(523, 0.14, 'triangle', 0.09); tone(659, 0.14, 'triangle', 0.09, 0.12); tone(784, 0.3, 'triangle', 0.09, 0.24); },
   close() { tone(784, 0.16, 'triangle', 0.08); tone(523, 0.4, 'triangle', 0.08, 0.14); },
   click() { tone(1200, 0.03, 'square', 0.02); },
+  /** Ducha: rumor de agua. */
+  water() {
+    if (muted || !ctx) return;
+    const len = Math.floor(ctx.sampleRate * 1.4), buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.min(1, i / 4000, (len - i) / 8000);
+    const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    f.type = 'bandpass'; f.frequency.value = 2400; g.gain.value = 0.08;
+    src.buffer = buf; src.connect(f).connect(g).connect(ctx.destination); src.start();
+  },
+  /** Dormir: dos notas bajas. */
+  sleep() { tone(392, 0.4, 'sine', 0.06); tone(294, 0.7, 'sine', 0.06, 0.35); },
   /** Datáfono: pago aprobado. */
   approved() { tone(1760, 0.08, 'sine', 0.06); tone(2349, 0.16, 'sine', 0.06, 0.1); },
   /** Cajón de la registradora al abrirse. */

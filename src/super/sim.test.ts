@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   newGame, comprar, comprarPedido, costePedido, reponer, empezarTurno, siguienteDia, tick, escanear, clienteEnCaja,
-  route, importar, darCambio, cobrarTarjeta, sortearOferta, disponibles, esRara, CAMBIO, abrirCaja, mejorar, cambioDebido, importeEscaneado, BILLETES, exportar, horaTienda, totalArticulos, importe, PRODUCTS, PRODUCT_IDS, DISPLAYS, SHIFT_SECONDS, LAYOUT, walkable, puntoLibre, detrasDe,
+  route, importar, darCambio, cobrarTarjeta, costeCaja, vende, sortearOferta, disponibles, esRara, CAMBIO, abrirCaja, mejorar, cambioDebido, importeEscaneado, BILLETES, exportar, horaTienda, totalArticulos, importe, PRODUCTS, PRODUCT_IDS, DISPLAYS, SHIFT_SECONDS, LAYOUT, walkable, puntoLibre, detrasDe,
   type GameState,
 } from './sim.ts';
 
@@ -476,4 +476,45 @@ test('el segundo jugador aparece justo detrás del primero', () => {
   // Si detrás hay un mueble, se queda en el hueco libre más cercano.
   const r = detrasDe(-4.7, -2.2, Math.PI);
   assert.ok(walkable(r));
+});
+
+// ---------- Otras tiendas y necesidades ----------
+
+test('el Mayorista vende lo de siempre más barato y no tiene fruta', () => {
+  const s = newGame(51);
+  assert.equal(costeCaja('leche', 'mayorista'), Math.round((250 * 0.85) / 10) * 10);
+  assert.ok(costeCaja('leche', 'mayorista') < costeCaja('leche'));
+  assert.equal(vende('mayorista', 'manzanas'), false);
+  assert.equal(disponibles(s, 'manzanas', 'mayorista'), 0);
+  const dinero = s.jugadores[0].dinero;
+  assert.deepEqual(comprarPedido(s, { leche: 2 }, 0, 'mayorista'), { ok: true, coste: costeCaja('leche', 'mayorista') * 2 });
+  assert.equal(s.jugadores[0].dinero, dinero - costeCaja('leche', 'mayorista') * 2);
+  assert.deepEqual(comprarPedido(s, { manzanas: 1 }, 0, 'mayorista'), { ok: false, motivo: 'agotado' });
+});
+
+test('la Frutería solo vende fruta y siempre tiene fresas y uvas, más caras', () => {
+  const s = newGame(52);
+  s.jugadores[0].dinero = 100000;
+  s.ofertaRara = { fresas: 0, uvas: 0 };
+  assert.equal(disponibles(s, 'fresas'), 0, 'en el ordenador hoy no hay');
+  assert.equal(disponibles(s, 'fresas', 'fruteria'), Infinity);
+  assert.ok(costeCaja('fresas', 'fruteria') > costeCaja('fresas'));
+  assert.equal(costeCaja('manzanas', 'fruteria'), costeCaja('manzanas'));
+  assert.equal(vende('fruteria', 'leche'), false);
+  assert.ok(comprarPedido(s, { fresas: 3 }, 0, 'fruteria').ok);
+  assert.equal(s.almacen.fresas, 18, 'llega al almacén de la tienda');
+  assert.equal(s.ofertaRara.fresas, 0, 'no gasta la oferta del ordenador');
+  assert.deepEqual(comprarPedido(s, { leche: 1 }, 0, 'fruteria'), { ok: false, motivo: 'agotado' });
+});
+
+test('si el cajero no se ha bañado, los clientes de su cola aguantan menos', () => {
+  const pac = (sucio: boolean) => {
+    const s = newGame(53);
+    for (const p of PRODUCT_IDS) { s.almacen[p] = 100; reponer(s, p); }
+    s.cajas[0].sucio = sucio;
+    empezarTurno(s);
+    while (!s.cajas[0].cola.length) tick(s, 0.1);
+    return s.clientes.find((c) => c.id === s.cajas[0].cola[0])!.pacienciaMax;
+  };
+  assert.ok(pac(true) < pac(false) * 0.75);
 });

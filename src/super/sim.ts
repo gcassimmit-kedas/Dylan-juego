@@ -187,6 +187,8 @@ export interface Caja {
   /** La caja 2 solo abre cuando hay un segundo jugador. */
   abierta: boolean;
   musica: boolean;
+  /** Su cajero necesita una ducha: los clientes de esa cola aguantan menos. */
+  sucio?: boolean;
   propinas: boolean;
 }
 
@@ -271,7 +273,34 @@ export function sortearOferta(s: GameState) {
 }
 
 /** Cajas que se pueden pedir hoy de un producto (sin límite si no es difícil de conseguir). */
-export const disponibles = (s: GameState, p: ProductId) => (isRara(p) ? s.ofertaRara[p] ?? 0 : Infinity);
+/**
+ * Dónde se compra: el ordenador de la tienda (todo, con las fresas y uvas limitadas), el Mayorista de
+ * enfrente (lo de siempre un 15 % más barato, sin fruta) y la Frutería (solo fruta; fresas y uvas
+ * siempre, pero un 25 % más caras). A las tiendas de fuera hay que ir andando.
+ */
+export const PROVEEDORES = {
+  ordenador: { nombre: 'Ordenador', factor: 1, factorRara: 1 },
+  mayorista: { nombre: 'Mayorista', factor: 0.85, factorRara: 1 },
+  fruteria: { nombre: 'Frutería', factor: 1, factorRara: 1.25 },
+} as const;
+export type ProveedorId = keyof typeof PROVEEDORES;
+export const esProveedor = (v: unknown): v is ProveedorId => typeof v === 'string' && v in PROVEEDORES;
+
+/** ¿Vende este proveedor este producto? */
+export function vende(prov: ProveedorId, p: ProductId): boolean {
+  const fruta = (PRODUCTS[p] as Product).fruta === true;
+  return prov === 'ordenador' || (prov === 'mayorista' ? !fruta : fruta);
+}
+
+/** Precio de una caja según dónde se compre (redondeado a 10 pesos). */
+export function costeCaja(p: ProductId, prov: ProveedorId = 'ordenador'): number {
+  const base = PRODUCTS[p].costoCaja, f = isRara(p) ? PROVEEDORES[prov].factorRara : PROVEEDORES[prov].factor;
+  return f === 1 ? base : Math.round((base * f) / 10) * 10;
+}
+
+/** Cajas que se pueden pedir hoy de un producto (sin límite si no es difícil de conseguir o en la Frutería). */
+export const disponibles = (s: GameState, p: ProductId, prov: ProveedorId = 'ordenador') =>
+  !vende(prov, p) ? 0 : isRara(p) && prov === 'ordenador' ? s.ofertaRara[p] ?? 0 : Infinity;
 
 /** Generador pseudoaleatorio con la semilla guardada en el estado (mulberry32): partidas reproducibles en los tests. */
 export function rand(s: GameState): number {
@@ -291,12 +320,12 @@ export type BuyResult = { ok: true; coste: number } | { ok: false; motivo: 'dine
 const jugadorValido = (j: number) => j === 0 || j === 1;
 
 /** Compra cajas en el ordenador con el dinero del jugador `j`. Llegan al almacén (compartido) al momento. */
-export function comprar(s: GameState, p: ProductId, cajas = 1, j = 0): BuyResult {
-  if (!Number.isInteger(cajas) || cajas <= 0 || !jugadorValido(j)) return { ok: false, motivo: 'cantidad' };
-  if (cajas > disponibles(s, p)) return { ok: false, motivo: 'agotado' };
-  const coste = PRODUCTS[p].costoCaja * cajas, jug = s.jugadores[j];
+export function comprar(s: GameState, p: ProductId, cajas = 1, j = 0, prov: ProveedorId = 'ordenador'): BuyResult {
+  if (!Number.isInteger(cajas) || cajas <= 0 || !jugadorValido(j) || !esProveedor(prov)) return { ok: false, motivo: 'cantidad' };
+  if (cajas > disponibles(s, p, prov)) return { ok: false, motivo: 'agotado' };
+  const coste = costeCaja(p, prov) * cajas, jug = s.jugadores[j];
   if (coste > jug.dinero) return { ok: false, motivo: 'dinero' };
-  if (isRara(p)) s.ofertaRara[p] = (s.ofertaRara[p] ?? 0) - cajas;
+  if (isRara(p) && prov === 'ordenador') s.ofertaRara[p] = (s.ofertaRara[p] ?? 0) - cajas;
   jug.dinero -= coste;
   s.almacen[p] += PRODUCTS[p].caja * cajas;
   jug.gastos += coste;
@@ -304,14 +333,14 @@ export function comprar(s: GameState, p: ProductId, cajas = 1, j = 0): BuyResult
 }
 
 /** Compra varios productos de una vez (el carrito del ordenador). Si no llega el dinero, no se compra nada. */
-export function comprarPedido(s: GameState, pedido: Partial<Record<ProductId, number>>, j = 0): BuyResult {
-  if (!jugadorValido(j)) return { ok: false, motivo: 'cantidad' };
+export function comprarPedido(s: GameState, pedido: Partial<Record<ProductId, number>>, j = 0, prov: ProveedorId = 'ordenador'): BuyResult {
+  if (!jugadorValido(j) || !esProveedor(prov)) return { ok: false, motivo: 'cantidad' };
   const lineas = PRODUCT_IDS.map((p) => [p, pedido[p] ?? 0] as const).filter(([, n]) => n !== 0);
   if (!lineas.length || lineas.some(([, n]) => !Number.isInteger(n) || n < 0 || n > 99)) return { ok: false, motivo: 'cantidad' };
-  if (lineas.some(([p, n]) => n > disponibles(s, p))) return { ok: false, motivo: 'agotado' };
-  const coste = costePedido(pedido);
+  if (lineas.some(([p, n]) => n > disponibles(s, p, prov))) return { ok: false, motivo: 'agotado' };
+  const coste = costePedido(pedido, prov);
   if (coste > s.jugadores[j].dinero) return { ok: false, motivo: 'dinero' };
-  for (const [p, n] of lineas) if (n > 0) comprar(s, p, n, j);
+  for (const [p, n] of lineas) if (n > 0) comprar(s, p, n, j, prov);
   // El otro jugador ve lo que se ha comprado.
   s.eventos.push({ tipo: 'compra', j, coste, lineas: lineas.map(([p, n]) => [p, n]) });
   return { ok: true, coste };
@@ -357,8 +386,8 @@ export function abrirCaja(s: GameState, k: number, abierta: boolean) {
   if (otra >= 0) avanzarCola(s, otra);
 }
 
-export const costePedido = (pedido: Partial<Record<ProductId, number>>) =>
-  PRODUCT_IDS.reduce((t, p) => t + PRODUCTS[p].costoCaja * Math.max(0, pedido[p] ?? 0), 0);
+export const costePedido = (pedido: Partial<Record<ProductId, number>>, prov: ProveedorId = 'ordenador') =>
+  PRODUCT_IDS.reduce((t, p) => t + costeCaja(p, prov) * Math.max(0, pedido[p] ?? 0), 0);
 
 /** Lleva género del almacén a su estantería, hasta llenarla. Devuelve las unidades repuestas. */
 export function reponer(s: GameState, p: ProductId): number {
@@ -547,13 +576,13 @@ const centerOf = (i: number, j: number): Point => ({ x: GRID.x0 + (i + 0.5) * CE
  * El punto libre más cercano a `p` (el mismo si ya está libre): busca en anillos alrededor.
  * Sirve para no aparecer nunca dentro de un mueble o de un mostrador.
  */
-export function puntoLibre(p: Point): Point {
-  if (walkable(p)) return { x: p.x, z: p.z };
+export function puntoLibre(p: Point, libre: (q: Point) => boolean = walkable): Point {
+  if (libre(p)) return { x: p.x, z: p.z };
   for (let r = 0.25; r <= 4; r += 0.25) {
     for (let k = 0; k < 16; k++) {
       const a = (k / 16) * Math.PI * 2, q = { x: p.x + Math.cos(a) * r, z: p.z + Math.sin(a) * r };
-      // Dentro de la tienda (no en la calle).
-      if (q.z < 7.2 && walkable(q)) return q;
+      // Con la rejilla de la tienda, solo dentro de ella (no en la calle).
+      if ((libre !== walkable || q.z < 7.2) && libre(q)) return q;
     }
   }
   return { ...LAYOUT.entry };
@@ -711,7 +740,7 @@ function irAlSiguiente(s: GameState, c: Customer) {
   c.caja = k;
   const caja = s.cajas[k];
   caja.cola.push(c.id);
-  c.paciencia = c.pacienciaMax = QUEUE_PATIENCE * (caja.musica ? 1.5 : 1);
+  c.paciencia = c.pacienciaMax = QUEUE_PATIENCE * (caja.musica ? 1.5 : 1) * (caja.sucio ? 0.7 : 1);
   c.path = route(here, LAYOUT.queue(caja.cola.length - 1, k));
 }
 

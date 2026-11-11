@@ -159,6 +159,13 @@ al día, y si un cliente no las encuentra no se enfada.
 | Fresas (difícil de conseguir) | 6 | 1150 | 350 |
 | Uvas (difícil de conseguir) | 6 | 1150 | 350 |
 
+**Mundo exterior** (`src/super/world.ts`): al salir de la tienda hay aparcamiento con coches, una calle con paso de
+cebra y, enfrente, la **casa** del jugador (cama, ducha, salón) y dos tiendas más: el **Mayorista** (lo de siempre un
+15 % más barato, sin fruta) y la **Frutería** (solo fruta; fresas y uvas siempre, un 25 % más caras). Lo que se compra
+fuera llega al almacén de la tienda. Cada jugador tiene **energía** y **limpieza**, que bajan trabajando: con poca
+energía se anda más lento y sin ducharse los clientes de su cola aguantan menos. Dormir recupera la energía y, con el
+turno terminado, empieza el día siguiente ("Ir a casa a dormir" en el resumen).
+
 **Pasar partida:** el botón "Pasar partida" del menú da un código (`SUPER1-...`, `src/super/codigo.ts`) con la tienda,
 el dinero y el aspecto, para pegarlo en "Cargar partida" de otra copia del juego (otra página publicada, otro navegador
 u otro dispositivo). Cada página publicada guarda su partida por separado y ninguna puede leer la de otra: el código

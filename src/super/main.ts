@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import {
   newGame, tick, comprarPedido, costePedido, reponer, empezarTurno, siguienteDia, clienteEnCaja, CAMBIO, esMoneda, esRara, disponibles,
-  abrirCaja, mejorar, cambioDebido, detrasDe, escanear, darCambio, cobrarTarjeta, MEJORAS, MEJORA_IDS, type MejoraId, type Jugador,
+  abrirCaja, mejorar, cambioDebido, detrasDe, costeCaja, vende, PROVEEDORES, type ProveedorId, escanear, darCambio, cobrarTarjeta, MEJORAS, MEJORA_IDS, type MejoraId, type Jugador,
   horaTienda, exportar, importar,
   PRODUCTS, PRODUCT_IDS, DISPLAYS, LAYOUT, SHIFT_SECONDS,
   type GameState, type ProductId, type Customer,
@@ -16,6 +16,7 @@ import { Player } from './player.ts';
 import { Session, getRoom, listServers, readSkin, SERVERS, type ServerInfo, type EndReason, type Skin } from './multi.ts';
 import { aplicarAccion, type Accion } from './sync.ts';
 import { codigoPartida, leerCodigo } from './codigo.ts';
+import { buildWorld as buildExterior, LUGARES, type World } from './world.ts';
 import { sfx, unlock, isMuted, setMuted } from './audio.ts';
 import { icon, hydrateIcons } from '../ui/icons.ts';
 import '../ui/pwa.ts';
@@ -132,7 +133,7 @@ T.setAnisotropy(Math.min(8, renderer.capabilities.getMaxAnisotropy()));
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9fb8c9);
-scene.fog = new THREE.Fog(0x9fb8c9, 40, 90);
+scene.fog = new THREE.Fog(0x9fb8c9, 60, 140);
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.4;
@@ -162,6 +163,7 @@ sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.02;
 sun.shadow.radius = 3;
 scene.add(sun);
+scene.add(sun.target);
 
 function fitCamera() {
   const w = innerWidth, h = innerHeight;
@@ -210,6 +212,8 @@ let doors: { left: THREE.Mesh; right: THREE.Mesh; x: number; w: number };
 let thumbs: Record<ProductId, string>;
 let till: Till;
 let ceilingGroup: THREE.Group;
+/** Calle, casa y otras tiendas. */
+let exterior: World;
 /** Cámara "virtual" para la caja: en primera persona no se usan los controles orbitales. */
 const tillView = { target: new THREE.Vector3(), enabled: false, autoRotate: false };
 
@@ -253,6 +257,9 @@ function buildWorld() {
   scene.add(cashier.group);
   ceilingGroup = M.ceiling();
   scene.add(ceilingGroup);
+  exterior = buildExterior();
+  scene.add(exterior.group);
+  hitTargets.push(...exterior.hits);
   tills = regs.map((r, k) => new Till({
     scene, camera, controls: tillView as unknown as OrbitControls, canvas, register: r.group, scanner: r.scanner, belt: r.belt, cashier: cashier.group,
     state: () => state, toast, onChange: () => { if (inStore) renderTill(); },
@@ -526,7 +533,9 @@ function updateWorldState() {
 
 // ---------- Ordenador ----------
 const cart: Record<ProductId, number> = Object.fromEntries(PRODUCT_IDS.map((p) => [p, 0])) as Record<ProductId, number>;
-const pcRows = new Map<ProductId, { card: HTMLElement; qty: HTMLOutputElement; minus: HTMLButtonElement; plus: HTMLButtonElement; stock: HTMLElement }>();
+const pcRows = new Map<ProductId, { card: HTMLElement; qty: HTMLOutputElement; minus: HTMLButtonElement; plus: HTMLButtonElement; stock: HTMLElement; pv: HTMLElement }>();
+/** Dónde se está comprando: el ordenador de la tienda, el Mayorista o la Frutería. */
+let pcProv: ProveedorId = 'ordenador';
 function buildPc() {
   const body = $('pcBody');
   const mejoras = $('pcMejoras');
@@ -537,28 +546,34 @@ function buildPc() {
     card.className = 'prod';
     card.innerHTML = `<img alt="" src="${thumbs[p]}" /><h3>${d.nombre}</h3>
       <div class="meta">${esRara(p) ? '<span class="tag">Difícil de conseguir</span><br />' : ''}Caja de <b>${d.caja}</b> uds. · Venta <b>${money(d.precio)}</b>/ud.<br /><span class="st"></span></div>
-      <div class="row"><span class="price">${icon('coins')}${money(d.costoCaja)}<small class="help">&nbsp;/ caja</small></span>
+      <div class="row"><span class="price">${icon('coins')}<span class="pv">${money(d.costoCaja)}</span><small class="help">&nbsp;/ caja</small></span>
       <div class="stepper"><button class="m" aria-label="Quitar una caja de ${d.nombre}">${icon('minus')}</button><output aria-live="polite">0</output><button class="p" aria-label="Añadir una caja de ${d.nombre}">${icon('plus')}</button></div></div>`;
     const minus = card.querySelector<HTMLButtonElement>('.m')!, plus = card.querySelector<HTMLButtonElement>('.p')!;
     minus.addEventListener('click', () => { cart[p] = Math.max(0, cart[p] - 1); sfx.click(); renderPc(); });
-    plus.addEventListener('click', () => { cart[p] = Math.min(99, disponibles(state, p), cart[p] + 1); sfx.click(); renderPc(); });
+    plus.addEventListener('click', () => { cart[p] = Math.min(99, disponibles(state, p, pcProv), cart[p] + 1); sfx.click(); renderPc(); });
     body.append(card);
-    pcRows.set(p, { card, qty: card.querySelector('output')!, minus, plus, stock: card.querySelector('.st')! });
+    pcRows.set(p, { card, qty: card.querySelector('output')!, minus, plus, stock: card.querySelector('.st')!, pv: card.querySelector('.pv')! });
   }
   // Las mejoras van en la misma lista, debajo de los productos.
   body.append(mejoras);
 }
 function renderPc() {
-  const total = costePedido(cart);
+  const total = costePedido(cart, pcProv);
+  const P = PROVEEDORES[pcProv];
+  $('pcTitle').textContent = pcProv === 'ordenador' ? 'Pedidos' : P.nombre;
+  $('pcKicker').lastChild!.textContent = pcProv === 'ordenador' ? ' Proveedor' : pcProv === 'mayorista' ? ' Más barato que el ordenador' : ' Fruta fresca, siempre';
+  $('pcMejoras').hidden = pcProv !== 'ordenador';
   for (const [p, r] of pcRows) {
+    r.card.hidden = !vende(pcProv, p);
+    r.pv.textContent = money(costeCaja(p, pcProv));
     r.qty.value = String(cart[p]);
     r.minus.disabled = cart[p] === 0;
     r.card.classList.toggle('sel', cart[p] > 0);
-    const disp = disponibles(state, p);
+    const disp = disponibles(state, p, pcProv);
     if (cart[p] > disp) cart[p] = disp;
     r.plus.disabled = cart[p] >= disp;
     r.stock.innerHTML = `Almacén <b>${state.almacen[p]}</b> · Estante <b>${state.estantes[p]}/${PRODUCTS[p].capacidad}</b>`
-      + (esRara(p) ? `<br />${disp > 0 ? `Hoy el proveedor tiene <b>${disp}</b> ${disp === 1 ? 'caja' : 'cajas'}` : 'Hoy no hay: prueba otro día'}` : '');
+      + (esRara(p) && pcProv === 'ordenador' ? `<br />${disp > 0 ? `Hoy el proveedor tiene <b>${disp}</b> ${disp === 1 ? 'caja' : 'cajas'}` : 'Hoy no hay: prueba otro día o en la Frutería'}` : esRara(p) ? '<br />Aquí siempre hay' : '');
     r.qty.value = String(cart[p]);
   }
   const dinero = yo().dinero;
@@ -574,13 +589,13 @@ function renderPc() {
 $('pcClear').addEventListener('click', () => { for (const p of PRODUCT_IDS) cart[p] = 0; renderPc(); });
 $('pcPay').addEventListener('click', () => {
   const pedido = { ...cart };
-  const r = comprarPedido(state, pedido, ME);
-  if (r.ok && isGuest()) session!.send({ t: 'comprar', pedido } as Omit<Accion, 'n'>);
+  const r = comprarPedido(state, pedido, ME, pcProv);
+  if (r.ok && isGuest()) session!.send({ t: 'comprar', pedido, prov: pcProv } as Omit<Accion, 'n'>);
   if (!r.ok) { sfx.error(); toast(r.motivo === 'dinero' ? 'No hay dinero suficiente' : r.motivo === 'agotado' ? 'El proveedor no tiene tantas cajas hoy' : 'El pedido está vacío', 'bad'); return; }
   for (const p of PRODUCT_IDS) cart[p] = 0;
   sfx.buy();
   pulse(hudMoneyEl, 'spend');
-  toast(`Pedido pagado (${money(r.coste)}): ya está en el almacén`, 'ok', 2400);
+  toast(pcProv === 'ordenador' ? `Pedido pagado (${money(r.coste)}): ya está en el almacén` : `Comprado en ${PROVEEDORES[pcProv].nombre} (${money(r.coste)}): te lo llevan al almacén de tu tienda`, 'ok', 2800);
   save();
   renderPc(); renderShelves();
 });
@@ -659,7 +674,7 @@ function close() {
 }
 document.querySelectorAll<HTMLElement>('[data-close]').forEach((b) => b.addEventListener('click', close));
 for (const id of ['pc', 'shelves', 'help', 'confirm', 'mp', 'skins', 'transfer']) $(id).addEventListener('pointerdown', (e) => { if (e.target === e.currentTarget) close(); });
-pcBtn.addEventListener('click', () => open('pc'));
+pcBtn.addEventListener('click', () => { pcProv = 'ordenador'; open('pc'); });
 shelvesBtn.addEventListener('click', () => open('shelves'));
 
 // ---------- Flujo de partida ----------
@@ -1057,6 +1072,10 @@ function showSummary() {
   writeSave(sv);
   hasSave = true;
 }
+$('homeBtn').addEventListener('click', () => {
+  $('summary').hidden = true;
+  toast('Cruza la calle hasta tu casa y duerme en la cama: así empieza el día siguiente', '', 4200);
+});
 $('nextBtn').addEventListener('click', () => {
   if (isGuest()) { session!.send({ t: 'siguiente' } as Omit<Accion, 'n'>); return; }
   siguienteDia(state);
@@ -1226,7 +1245,10 @@ function act(o: THREE.Object3D) {
     tillView.target.copy(camera.position).add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(2));
     camera.up.set(0, 1, 0);
     till.enter();
-  } else if (a === 'ordenador') open('pc');
+  } else if (a === 'ordenador') { pcProv = 'ordenador'; for (const p of PRODUCT_IDS) cart[p] = 0; open('pc'); }
+  else if (a === 'mayorista' || a === 'fruteria') { pcProv = a; for (const p of PRODUCT_IDS) cart[p] = 0; open('pc'); }
+  else if (a === 'cama') dormir();
+  else if (a === 'ducha') ducharse();
   else if (a === 'almacen') open('shelves');
 }
 function describe(o: THREE.Object3D): string {
@@ -1242,6 +1264,10 @@ function describe(o: THREE.Object3D): string {
     return state.fase === 'turno' ? (n ? `Atender tu caja · ${n} en cola` : 'Atender tu caja') : `Caja ${ME + 1} (se abre al empezar el turno)`;
   }
   if (a === 'ordenador') return 'Hacer pedidos en el ordenador';
+  if (a === 'mayorista') return 'Comprar en el Mayorista (más barato)';
+  if (a === 'fruteria') return 'Comprar en la Frutería';
+  if (a === 'cama') return state.fase === 'turno' ? 'Cama (ahora estás trabajando)' : state.fase === 'resumen' ? 'Dormir hasta mañana' : 'Echarse una siesta';
+  if (a === 'ducha') return 'Bañarse';
   return 'Ver el almacén';
 }
 const aimEl = $('aim'), promptEl = $('prompt'), promptText = $('promptText'), actBtn = $<HTMLButtonElement>('actBtn'), actLbl = $('actLbl');
@@ -1256,13 +1282,13 @@ function updateAim() {
     promptEl.hidden = !o;
     promptText.textContent = text;
     actBtn.hidden = !o || !isTouch;
-    if (o) actLbl.textContent = o.userData.product ? 'Reponer' : o.userData.action === 'cobrar' ? 'Atender' : o.userData.action === 'ordenador' ? 'Ordenador' : 'Almacén';
+    if (o) actLbl.textContent = o.userData.product ? 'Reponer' : ({ cobrar: 'Atender', ordenador: 'Ordenador', mayorista: 'Comprar', fruteria: 'Comprar', cama: 'Dormir', ducha: 'Bañarse' } as Record<string, string>)[o.userData.action] ?? 'Almacén';
   }
 }
 actBtn.addEventListener('click', () => { if (aimed) act(aimed); });
 function canAct() { return inStore && !paused && !openModal && $('summary').hidden && !till.active; }
 const player = new Player({
-  canvas, camera, canAct,
+  canvas, camera, canAct, walkable: (p) => exterior.walkable(p),
   onInteract: (x, y) => { const o = aimAt(x, y); if (o) act(o); },
 });
 if (isTouch) document.body.classList.add('touch');
@@ -1383,6 +1409,11 @@ function frame(now: number) {
   updateWorldState();
   updateFlies(dt);
 
+  // Sombras alrededor del jugador (el mundo es grande)
+  const fx = player.enabled ? player.pos.x : 0, fz = player.enabled ? player.pos.y : 0;
+  sun.position.set(fx + 6, 15, fz + 9); sun.target.position.set(fx, 0, fz); sun.target.updateMatrixWorld();
+  if (inStore) updateNeeds(running ? dt : 0);
+
   // Primera persona
   const wasTill = tillWas;
   tillWas = till.active;
@@ -1407,7 +1438,8 @@ function frame(now: number) {
   // Paredes recortadas: las que quedan entre la cámara y la tienda bajan para ver el interior.
   for (const w of build.walls) {
     const outside = camera.position.clone().sub(w.point).dot(w.normal) < 0;
-    const target = outside ? 0.1 : 1;
+    // En primera persona las paredes siempre enteras (también vistas desde la calle).
+    const target = outside && !player.enabled ? 0.1 : 1;
     const o = w.mesh;
     const s = THREE.MathUtils.lerp(o.scale.y, target, Math.min(1, dt * 8));
     o.scale.y = s;
@@ -1549,9 +1581,73 @@ trYes.addEventListener('click', () => {
   toast(`Partida cargada: día ${state.dia}`, 'ok', 3000);
 });
 
+// ---------- Energía y limpieza ----------
+const NEEDS_KEY = 'super.necesidades';
+const needs = (() => {
+  try { const v = JSON.parse(localStorage.getItem(NEEDS_KEY) ?? 'null'); if (v && typeof v.e === 'number' && typeof v.l === 'number') return { e: Math.max(0, Math.min(100, v.e)), l: Math.max(0, Math.min(100, v.l)) }; } catch { /* sin guardado */ }
+  return { e: 100, l: 100 };
+})();
+let needsSaved = 0, wasTired = false, wasDirty = false, sentDirty: boolean | null = null;
+function saveNeeds() { try { localStorage.setItem(NEEDS_KEY, JSON.stringify({ e: Math.round(needs.e), l: Math.round(needs.l) })); } catch { /* sin guardado */ } }
+function updateNeeds(dt: number) {
+  // Se gastan trabajando (con la tienda abierta); correr cansa más.
+  if (dt > 0 && state.fase === 'turno') {
+    needs.e = Math.max(0, needs.e - dt * (player.running ? 0.6 : 0.35));
+    needs.l = Math.max(0, needs.l - dt * 0.3);
+  }
+  const tired = needs.e < 20, dirty = needs.l < 20;
+  player.speedFactor = tired ? 0.6 : 1;
+  if (tired && !wasTired) toast('Estás muy cansado: vas más lento. Duerme en tu casa', 'bad', 3200);
+  if (dirty && !wasDirty) toast('Necesitas una ducha: los clientes de tu caja se impacientan antes', 'bad', 3400);
+  wasTired = tired; wasDirty = dirty;
+  // Que la simulación sepa si el cajero va sucio (el invitado se lo dice al anfitrión).
+  if (dirty !== sentDirty) {
+    sentDirty = dirty;
+    if (isGuest()) session!.send({ t: 'sucio', v: dirty } as Omit<Accion, 'n'>);
+    else state.cajas[ME].sucio = dirty;
+  }
+  for (const [id, v] of [['needE', needs.e], ['needL', needs.l]] as const) {
+    const el = $(id);
+    (el.querySelector('.fill') as HTMLElement).style.transform = `scaleX(${v / 100})`;
+    el.classList.toggle('low', v < 20);
+    el.setAttribute('aria-valuenow', String(Math.round(v)));
+  }
+  if (performance.now() - needsSaved > 4000) { needsSaved = performance.now(); saveNeeds(); }
+}
+/** Funde a negro, hace algo y vuelve. */
+function fade(ms: number, mid: () => void) {
+  const f = $('fade');
+  f.classList.add('on');
+  player.release();
+  setTimeout(() => { mid(); setTimeout(() => f.classList.remove('on'), ms); }, reducedMotion ? 50 : 650);
+}
+function dormir() {
+  if (state.fase === 'turno') { sfx.error(); toast('La tienda está abierta: duerme cuando termine el turno'); return; }
+  sfx.sleep();
+  fade(900, () => {
+    needs.e = 100; saveNeeds();
+    if (state.fase === 'resumen') {
+      // Dormir termina el día.
+      $('summary').hidden = true;
+      if (isGuest()) session!.send({ t: 'siguiente' } as Omit<Accion, 'n'>); else siguienteDia(state);
+      toast('¡Buenos días! Energía al 100 %. Vuelve a la tienda a prepararla', 'ok', 3600);
+    } else toast('Has echado una siesta: energía al 100 %', 'ok', 2600);
+  });
+}
+function ducharse() {
+  sfx.water();
+  exterior.shower.visible = true;
+  fade(500, () => {
+    needs.l = 100; saveNeeds();
+    exterior.shower.visible = false;
+    toast('Te has bañado: limpieza al 100 %', 'ok', 2400);
+  });
+}
+
 // Para pruebas automáticas en el navegador (no forma parte del juego).
 (window as unknown as { __super: () => GameState }).__super = () => state;
 (window as unknown as { __player: Player }).__player = player;
 (window as unknown as { __tillPts: () => unknown }).__tillPts = () => tillScreenPoints(till, camera, regs[ME].group);
 (window as unknown as { __countMoney: () => number }).__countMoney = () => till.loosePayments();
+(window as unknown as { __mundo: () => unknown }).__mundo = () => ({ walkable: (x: number, z: number) => exterior.walkable({ x, z }), needs, speed: player.speedFactor, lugares: LUGARES });
 (window as unknown as { __superAvanzar: (s: number) => void }).__superAvanzar = (seg: number) => { for (let t = 0; t < seg; t += 0.05) tick(state, 0.05); };

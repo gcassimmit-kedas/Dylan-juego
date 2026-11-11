@@ -439,11 +439,8 @@ export function building(): Building {
   fl.map.repeat.set(W / 2, Dz / 2); fl.rough.repeat.set(W / 2, Dz / 2);
   floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; g.add(floor);
   // Aparcamiento y acera
-  const asphalt = new THREE.Mesh(new THREE.PlaneGeometry(80, 60), std({ map: T.asphaltTexture(), roughness: 0.95 }));
-  (asphalt.material as THREE.MeshStandardMaterial).map!.repeat.set(8, 6);
-  asphalt.rotation.x = -Math.PI / 2; asphalt.position.set(0, -0.02, 20); asphalt.receiveShadow = true; g.add(asphalt);
+  // El suelo de fuera (aparcamiento, calle, césped) lo pone world.ts.
   const curb = box(W + 2, 0.12, 3, std({ color: 0xb9b5aa, roughness: 0.9 }), 0, 0.04, maxZ + 1.5); curb.receiveShadow = true; g.add(curb);
-  const grass = box(80, 0.04, 60, std({ color: 0x4d6b32, roughness: 1 }), 0, -0.05, -26); grass.receiveShadow = true; g.add(grass);
 
   const wallMat = std({ map: T.wallTexture(), roughness: 0.85 });
   const walls: Building['walls'] = [];

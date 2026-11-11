@@ -196,6 +196,20 @@ body.fp #actions { justify-content: center; }
   body.fp.instore:not(.attill) #actBtn:not([hidden]) { bottom: calc(env(safe-area-inset-bottom) + 70px); height: 54px; }
 }
 
+/* ---------- Necesidades (energía y limpieza) ---------- */
+#hud .left { flex-direction: column; gap: 6px; align-items: flex-start; }
+.needs { display: flex; gap: 6px; }
+.need { display: flex; align-items: center; gap: 5px; background: var(--panel); border: 1px solid var(--line); padding: 4px 8px; width: 102px; }
+.need .ic { width: 16px; height: 16px; color: var(--accent); flex: none; }
+#needL .ic { color: #7fc8ff; }
+.need .track { flex: 1; height: 7px; background: rgba(0, 0, 0, 0.45); position: relative; overflow: hidden; }
+.need .fill { position: absolute; inset: 0; transform-origin: left; background: var(--ok); transition: transform 0.4s; }
+.need.low .fill { background: var(--danger); }
+.need.low { animation: lowneed 1s ease-in-out infinite; }
+@keyframes lowneed { 50% { border-color: var(--danger); } }
+#fade { position: fixed; inset: 0; z-index: 4; background: #05070a; opacity: 0; pointer-events: none; transition: opacity 0.6s; }
+#fade.on { opacity: 1; }
+
 /* ---------- Multijugador ---------- */
 .mp-panel { width: min(100%, 460px); text-align: left; overflow: hidden; }
 @media (max-height: 640px) { .mp-panel .help { display: none; } .mp-panel h2 { font-size: 1.5rem; margin: 0; } }

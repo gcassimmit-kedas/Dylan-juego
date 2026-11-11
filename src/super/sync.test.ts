@@ -75,7 +75,7 @@ test('las acciones del invitado se validan antes de aplicarse', () => {
   assert.equal(parseAccion({ n: 3, t: 'cambio', v: 1.5 }), null);
   assert.equal(parseAccion({ n: 4, t: 'mejorar', m: 'musica', k: 7 }), null);
   assert.equal(parseAccion({ n: 5, t: 'borrar-todo' }), null);
-  assert.deepEqual(parseAccion({ n: 6, t: 'comprar', pedido: { leche: 2 } }), { n: 6, t: 'comprar', pedido: { leche: 2 } });
+  assert.deepEqual(parseAccion({ n: 6, t: 'comprar', pedido: { leche: 2 } }), { n: 6, t: 'comprar', pedido: { leche: 2 }, prov: 'ordenador' });
 });
 
 test('el invitado compra con su dinero y solo cobra en su caja', () => {
@@ -107,4 +107,18 @@ test('el pago con tarjeta viaja al invitado y su acción se valida', () => {
   assert.deepEqual(aplicarAccion(s, { n: 9, t: 'tarjeta' }, 1), [1, '']);
   assert.equal(s.jugadores[1].dinero, dinero + total);
   assert.deepEqual(aplicarAccion(s, { n: 10, t: 'tarjeta' }, 0), [0, 'tarjeta'], 'en la caja 1 no hay nadie pagando con tarjeta');
+});
+
+test('el invitado puede comprar en otras tiendas y avisar de que necesita una ducha', () => {
+  assert.deepEqual(parseAccion({ n: 1, t: 'comprar', pedido: { leche: 1 }, prov: 'mayorista' }), { n: 1, t: 'comprar', pedido: { leche: 1 }, prov: 'mayorista' });
+  assert.deepEqual(parseAccion({ n: 1, t: 'comprar', pedido: { leche: 1 } }), { n: 1, t: 'comprar', pedido: { leche: 1 }, prov: 'ordenador' }, 'sin proveedor: el ordenador');
+  assert.equal(parseAccion({ n: 1, t: 'comprar', pedido: { leche: 1 }, prov: 'banco' }), null);
+  assert.equal(parseAccion({ n: 2, t: 'sucio', v: 'mucho' }), null);
+  const s = newGame(3);
+  assert.deepEqual(aplicarAccion(s, { n: 2, t: 'sucio', v: true }, 1), [1, '']);
+  assert.equal(s.cajas[1].sucio, true);
+  assert.equal(s.cajas[0].sucio, undefined, 'solo su caja');
+  const copia = newGame(1);
+  decodeSnap(JSON.parse(JSON.stringify(encodeSnap(s, extra()))), copia);
+  assert.equal(copia.cajas[1].sucio, true);
 });

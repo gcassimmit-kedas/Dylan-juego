@@ -13,6 +13,7 @@
 </head>
 <body>
   <canvas id="scene" aria-label="Vista de la tienda"></canvas>
+  <div id="fade" aria-hidden="true"></div>
 
   <div id="loading" aria-live="polite">
     <span class="load-ic" data-icon="store"></span>
@@ -36,6 +37,10 @@
         <span class="m-ic" data-icon="clock"></span>
         <div class="track"><div class="fill" id="clockFill"></div></div>
         <span class="val" id="clockVal">08:00</span>
+      </div>
+      <div class="needs">
+        <div class="need" id="needE" role="meter" aria-label="Energía" aria-valuemin="0" aria-valuemax="100" title="Energía: duerme en casa para recuperarla"><span data-icon="zap"></span><div class="track"><div class="fill"></div></div></div>
+        <div class="need" id="needL" role="meter" aria-label="Limpieza" aria-valuemin="0" aria-valuemax="100" title="Limpieza: báñate en casa"><span data-icon="droplets"></span><div class="track"><div class="fill"></div></div></div>
       </div>
     </div>
     <div class="center">
@@ -140,7 +145,7 @@
     <div class="panel pc-panel" role="dialog" aria-modal="true">
       <header class="pc-head">
         <div>
-          <p class="kicker"><span data-icon="truck"></span> Proveedor</p>
+          <p class="kicker" id="pcKicker"><span data-icon="truck"></span> Proveedor</p>
           <h2 id="pcTitle">Pedidos</h2>
         </div>
         <div class="wallet" aria-label="Dinero disponible"><span data-icon="coins"></span><span id="pcMoney">0</span></div>
@@ -203,6 +208,7 @@
       </dl>
       <p class="help" id="sumTip"></p>
       <button id="nextBtn" class="primary big"><span data-icon="chevronRight"></span>Siguiente día</button>
+      <button id="homeBtn" class="ghost"><span data-icon="bed"></span>Ir a casa a dormir</button>
     </div>
   </section>
 

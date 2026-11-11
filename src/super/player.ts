@@ -16,12 +16,17 @@ export interface PlayerDeps {
   camera: THREE.PerspectiveCamera;
   /** ¿Puede moverse ahora? (no en pausa, ni con una ventana abierta, ni en la caja) */
   canAct: () => boolean;
+  /** Colisiones (por defecto, solo la tienda). */
+  walkable?: (p: { x: number; z: number }) => boolean;
   /** Toque o clic para interactuar: en el punto tocado, o en el centro si es con el ratón fijado. */
   onInteract: (clientX: number | null, clientY: number | null) => void;
 }
 
 export class Player {
   enabled = false;
+  /** 1 normal; menos si el jugador está muy cansado. */
+  speedFactor = 1;
+  private can(p: { x: number; z: number }) { return (this.d.walkable ?? walkable)(p); }
   pos = new THREE.Vector2(0.5, 4.2);
   yaw = 0;
   pitch = -0.12;
@@ -61,6 +66,8 @@ export class Player {
   }
 
   get locked() { return document.pointerLockElement === this.d.canvas; }
+  /** ¿Va corriendo ahora? (cansa más) */
+  running = false;
 
   toggleLock() {
     if (this.locked) { document.exitPointerLock(); return; }
@@ -83,11 +90,11 @@ export class Player {
     this.pitch = THREE.MathUtils.clamp(Math.asin(THREE.MathUtils.clamp(dir.y, -1, 1)), -1.2, 1.2);
     this.pitch = Math.max(this.pitch, -0.6);
     const p = new THREE.Vector2(cam.position.x, cam.position.z);
-    if (walkable({ x: p.x, z: p.y })) this.pos.copy(p);
+    if (this.can({ x: p.x, z: p.y })) this.pos.copy(p);
   }
 
   /** Coloca al jugador; si el sitio cae encima de un mueble, en el hueco libre más cercano. */
-  place(x: number, z: number, yaw: number) { const p = puntoLibre({ x, z }); this.pos.set(p.x, p.z); this.yaw = yaw; this.pitch = -0.12; }
+  place(x: number, z: number, yaw: number) { const p = puntoLibre({ x, z }, (q) => this.can(q)); this.pos.set(p.x, p.z); this.yaw = yaw; this.pitch = -0.12; }
 
   // ---------- Puntero ----------
 
@@ -178,14 +185,15 @@ export class Player {
       }
     } else this.release();
     const len = Math.hypot(fx, fz);
+    this.running = run && len > 0.05;
     if (len > 1) { fx /= len; fz /= len; }
-    const speed = (run ? RUN : WALK) * dt;
+    const speed = (run && this.speedFactor >= 1 ? RUN : WALK) * this.speedFactor * dt;
     // Adelante es -z cuando yaw = 0
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     const mx = (fx * cos - fz * sin) * speed, mz = (-fx * sin - fz * cos) * speed;
     // Se intenta en x y en z por separado: así se resbala a lo largo de muebles y paredes.
-    if (mx && walkable({ x: this.pos.x + mx, z: this.pos.y })) this.pos.x += mx;
-    if (mz && walkable({ x: this.pos.x, z: this.pos.y + mz })) this.pos.y += mz;
+    if (mx && this.can({ x: this.pos.x + mx, z: this.pos.y })) this.pos.x += mx;
+    if (mz && this.can({ x: this.pos.x, z: this.pos.y + mz })) this.pos.y += mz;
     const moving = len > 0.05;
     if (moving && !reducedMotion) this.bob += dt * (run ? 13 : 9); else this.bob *= 0.9;
     const cam = this.d.camera;
