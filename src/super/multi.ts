@@ -55,6 +55,15 @@ export function listServers(peers: readonly LobbyPeer[]): ServerInfo[] {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Aspecto del jugador: [skin, tono de piel]. Lo que llega del otro se ajusta a los que existen. */
+export type Skin = [number, number];
+export const SKIN_COUNT = 6, TONO_COUNT = 5;
+export function readSkin(v: unknown): Skin {
+  if (!Array.isArray(v)) return [0, 0];
+  const n = (x: unknown, max: number) => (typeof x === 'number' && Number.isInteger(x) && x >= 0 && x < max ? x : 0);
+  return [n(v[0], SKIN_COUNT), n(v[1], TONO_COUNT)];
+}
+
 /** Posición del jugador para que el otro lo vea: [x, z, yaw, en la caja (0/1)]. */
 export type Pos = [number, number, number, number];
 const readPos = (v: unknown): Pos | null => {
@@ -108,6 +117,9 @@ export class Session {
   pausa = 0;
   partnerPos: Pos | null = null;
   myPos: Pos = [0, 0, 0, 0];
+  /** Aspecto propio (lo ve el otro) y el del otro. */
+  mySkin: Skin = [0, 0];
+  partnerSkin: Skin = [0, 0];
 
   private constructor(role: 'host' | 'guest', room: RoomApi, sala: NamedRoom, nombre: string, hooks: SessionHooks, state: () => GameState) {
     this.role = role; this.me = role === 'host' ? 0 : 1;
@@ -175,6 +187,7 @@ export class Session {
       const g = guests.find((p) => p.peer === this.guest);
       if (g) {
         this.partnerPos = readPos(g.presence.pos);
+        this.partnerSkin = readSkin(g.presence.skin);
         // Acciones nuevas del invitado (cada una una sola vez, en orden).
         const acts = Array.isArray(g.presence.acts) ? g.presence.acts.slice(0, 20) : [];
         for (const raw of acts) {
@@ -191,6 +204,7 @@ export class Session {
       if (!host) { if (performance.now() - this.hostSeenAt > 4000) this.end('host-gone'); return; }
       this.hostSeenAt = performance.now();
       this.partnerPos = readPos(host.presence.pos);
+      this.partnerSkin = readSkin(host.presence.skin);
       const snap = host.presence.snap as Record<string, unknown> | undefined;
       if (!snap) return;
       const me = this.myPeer();
@@ -244,13 +258,13 @@ export class Session {
     if (this.role === 'host') {
       const snap = encodeSnap(this.state(), { ack: this.ack, res: this.results, ev: this.events as SnapExtra['ev'], g: this.guest, pausa: this.pausa });
       if (this.kicked) (snap as Record<string, unknown>).kick = this.kicked;
-      void this.sala.presence({ rol: 'host', pos: this.myPos, snap }).catch(() => {});
+      void this.sala.presence({ rol: 'host', pos: this.myPos, skin: this.mySkin, snap }).catch(() => {});
       if (now - this.lastLobby > 2000) {
         this.lastLobby = now;
         void this.room.presence({ host: { sala: this.sala.name, nombre: this.nombre, dia: this.state().dia, n: this.guest ? 2 : 1 } }).catch(() => {});
       }
     } else {
-      void this.sala.presence({ pos: this.myPos, acts: this.pending, pausa: localPause }).catch(() => {});
+      void this.sala.presence({ pos: this.myPos, skin: this.mySkin, acts: this.pending, pausa: localPause }).catch(() => {});
     }
   }
 

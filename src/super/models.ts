@@ -690,13 +690,45 @@ const shoeGeo = new RoundedBoxGeometry(0.12, 0.07, 0.22, 2, 0.03);
 const matCache = new Map<number, THREE.MeshStandardMaterial>();
 const colorMat = (c: number, rough = 0.7) => { let m = matCache.get(c); if (!m) { m = std({ color: c, roughness: rough }); matCache.set(c, m); } return m; };
 
+/** Aspectos (skins) que puede elegir cada jugador. El otro jugador lo ve así. */
+export interface Outfit {
+  nombre: string;
+  shirt: number; pants: number; hair: number; shoes?: number;
+  apron?: number;
+  hat?: 'gorra' | 'chef' | 'cinta';
+  hatColor?: number;
+  glasses?: boolean;
+  tie?: number;
+}
+export const SKINS: Outfit[] = [
+  { nombre: 'Encargado', shirt: 0x2f6b3a, pants: 0x23281e, hair: 0x2b1d14, apron: 0xffc83d },
+  { nombre: 'Cajero', shirt: 0xc8202a, pants: 0x1f1f22, hair: 0x1a1a1a, hat: 'gorra', hatColor: 0xc8202a },
+  { nombre: 'Chef', shirt: 0xf4f4f0, pants: 0x2b2b2e, hair: 0x4a2f1c, hat: 'chef', hatColor: 0xffffff, apron: 0xdcdcd4 },
+  { nombre: 'Deportista', shirt: 0xff7a1a, pants: 0x2a3a6e, hair: 0x8a5a2b, hat: 'cinta', hatColor: 0xffffff, shoes: 0xf2f2f2 },
+  { nombre: 'Repartidor', shirt: 0x2a6fd8, pants: 0x3a3d40, hair: 0x1a1a1a, hat: 'gorra', hatColor: 0xffc83d, glasses: true },
+  { nombre: 'Agente', shirt: 0x1d1f24, pants: 0x1d1f24, hair: 0x9a9a9a, glasses: true, tie: 0xc8202a },
+];
+/** Tonos de piel para elegir. */
+export const TONOS = [0xf1c7a5, 0xe0ac86, 0xc68a5e, 0x9b6440, 0x6e4529];
+
 /** Persona de estilo limpio y redondeado. `look` decide la ropa; `uniform` viste al cajero. */
 export function person(look: number, uniform = false): Person {
   const pick = <T,>(a: T[], k: number) => a[Math.floor(look / k) % a.length];
-  const skin = colorMat(pick(SKIN, 1), 0.6), hair = colorMat(pick(HAIR, 5)), shirt = colorMat(uniform ? 0x2f6b3a : pick(SHIRT, 31)), pants = colorMat(uniform ? 0x23281e : pick(PANTS, 7));
-  const shoes = colorMat(0x1d1d1f, 0.5);
+  if (uniform) return playerModel(0, Math.floor(look) % TONOS.length);
+  return buildPerson({ nombre: '', shirt: pick(SHIRT, 31), pants: pick(PANTS, 7), hair: pick(HAIR, 5) }, pick(SKIN, 1));
+}
+
+/** Modelo de un jugador con su aspecto y tono de piel (valores fuera de rango se ajustan). */
+export function playerModel(skin: number, tono: number): Person {
+  const o = SKINS[Math.min(SKINS.length - 1, Math.max(0, Math.floor(skin) || 0))];
+  return buildPerson(o, TONOS[Math.min(TONOS.length - 1, Math.max(0, Math.floor(tono) || 0))]);
+}
+
+function buildPerson(o: Outfit, skinColor: number): Person {
+  const skin = colorMat(skinColor, 0.6), hair = colorMat(o.hair), shirt = colorMat(o.shirt), pants = colorMat(o.pants);
+  const shoes = colorMat(o.shoes ?? 0x1d1d1f, 0.5);
   const g = new THREE.Group();
-  const mk = (geo: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); return o; };
+  const mk = (geo: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number) => { const ob = new THREE.Mesh(geo, m); ob.position.set(x, y, z); return ob; };
   const leg = (x: number) => {
     const pivot = new THREE.Group(); pivot.position.set(x, 0.86, 0);
     pivot.add(mk(limbGeo, pants, 0, -0.43, 0));
@@ -711,13 +743,31 @@ export function person(look: number, uniform = false): Person {
   };
   const legL = leg(-0.1), legR = leg(0.1);
   const torso = mk(torsoGeo, shirt, 0, 1.18, 0); torso.scale.set(1, 1, 0.72); g.add(torso);
-  if (uniform) {
-    const apron = mk(new THREE.BoxGeometry(0.3, 0.42, 0.02), colorMat(0xffc83d, 0.6), 0, 1.08, 0.14); g.add(apron);
+  if (o.apron !== undefined) g.add(mk(new THREE.BoxGeometry(0.3, 0.42, 0.02), colorMat(o.apron, 0.6), 0, 1.08, 0.14));
+  if (o.tie !== undefined) {
+    g.add(mk(new THREE.BoxGeometry(0.16, 0.05, 0.02), colorMat(0xf2f2ee, 0.5), 0, 1.42, 0.125));
+    const tie = mk(new THREE.BoxGeometry(0.05, 0.28, 0.02), colorMat(o.tie, 0.5), 0, 1.26, 0.14); g.add(tie);
   }
   g.add(mk(new THREE.CylinderGeometry(0.06, 0.07, 0.08, 10), skin, 0, 1.52, 0));
-  const head = mk(headGeo, skin, 0, 1.68, 0); g.add(head);
-  const h = mk(hairGeo, hair, 0, 1.7, -0.01); h.rotation.x = -0.25; g.add(h);
+  g.add(mk(headGeo, skin, 0, 1.68, 0));
+  if (o.hat !== 'chef') { const h = mk(hairGeo, hair, 0, 1.7, -0.01); h.rotation.x = -0.25; g.add(h); }
   for (const ex of [-0.05, 0.05]) g.add(mk(new THREE.SphereGeometry(0.018, 8, 6), colorMat(0x1a1a1a, 0.3), ex, 1.7, 0.135));
+  const hatM = colorMat(o.hatColor ?? 0xffffff, 0.55);
+  if (o.hat === 'gorra') {
+    const cap = mk(hairGeo, hatM, 0, 1.72, 0); cap.scale.set(1.04, 0.85, 1.04); g.add(cap);
+    const brim = mk(new THREE.BoxGeometry(0.2, 0.015, 0.14), hatM, 0, 1.77, 0.17); brim.rotation.x = 0.12; g.add(brim);
+  } else if (o.hat === 'chef') {
+    g.add(mk(new THREE.CylinderGeometry(0.15, 0.14, 0.05, 18), hatM, 0, 1.8, 0));
+    g.add(mk(new THREE.CylinderGeometry(0.13, 0.15, 0.16, 18), hatM, 0, 1.9, 0));
+    const puff = mk(new THREE.SphereGeometry(0.17, 18, 12), hatM, 0, 2.0, 0); puff.scale.y = 0.6; g.add(puff);
+  } else if (o.hat === 'cinta') {
+    const band = mk(new THREE.TorusGeometry(0.152, 0.018, 8, 24), hatM, 0, 1.76, 0); band.rotation.x = Math.PI / 2; g.add(band);
+  }
+  if (o.glasses) {
+    const dark = colorMat(0x111111, 0.2);
+    for (const ex of [-0.055, 0.055]) g.add(mk(new THREE.BoxGeometry(0.075, 0.04, 0.02), dark, ex, 1.7, 0.145));
+    g.add(mk(new THREE.BoxGeometry(0.05, 0.012, 0.012), dark, 0, 1.71, 0.148));
+  }
   const armL = arm(-0.26), armR = arm(0.26);
   const b = basket(); b.scale.setScalar(0.85); b.position.set(0.3, 0.62, 0.12); b.rotation.y = Math.PI / 2;
   const basketItems = new THREE.Group(); b.add(basketItems);

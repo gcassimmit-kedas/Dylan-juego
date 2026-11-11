@@ -100,6 +100,7 @@
     <div class="menu">
       <button id="playBtn" class="primary big"><span data-icon="play"></span><span id="playLbl">Jugar</span></button>
       <button id="mpBtn" class="ghost" hidden><span data-icon="users"></span>Multijugador</button>
+      <button id="skinBtn" class="ghost"><span data-icon="userRound"></span>Aspecto</button>
       <button id="newBtn" class="ghost" hidden><span data-icon="rotateCcw"></span>Nueva partida</button>
       <button id="helpBtn" class="ghost"><span data-icon="circleHelp"></span>Cómo se juega</button>
     </div>
@@ -211,8 +212,24 @@
       <p class="help">Elige un servidor. Si tu amigo entra en el mismo servidor desde otro dispositivo, jugaréis juntos: cada uno con su caja y su dinero, viendo las compras del otro. Tu amigo tiene que abrir esta misma página (compártela con el botón Compartir).</p>
       <h3 class="mp-sub">Servidores</h3>
       <ul id="mpList" class="mp-list"></ul>
+      <p class="mp-me">Tu aspecto: <b id="mpSkinName"></b><button id="mpSkinBtn" class="ghost">Cambiar</button></p>
       <p id="mpStatus" class="help" aria-live="polite"></p>
       <button class="ghost" data-close="mp">Cerrar</button>
+    </div>
+  </section>
+
+  <!-- Aspecto del jugador -->
+  <section id="skins" class="screen" hidden aria-labelledby="skTitle">
+    <div class="panel menu-panel skin-panel" role="dialog" aria-modal="true">
+      <p class="kicker"><span data-icon="userRound"></span>Tu personaje</p>
+      <h2 id="skTitle">Aspecto</h2>
+      <div class="skin-preview">
+        <img id="skPreview" alt="" width="160" height="200" />
+        <div><strong id="skName"></strong><p class="help">Así te ve tu compañero cuando jugáis juntos. El nombre lo pone el juego: Jugador 1 o Jugador 2.</p></div>
+      </div>
+      <div id="skGrid" class="skin-grid" role="radiogroup" aria-label="Ropa"></div>
+      <div id="skTones" class="skin-tones" role="radiogroup" aria-label="Tono de piel"></div>
+      <button class="primary" data-close="skins"><span data-icon="check"></span>Listo</button>
     </div>
   </section>
 

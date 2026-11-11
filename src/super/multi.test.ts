@@ -35,3 +35,13 @@ test('lo que anuncia otro jugador no puede inventar servidores ni datos raros', 
   assert.equal(s3.dia, 9999);
   assert.equal(l.find((s) => s.sala === 'servidor-4')!.n, 0);
 });
+
+test('el aspecto que manda el otro jugador solo puede ser uno de los que existen', async () => {
+  const { readSkin, SKIN_COUNT, TONO_COUNT } = await import('./multi.ts');
+  assert.deepEqual(readSkin([2, 3]), [2, 3]);
+  assert.deepEqual(readSkin([SKIN_COUNT, 0]), [0, 0], 'skin inexistente');
+  assert.deepEqual(readSkin([1, TONO_COUNT]), [1, 0], 'tono inexistente');
+  assert.deepEqual(readSkin([1.5, -1]), [0, 0]);
+  assert.deepEqual(readSkin('chef'), [0, 0]);
+  assert.deepEqual(readSkin(null), [0, 0]);
+});

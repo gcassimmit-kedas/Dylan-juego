@@ -170,7 +170,8 @@ o lleno); los que tienen a alguien esperando salen primero. Al entrar en un serv
 (lo que cobra en su caja y lo que gasta en el ordenador); el almacén y las estanterías son de los dos y cada
 uno ve las compras del otro. En el ordenador hay **mejoras de caja** (música relajante, bote de propinas) que
 se pueden comprar para la propia caja o regalar a la del otro. La pausa es compartida y el anfitrión puede
-sacar al invitado. Jugando solo, la caja 2 está cerrada.
+sacar al invitado. Cada jugador elige su **aspecto** (botón "Aspecto": 6 ropas y 5 tonos de piel, guardado en el
+dispositivo) y el otro le ve con él; los nombres los pone el juego (Jugador 1 y Jugador 2) y no se pueden cambiar. Jugando solo, la caja 2 está cerrada.
 Cómo funciona: el anfitrión simula la tienda y publica en su "presencia" una foto compacta del estado
 (`src/super/sync.ts`, menos de 4 KiB); el invitado la dibuja y manda sus acciones por su presencia, y el anfitrión
 las valida (`aplicarAccion`). Nadie escribe nada: no hay nombres ni chat. En la app (iOS/Android) no existe

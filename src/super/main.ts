@@ -13,7 +13,7 @@ import * as M from './models.ts';
 import * as T from './textures.ts';
 import { Till, tillScreenPoints } from './checkout.ts';
 import { Player } from './player.ts';
-import { Session, getRoom, listServers, SERVERS, type ServerInfo, type EndReason } from './multi.ts';
+import { Session, getRoom, listServers, readSkin, SERVERS, type ServerInfo, type EndReason, type Skin } from './multi.ts';
 import { aplicarAccion, type Accion } from './sync.ts';
 import { sfx, unlock, isMuted, setMuted } from './audio.ts';
 import { icon, hydrateIcons } from '../ui/icons.ts';
@@ -43,6 +43,9 @@ let session: Session | null = null;
 /** Qué jugador soy: 0 (anfitrión o solo, caja 1) o 1 (invitado, caja 2). */
 let ME: 0 | 1 = 0;
 const isGuest = () => session?.role === 'guest';
+/** Aspecto elegido (solo en este dispositivo): [ropa, tono de piel]. */
+const SKIN_KEY = 'super.aspecto';
+let mySkin: Skin = (() => { try { return readSkin(JSON.parse(localStorage.getItem(SKIN_KEY) ?? 'null')); } catch { return [0, 0] as Skin; } })();
 const yo = (): Jugador => state.jugadores[ME];
 const escanearSim = (p: ProductId, k: number) => escanear(state, p, k);
 const darCambioSim = (v: number, k: number) => darCambio(state, v, k);
@@ -236,7 +239,7 @@ function buildWorld() {
   store.hit.userData.action = 'almacen';
   scene.add(store.group); hitTargets.push(store.hit);
   const baskets = M.basketStack(); baskets.position.set(7.6, 0, 6.6); scene.add(baskets);
-  cashier = M.person(424242, true);
+  cashier = M.playerModel(mySkin[0], mySkin[1]);
   cashier.group.position.set(LAYOUT.cashier.x, 0, LAYOUT.cashier.z);
   cashier.group.rotation.y = Math.PI;
   scene.add(cashier.group);
@@ -263,7 +266,7 @@ function buildWorld() {
   partner.group.visible = false;
   scene.add(partner.group);
   partnerLabel = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture('Compañero'), transparent: true }));
-  partnerLabel.scale.set(0.9, 0.22, 1); partnerLabel.position.y = 2.05;
+  partnerLabel.scale.set(0.9, 0.22, 1); partnerLabel.position.y = 2.3; // por encima de gorros y sombreros
   partner.group.add(partnerLabel);
 }
 
@@ -627,7 +630,7 @@ $('shAll').addEventListener('click', () => {
 
 // ---------- Ventanas ----------
 let openModal: HTMLElement | null = null, opener: HTMLElement | null = null;
-function open(id: 'pc' | 'shelves' | 'help' | 'confirm' | 'mp') {
+function open(id: 'pc' | 'shelves' | 'help' | 'confirm' | 'mp' | 'skins') {
   if (openModal) close();
   player?.unlock(); player?.release();
   const el = $(id);
@@ -645,7 +648,7 @@ function close() {
   opener?.focus?.();
 }
 document.querySelectorAll<HTMLElement>('[data-close]').forEach((b) => b.addEventListener('click', close));
-for (const id of ['pc', 'shelves', 'help', 'confirm', 'mp']) $(id).addEventListener('pointerdown', (e) => { if (e.target === e.currentTarget) close(); });
+for (const id of ['pc', 'shelves', 'help', 'confirm', 'mp', 'skins']) $(id).addEventListener('pointerdown', (e) => { if (e.target === e.currentTarget) close(); });
 pcBtn.addEventListener('click', () => open('pc'));
 shelvesBtn.addEventListener('click', () => open('shelves'));
 
@@ -744,6 +747,7 @@ const sessionHooks = {
 
 function startSession(s: Session) {
   session = s;
+  s.mySkin = mySkin;
   ME = s.me;
   till = tills[ME];
   partnerLabel.material.map?.dispose();
@@ -772,7 +776,23 @@ function endSession() {
 
 /** Avatar del otro jugador: camina donde está; si está cobrando, aparece detrás de su caja. */
 let partnerPhase = 0;
+let partnerKey = '';
+/** El avatar del otro se rehace con su aspecto cuando lo elige o lo cambia. */
+function ensurePartnerModel(skin: Skin) {
+  const key = skin.join();
+  if (key === partnerKey) return;
+  partnerKey = key;
+  const old = partner;
+  partner = M.playerModel(skin[0], skin[1]);
+  partner.group.position.copy(old.group.position);
+  partner.group.rotation.copy(old.group.rotation);
+  partner.group.visible = old.group.visible;
+  partner.group.add(partnerLabel);
+  scene.remove(old.group);
+  scene.add(partner.group);
+}
 function updatePartner(dt: number) {
+  if (session) ensurePartnerModel(session.partnerSkin);
   const p = session?.partnerPos ?? null;
   partner.group.visible = !!p && inStore;
   if (!p) return;
@@ -818,6 +838,7 @@ mpList.addEventListener('click', (e) => {
 const hasClaude = !!(window as unknown as { claude?: { use?: unknown } }).claude?.use;
 $('mpBtn').hidden = !hasClaude;
 async function openLobby() {
+  $('mpSkinName').textContent = M.SKINS[mySkin[0]].nombre;
   mpStatus.textContent = 'Conectando...';
   mpList.innerHTML = '';
   lobbyKey = '';
@@ -1396,6 +1417,66 @@ async function init() {
   $('playBtn').focus();
 }
 void init();
+
+// ---------- Aspecto (skin) ----------
+let skinRenderer: THREE.WebGLRenderer | null = null;
+const skinThumbs = new Map<string, string>();
+/** Foto del personaje con un aspecto (con el mismo modelo 3D que ve el otro jugador). */
+function skinThumb(skin: number, tono: number): string {
+  const key = `${skin},${tono}`;
+  const hit = skinThumbs.get(key);
+  if (hit) return hit;
+  if (!skinRenderer) {
+    skinRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    skinRenderer.setPixelRatio(1); skinRenderer.setSize(160, 200, false);
+    skinRenderer.toneMapping = THREE.ACESFilmicToneMapping; skinRenderer.outputColorSpace = THREE.SRGBColorSpace;
+  }
+  const sc = new THREE.Scene();
+  sc.add(new THREE.HemisphereLight(0xffffff, 0x555555, 1.6));
+  const l = new THREE.DirectionalLight(0xffffff, 2.2); l.position.set(1.5, 3, 3); sc.add(l);
+  const m = M.playerModel(skin, tono);
+  m.group.rotation.y = 0.35;
+  m.armL.rotation.z = -0.12; m.armR.rotation.z = 0.12;
+  sc.add(m.group);
+  const cam = new THREE.PerspectiveCamera(30, 160 / 200, 0.1, 10);
+  cam.position.set(0, 1.25, 4.1); cam.lookAt(0, 1.08, 0);
+  skinRenderer.render(sc, cam);
+  const url = skinRenderer.domElement.toDataURL('image/png');
+  skinThumbs.set(key, url);
+  return url;
+}
+function renderSkins() {
+  const [s, t] = mySkin;
+  ($('skPreview') as HTMLImageElement).src = skinThumb(s, t);
+  $('skName').textContent = M.SKINS[s].nombre;
+  $('skGrid').innerHTML = M.SKINS.map((o, i) => `<button class="skin-opt" role="radio" aria-checked="${i === s}" data-skin="${i}"><img alt="" src="${skinThumb(i, t)}" />${o.nombre}</button>`).join('');
+  $('skTones').innerHTML = M.TONOS.map((c, i) => `<button class="tone" role="radio" aria-checked="${i === t}" aria-label="Tono de piel ${i + 1}" data-tone="${i}" style="background:#${c.toString(16).padStart(6, '0')}"></button>`).join('');
+}
+function setSkin(next: Skin) {
+  mySkin = next;
+  try { localStorage.setItem(SKIN_KEY, JSON.stringify(next)); } catch { /* se usa solo en esta sesión */ }
+  if (session) session.mySkin = next;
+  // El empleado del menú lleva tu aspecto.
+  const old = cashier;
+  cashier = M.playerModel(next[0], next[1]);
+  cashier.group.position.copy(old.group.position);
+  cashier.group.rotation.copy(old.group.rotation);
+  cashier.group.visible = old.group.visible;
+  scene.remove(old.group);
+  scene.add(cashier.group);
+  renderSkins();
+}
+$('skGrid').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-skin]');
+  if (b) { sfx.click(); setSkin([Number(b.dataset.skin), mySkin[1]]); $('skGrid').querySelector<HTMLElement>(`[data-skin="${b.dataset.skin}"]`)?.focus(); }
+});
+$('skTones').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-tone]');
+  if (b) { sfx.click(); setSkin([mySkin[0], Number(b.dataset.tone)]); $('skTones').querySelector<HTMLElement>(`[data-tone="${b.dataset.tone}"]`)?.focus(); }
+});
+function openSkins() { renderSkins(); open('skins'); }
+$('skinBtn').addEventListener('click', openSkins);
+$('mpSkinBtn').addEventListener('click', openSkins);
 
 // Para pruebas automáticas en el navegador (no forma parte del juego).
 (window as unknown as { __super: () => GameState }).__super = () => state;
