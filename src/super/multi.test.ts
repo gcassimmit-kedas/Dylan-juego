@@ -39,6 +39,7 @@ test('lo que anuncia otro jugador no puede inventar servidores ni datos raros', 
 test('el aspecto que manda el otro jugador solo puede ser uno de los que existen', async () => {
   const { readSkin, SKIN_COUNT, TONO_COUNT } = await import('./multi.ts');
   assert.deepEqual(readSkin([2, 3]), [2, 3]);
+  assert.deepEqual(readSkin([23, 4]), [23, 4], 'el último de los 24');
   assert.deepEqual(readSkin([SKIN_COUNT, 0]), [0, 0], 'skin inexistente');
   assert.deepEqual(readSkin([1, TONO_COUNT]), [1, 0], 'tono inexistente');
   assert.deepEqual(readSkin([1.5, -1]), [0, 0]);

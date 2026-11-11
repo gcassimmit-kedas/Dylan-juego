@@ -709,10 +709,12 @@ export interface Outfit {
   nombre: string;
   shirt: number; pants: number; hair: number; shoes?: number;
   apron?: number;
-  hat?: 'gorra' | 'chef' | 'cinta';
+  hat?: 'gorra' | 'chef' | 'cinta' | 'casco' | 'corona' | 'vaquero' | 'boina' | 'bandana' | 'mago' | 'copa';
   hatColor?: number;
   glasses?: boolean;
   tie?: number;
+  /** Complementos: capa, mochila, barba, bigote, bufanda, chaleco (colores) y nariz de payaso. */
+  cape?: number; backpack?: number; beard?: number; mustache?: number; scarf?: number; vest?: number; nose?: boolean;
 }
 export const SKINS: Outfit[] = [
   { nombre: 'Encargado', shirt: 0x2f6b3a, pants: 0x23281e, hair: 0x2b1d14, apron: 0xffc83d },
@@ -721,6 +723,24 @@ export const SKINS: Outfit[] = [
   { nombre: 'Deportista', shirt: 0xff7a1a, pants: 0x2a3a6e, hair: 0x8a5a2b, hat: 'cinta', hatColor: 0xffffff, shoes: 0xf2f2f2 },
   { nombre: 'Repartidor', shirt: 0x2a6fd8, pants: 0x3a3d40, hair: 0x1a1a1a, hat: 'gorra', hatColor: 0xffc83d, glasses: true },
   { nombre: 'Agente', shirt: 0x1d1f24, pants: 0x1d1f24, hair: 0x9a9a9a, glasses: true, tie: 0xc8202a },
+  { nombre: 'Granjero', shirt: 0xb83a2e, pants: 0x2f4f8a, hair: 0x8a5a2b, hat: 'vaquero', hatColor: 0xd8b878 },
+  { nombre: 'Constructor', shirt: 0xff8a00, pants: 0x3a3d40, hair: 0x2b1d14, hat: 'casco', hatColor: 0xffd21a, vest: 0xd8ff3a },
+  { nombre: 'Rey', shirt: 0x6a2aa8, pants: 0x2b2b2e, hair: 0x4a2f1c, hat: 'corona', hatColor: 0xffc83d, cape: 0xc8202a, beard: 0x4a2f1c },
+  { nombre: 'Pirata', shirt: 0xe8e2d0, pants: 0x2b2b2e, hair: 0x1a1a1a, hat: 'bandana', hatColor: 0xc8202a, beard: 0x1a1a1a, vest: 0x2b2b2e },
+  { nombre: 'Vaquero', shirt: 0x8a5a2b, pants: 0x2f4f8a, hair: 0x2b1d14, hat: 'vaquero', hatColor: 0x6b4a22, scarf: 0xc8202a, mustache: 0x2b1d14 },
+  { nombre: 'Mago', shirt: 0x2a2a7a, pants: 0x2a2a7a, hair: 0xd8d8d8, hat: 'mago', hatColor: 0x3a3ab0, beard: 0xe8e8e8, cape: 0x3a3ab0 },
+  { nombre: 'Detective', shirt: 0xc8b48a, pants: 0x5a4a3a, hair: 0x4a2f1c, hat: 'boina', hatColor: 0x7a5a3a, mustache: 0x4a2f1c, scarf: 0x7a5a3a },
+  { nombre: 'Astronauta', shirt: 0xf2f2ee, pants: 0xf2f2ee, hair: 0x1a1a1a, hat: 'casco', hatColor: 0xf2f2ee, backpack: 0xb8bcc0, shoes: 0x9a9a9a },
+  { nombre: 'Superhéroe', shirt: 0x2a5ad8, pants: 0xc8202a, hair: 0x1a1a1a, cape: 0xc8202a, glasses: true, shoes: 0xc8202a },
+  { nombre: 'Explorador', shirt: 0xa89a6a, pants: 0x6a5a3a, hair: 0x8a5a2b, hat: 'vaquero', hatColor: 0xb8a87a, backpack: 0x3f6b35 },
+  { nombre: 'Doctora', shirt: 0x3aa58a, pants: 0x3aa58a, hair: 0x2b1d14, apron: 0xf4f4f0, glasses: true },
+  { nombre: 'Policía', shirt: 0x1f3a6e, pants: 0x1f2a44, hair: 0x1a1a1a, hat: 'gorra', hatColor: 0x1f2a44, tie: 0x111111, glasses: true },
+  { nombre: 'Bombero', shirt: 0xc8202a, pants: 0x2b2b2e, hair: 0x4a2f1c, hat: 'casco', hatColor: 0xc8202a, vest: 0xffd21a },
+  { nombre: 'Payaso', shirt: 0xffd21a, pants: 0x8a3ab0, hair: 0xff7a1a, hat: 'copa', hatColor: 0x2aa55a, nose: true, scarf: 0x2a5ad8, shoes: 0xc8202a },
+  { nombre: 'Rockero', shirt: 0x1a1a1a, pants: 0x2b2b2e, hair: 0x1a1a1a, glasses: true, vest: 0x5a3a2a, scarf: 0xc8202a },
+  { nombre: 'Abuelo', shirt: 0x8a8f86, pants: 0x6b5a45, hair: 0xe8e8e8, hat: 'boina', hatColor: 0x5a5f66, glasses: true, mustache: 0xe8e8e8 },
+  { nombre: 'Turista', shirt: 0x2aa5a5, pants: 0xd8c8a0, hair: 0xd8b26a, hat: 'gorra', hatColor: 0xf2f2ee, glasses: true, backpack: 0xff8a00 },
+  { nombre: 'Pelotero', shirt: 0xf2f2ee, pants: 0xf2f2ee, hair: 0x1a1a1a, hat: 'gorra', hatColor: 0x1f3a8a, tie: 0x1f3a8a, shoes: 0x1f3a8a },
 ];
 /** Tonos de piel para elegir. */
 export const TONOS = [0xf1c7a5, 0xe0ac86, 0xc68a5e, 0x9b6440, 0x6e4529];
@@ -777,6 +797,35 @@ function buildPerson(o: Outfit, skinColor: number): Person {
   } else if (o.hat === 'cinta') {
     const band = mk(new THREE.TorusGeometry(0.152, 0.018, 8, 24), hatM, 0, 1.76, 0); band.rotation.x = Math.PI / 2; g.add(band);
   }
+  else if (o.hat === 'casco') {
+    const helmet = mk(new THREE.SphereGeometry(0.175, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), hatM, 0, 1.72, 0); g.add(helmet);
+    const rim = mk(new THREE.TorusGeometry(0.175, 0.015, 8, 24), hatM, 0, 1.72, 0); rim.rotation.x = Math.PI / 2; g.add(rim);
+  } else if (o.hat === 'corona') {
+    g.add(mk(new THREE.CylinderGeometry(0.13, 0.13, 0.07, 18, 1, true), colorMat(o.hatColor ?? 0xffc83d, 0.3), 0, 1.86, 0));
+    for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; g.add(mk(new THREE.ConeGeometry(0.025, 0.07, 6), colorMat(o.hatColor ?? 0xffc83d, 0.3), Math.sin(a) * 0.12, 1.93, Math.cos(a) * 0.12)); }
+    g.add(mk(new THREE.SphereGeometry(0.02, 8, 6), colorMat(0xc8202a, 0.2), 0, 1.86, 0.13));
+  } else if (o.hat === 'vaquero') {
+    g.add(mk(new THREE.CylinderGeometry(0.3, 0.3, 0.015, 24), hatM, 0, 1.79, 0));
+    g.add(mk(new THREE.CylinderGeometry(0.12, 0.14, 0.13, 18), hatM, 0, 1.86, 0));
+  } else if (o.hat === 'boina') {
+    const b = mk(new THREE.SphereGeometry(0.17, 18, 10), hatM, 0.02, 1.8, 0); b.scale.set(1.05, 0.35, 1.05); g.add(b);
+  } else if (o.hat === 'bandana') {
+    const ban = mk(hairGeo, hatM, 0, 1.71, -0.005); ban.scale.set(1.03, 0.9, 1.03); g.add(ban);
+    g.add(mk(new THREE.SphereGeometry(0.03, 8, 6), hatM, 0, 1.72, -0.17));
+  } else if (o.hat === 'mago') {
+    g.add(mk(new THREE.CylinderGeometry(0.2, 0.2, 0.012, 24), hatM, 0, 1.79, 0));
+    g.add(mk(new THREE.ConeGeometry(0.14, 0.38, 18), hatM, 0, 1.99, 0));
+  } else if (o.hat === 'copa') {
+    g.add(mk(new THREE.CylinderGeometry(0.22, 0.22, 0.012, 24), hatM, 0, 1.79, 0));
+    g.add(mk(new THREE.CylinderGeometry(0.12, 0.12, 0.2, 18), hatM, 0, 1.9, 0));
+  }
+  if (o.beard !== undefined) { const be = mk(new THREE.SphereGeometry(0.1, 14, 10), colorMat(o.beard, 0.8), 0, 1.6, 0.07); be.scale.set(1, 0.9, 0.8); g.add(be); }
+  if (o.mustache !== undefined) g.add(mk(new THREE.BoxGeometry(0.1, 0.022, 0.02), colorMat(o.mustache, 0.8), 0, 1.645, 0.145));
+  if (o.nose) g.add(mk(new THREE.SphereGeometry(0.03, 10, 8), colorMat(0xe0202a, 0.3), 0, 1.67, 0.155));
+  if (o.scarf !== undefined) { const sc = mk(new THREE.TorusGeometry(0.085, 0.03, 8, 18), colorMat(o.scarf, 0.8), 0, 1.5, 0); sc.rotation.x = Math.PI / 2; g.add(sc); }
+  if (o.vest !== undefined) for (const x of [-0.1, 0.1]) g.add(mk(new THREE.BoxGeometry(0.13, 0.4, 0.02), colorMat(o.vest, 0.6), x, 1.18, 0.135));
+  if (o.cape !== undefined) { const ca = mk(new THREE.BoxGeometry(0.44, 0.9, 0.02), colorMat(o.cape, 0.7), 0, 1.0, -0.17); ca.rotation.x = 0.08; g.add(ca); }
+  if (o.backpack !== undefined) g.add(mk(new RoundedBoxGeometry(0.3, 0.38, 0.14, 2, 0.04), colorMat(o.backpack, 0.7), 0, 1.2, -0.19));
   if (o.glasses) {
     const dark = colorMat(0x111111, 0.2);
     for (const ex of [-0.055, 0.055]) g.add(mk(new THREE.BoxGeometry(0.075, 0.04, 0.02), dark, ex, 1.7, 0.145));

@@ -236,7 +236,7 @@ body.fp #actions { justify-content: center; }
 .skin-preview img { width: 96px; height: 120px; flex: none; background: radial-gradient(circle at 50% 40%, #3a4530, #1a2114); }
 .skin-preview strong { font-family: var(--display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 1.3rem; color: var(--accent); }
 .skin-preview .help { margin-top: 4px; }
-.skin-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.skin-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; max-height: 42vh; overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
 .skin-opt { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 2px 6px; background: rgba(0, 0, 0, 0.24); border: 1px solid var(--line); color: var(--text); cursor: pointer;
   font-family: var(--display); font-weight: 600; font-size: 0.7rem; letter-spacing: 0.04em; text-transform: uppercase; }
 .skin-opt img { width: 100%; max-width: 64px; aspect-ratio: 4 / 5; height: auto; }
@@ -247,7 +247,7 @@ body.fp #actions { justify-content: center; }
 .mp-me { margin: 0; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 0.88rem; }
 .mp-me b { color: var(--text); font-family: var(--display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; flex: 1; }
 .mp-me .ghost { padding: 6px 12px; font-size: 0.8rem; }
-@media (max-width: 600px) { .skin-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 600px) { .skin-grid { grid-template-columns: repeat(4, 1fr); } }
 
 /* ---------- Modo caja ---------- */
 #till { position: fixed; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; justify-content: center;

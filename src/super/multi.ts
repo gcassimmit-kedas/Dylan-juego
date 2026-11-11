@@ -60,7 +60,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Aspecto del jugador: [skin, tono de piel]. Lo que llega del otro se ajusta a los que existen. */
 export type Skin = [number, number];
-export const SKIN_COUNT = 6, TONO_COUNT = 5;
+export const SKIN_COUNT = 24, TONO_COUNT = 5;
 export function readSkin(v: unknown): Skin {
   if (!Array.isArray(v)) return [0, 0];
   const n = (x: unknown, max: number) => (typeof x === 'number' && Number.isInteger(x) && x >= 0 && x < max ? x : 0);
