@@ -36,13 +36,16 @@ export const SERVERS = Array.from({ length: 6 }, (_, i) => ({ sala: `servidor-${
 
 export interface ServerInfo { sala: string; nombre: string; /** Jugadores dentro: 0, 1 o 2. */ n: 0 | 1 | 2; /** Día de la partida, si hay alguien. */ dia: number | null }
 
-interface LobbyPeer { isMe: boolean; presence: Readonly<Record<string, unknown>> }
+// Ojo: `isMe` es verdadero para TODAS las pestañas y dispositivos de la misma cuenta; el que es
+// exactamente esta pestaña es `sameTab`. Para jugar con otro dispositivo de la misma cuenta, solo
+// se ignora `sameTab`.
+interface LobbyPeer { sameTab: boolean; presence: Readonly<Record<string, unknown>> }
 
 /** Estado de cada servidor según lo que anuncian sus anfitriones en el vestíbulo. */
 export function listServers(peers: readonly LobbyPeer[]): ServerInfo[] {
   const out: ServerInfo[] = SERVERS.map((s) => ({ ...s, n: 0, dia: null }));
   for (const p of peers) {
-    if (p.isMe) continue;
+    if (p.sameTab) continue;
     const h = p.presence.host as Record<string, unknown> | undefined;
     if (!h || typeof h.sala !== 'string') continue;
     const s = out.find((x) => x.sala === h.sala);
@@ -140,7 +143,7 @@ export class Session {
     const t0 = performance.now();
     let host = false;
     while (performance.now() - t0 < 1500) {
-      host = sala.peers().some((p) => !p.isMe && p.presence.rol === 'host');
+      host = sala.peers().some((p) => !p.sameTab && p.presence.rol === 'host');
       if (host) break;
       await sleep(150);
     }
@@ -175,9 +178,9 @@ export class Session {
     if (this.role === 'host') {
       // Dos anfitriones a la vez en el mismo servidor: se queda el de etiqueta menor; el otro vuelve a entrar.
       const me = this.myPeer();
-      if (me && peers.some((p) => !p.isMe && p.presence.rol === 'host' && p.peer < me)) { this.end('retry'); return; }
+      if (me && peers.some((p) => !p.sameTab && p.presence.rol === 'host' && p.peer < me)) { this.end('retry'); return; }
       // Admite al primer invitado que llegue (el más antiguo) y a nadie más.
-      const guests = peers.filter((p) => !p.isMe && p.presence.rol === 'guest' && !this.blocked.has(p.peer));
+      const guests = peers.filter((p) => !p.sameTab && p.presence.rol === 'guest' && !this.blocked.has(p.peer));
       if (this.guest && !guests.some((p) => p.peer === this.guest)) { this.guest = null; this.ack = 0; this.hooks.onPartner(false); }
       if (!this.guest && guests.length) {
         guests.sort((a, b) => Number(a.presence.t ?? 0) - Number(b.presence.t ?? 0));
@@ -200,7 +203,7 @@ export class Session {
         }
       } else this.partnerPos = null;
     } else {
-      const host = peers.find((p) => !p.isMe && p.presence.rol === 'host');
+      const host = peers.find((p) => !p.sameTab && p.presence.rol === 'host');
       if (!host) { if (performance.now() - this.hostSeenAt > 4000) this.end('host-gone'); return; }
       this.hostSeenAt = performance.now();
       this.partnerPos = readPos(host.presence.pos);

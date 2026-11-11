@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { listServers, SERVERS } from './multi.ts';
 
-const peer = (presence: Record<string, unknown>, isMe = false) => ({ isMe, presence });
+const peer = (presence: Record<string, unknown>, sameTab = false) => ({ sameTab, presence });
 
 test('la lista de servidores siempre tiene los mismos servidores, aunque no haya nadie', () => {
   const l = listServers([]);
@@ -44,4 +44,10 @@ test('el aspecto que manda el otro jugador solo puede ser uno de los que existen
   assert.deepEqual(readSkin([1.5, -1]), [0, 0]);
   assert.deepEqual(readSkin('chef'), [0, 0]);
   assert.deepEqual(readSkin(null), [0, 0]);
+});
+
+test('un servidor abierto desde otro dispositivo de la misma cuenta también sale en la lista', () => {
+  // La plataforma marca isMe en todas las pestañas de la misma cuenta; solo esta pestaña es sameTab.
+  const l = listServers([{ isMe: true, sameTab: false, presence: { host: { sala: 'servidor-1', dia: 1, n: 1 } } }]);
+  assert.equal(l.find((s) => s.sala === 'servidor-1')!.n, 1);
 });
