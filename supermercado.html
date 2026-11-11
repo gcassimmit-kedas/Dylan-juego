@@ -102,6 +102,7 @@
       <button id="playBtn" class="primary big"><span data-icon="play"></span><span id="playLbl">Jugar</span></button>
       <button id="mpBtn" class="ghost" hidden><span data-icon="users"></span>Multijugador</button>
       <button id="skinBtn" class="ghost"><span data-icon="userRound"></span>Aspecto</button>
+      <button id="transferBtn" class="ghost"><span data-icon="copy"></span>Pasar partida</button>
       <button id="newBtn" class="ghost" hidden><span data-icon="rotateCcw"></span>Nueva partida</button>
       <button id="helpBtn" class="ghost"><span data-icon="circleHelp"></span>Cómo se juega</button>
     </div>
@@ -231,6 +232,23 @@
       <div id="skGrid" class="skin-grid" role="radiogroup" aria-label="Ropa"></div>
       <div id="skTones" class="skin-tones" role="radiogroup" aria-label="Tono de piel"></div>
       <button class="primary" data-close="skins"><span data-icon="check"></span>Listo</button>
+    </div>
+  </section>
+
+  <!-- Pasar la partida a otra copia del juego -->
+  <section id="transfer" class="screen" hidden aria-labelledby="trTitle">
+    <div class="panel menu-panel tr-panel" role="dialog" aria-modal="true">
+      <p class="kicker"><span data-icon="copy"></span>Llévate tu partida</p>
+      <h2 id="trTitle">Pasar partida</h2>
+      <p class="help">Copia este código y pégalo en «Cargar partida» de otra copia del juego: otra versión, otro navegador u otro dispositivo. Lleva tu tienda, tu dinero y tu aspecto.</p>
+      <textarea id="trOut" readonly rows="3" aria-label="Tu código de partida" spellcheck="false"></textarea>
+      <button id="trCopy" class="primary"><span data-icon="copy"></span>Copiar código</button>
+      <h3 class="mp-sub">Cargar partida</h3>
+      <textarea id="trIn" rows="3" placeholder="Pega aquí un código de partida" aria-label="Código de partida para cargar" spellcheck="false" autocomplete="off"></textarea>
+      <p id="trMsg" class="help" aria-live="polite"></p>
+      <button id="trLoad" class="ghost"><span data-icon="logIn"></span>Cargar partida</button>
+      <button id="trYes" class="primary" hidden><span data-icon="check"></span>Sí, cambiar mi partida por esta</button>
+      <button class="ghost" data-close="transfer">Cerrar</button>
     </div>
   </section>
 

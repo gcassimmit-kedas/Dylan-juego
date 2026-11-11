@@ -159,7 +159,14 @@ al día, y si un cliente no las encuentra no se enfada.
 | Fresas (difícil de conseguir) | 6 | 1150 | 350 |
 | Uvas (difícil de conseguir) | 6 | 1150 | 350 |
 
-Versión de una sola página (todo dentro de un HTML, para publicarla sin servidor): `node scripts/artifact.mjs N`
+**Pasar partida:** el botón "Pasar partida" del menú da un código (`SUPER1-...`, `src/super/codigo.ts`) con la tienda,
+el dinero y el aspecto, para pegarlo en "Cargar partida" de otra copia del juego (otra página publicada, otro navegador
+u otro dispositivo). Cada página publicada guarda su partida por separado y ninguna puede leer la de otra: el código
+es la forma de llevársela. Lleva una huella para detectar códigos copiados a medias.
+
+Versión de una sola página (todo dentro de un HTML, para publicarla sin servidor): `node scripts/artifact.mjs` genera
+`dist-artifact/supermercado.html` (la página permanente, que se actualiza siempre en la misma dirección y conserva
+la partida) y `node scripts/artifact.mjs N`
 genera `dist-artifact/supermercado-vN.html` con el título "Supermercado versión N". Cada actualización se publica
 como una página nueva con el número siguiente, así las versiones anteriores siguen disponibles.
 

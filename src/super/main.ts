@@ -15,6 +15,7 @@ import { Till, tillScreenPoints } from './checkout.ts';
 import { Player } from './player.ts';
 import { Session, getRoom, listServers, readSkin, SERVERS, type ServerInfo, type EndReason, type Skin } from './multi.ts';
 import { aplicarAccion, type Accion } from './sync.ts';
+import { codigoPartida, leerCodigo } from './codigo.ts';
 import { sfx, unlock, isMuted, setMuted } from './audio.ts';
 import { icon, hydrateIcons } from '../ui/icons.ts';
 import '../ui/pwa.ts';
@@ -639,7 +640,7 @@ $('shAll').addEventListener('click', () => {
 
 // ---------- Ventanas ----------
 let openModal: HTMLElement | null = null, opener: HTMLElement | null = null;
-function open(id: 'pc' | 'shelves' | 'help' | 'confirm' | 'mp' | 'skins') {
+function open(id: 'pc' | 'shelves' | 'help' | 'confirm' | 'mp' | 'skins' | 'transfer') {
   if (openModal) close();
   player?.unlock(); player?.release();
   const el = $(id);
@@ -657,7 +658,7 @@ function close() {
   opener?.focus?.();
 }
 document.querySelectorAll<HTMLElement>('[data-close]').forEach((b) => b.addEventListener('click', close));
-for (const id of ['pc', 'shelves', 'help', 'confirm', 'mp', 'skins']) $(id).addEventListener('pointerdown', (e) => { if (e.target === e.currentTarget) close(); });
+for (const id of ['pc', 'shelves', 'help', 'confirm', 'mp', 'skins', 'transfer']) $(id).addEventListener('pointerdown', (e) => { if (e.target === e.currentTarget) close(); });
 pcBtn.addEventListener('click', () => open('pc'));
 shelvesBtn.addEventListener('click', () => open('shelves'));
 
@@ -1499,6 +1500,51 @@ $('skTones').addEventListener('click', (e) => {
 function openSkins() { renderSkins(); open('skins'); }
 $('skinBtn').addEventListener('click', openSkins);
 $('mpSkinBtn').addEventListener('click', openSkins);
+
+// ---------- Pasar partida (código para copiar y pegar en otra copia del juego) ----------
+const trOut = $<HTMLTextAreaElement>('trOut'), trIn = $<HTMLTextAreaElement>('trIn'), trMsg = $('trMsg'), trYes = $<HTMLButtonElement>('trYes');
+let trPending: ReturnType<typeof leerCodigo> | null = null;
+function trMessage(text: string, kind: '' | 'ok' | 'bad' = '') { trMsg.textContent = text; trMsg.className = 'help ' + kind; }
+$('transferBtn').addEventListener('click', () => {
+  // Desde el menú, `state` es tu propia partida guardada.
+  trOut.value = codigoPartida(state, mySkin);
+  trIn.value = '';
+  trYes.hidden = true; trPending = null;
+  trMessage('');
+  open('transfer');
+});
+$('trCopy').addEventListener('click', () => {
+  const ok = () => { sfx.click(); trMessage('Código copiado. Pégalo en «Cargar partida» de la otra copia del juego.', 'ok'); };
+  const manual = () => { trOut.focus(); trOut.select(); trMessage('Selecciona el código de arriba y cópialo.', ''); };
+  try { navigator.clipboard.writeText(trOut.value).then(ok, manual); } catch { manual(); }
+});
+$('trLoad').addEventListener('click', () => {
+  const r = leerCodigo(trIn.value);
+  trYes.hidden = true; trPending = null;
+  if (!r.ok) {
+    sfx.error();
+    trMessage(r.motivo === 'formato' ? 'Eso no es un código de partida: empieza por SUPER1-.' : r.motivo === 'incompleto' ? 'El código está incompleto o tiene algo cambiado. Cópialo otra vez entero.' : 'El código no tiene una partida válida.', 'bad');
+    return;
+  }
+  trPending = r;
+  trMessage(`Partida del día ${r.state.dia} con ${money(r.state.jugadores[0].dinero)}. Tu partida de ahora (día ${state.dia}) se cambiará por esta.`, '');
+  trYes.hidden = false;
+  trYes.focus();
+});
+trYes.addEventListener('click', () => {
+  if (!trPending || !trPending.ok || session) return;
+  state = trPending.state;
+  resetViews();
+  writeSave(exportar(state));
+  hasSave = true;
+  if (trPending.aspecto) setSkin(readSkin(trPending.aspecto));
+  trPending = null;
+  trYes.hidden = true;
+  sfx.buy();
+  renderTitle();
+  close();
+  toast(`Partida cargada: día ${state.dia}`, 'ok', 3000);
+});
 
 // Para pruebas automáticas en el navegador (no forma parte del juego).
 (window as unknown as { __super: () => GameState }).__super = () => state;

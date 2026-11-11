@@ -220,6 +220,15 @@ body.fp #actions { justify-content: center; }
 .prod .mj-ic { width: 64px; height: 64px; grid-row: span 2; display: grid; place-items: center; color: var(--accent); background: radial-gradient(circle at 50% 40%, #3a4530, #1a2114); }
 .prod .mj-ic .ic { width: 30px; height: 30px; }
 
+/* ---------- Pasar partida ---------- */
+.tr-panel { width: min(100%, 480px); text-align: left; }
+.tr-panel .kicker, .tr-panel h2 { align-self: center; }
+.tr-panel textarea { width: 100%; resize: none; font: 500 0.78rem/1.4 ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace; color: var(--text);
+  background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line-strong); padding: 8px 10px; word-break: break-all; user-select: text; -webkit-user-select: text; }
+.tr-panel textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+#trMsg.bad { color: var(--danger); }
+#trMsg.ok { color: var(--ok); }
+
 /* ---------- Aspecto ---------- */
 .skin-panel { width: min(100%, 520px); text-align: left; }
 .skin-panel .kicker, .skin-panel h2 { align-self: center; }
