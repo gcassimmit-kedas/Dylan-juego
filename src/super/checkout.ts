@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import {
-  clienteEnCaja, escanear, darCambio, importe, importeEscaneado, totalArticulos, CAMBIO, esMoneda,
+  clienteEnCaja, escanear, darCambio, cobrarTarjeta, importe, importeEscaneado, totalArticulos, CAMBIO, esMoneda,
   type GameState, type ProductId, type Customer,
 } from './sim.ts';
 import * as M from './models.ts';
@@ -24,6 +24,8 @@ const BELT_FRONT = -0.18;
 const TRAY = new THREE.Vector3(-0.32, TOP + 0.012, 0);
 const BILL_SPOT = new THREE.Vector3(-0.62, TOP + 0.004, 0.02);
 const BAG = new THREE.Vector3(0.64, TOP, -0.17);
+/** Donde el cliente deja la tarjeta: junto al datáfono. */
+const CARD_SPOT = new THREE.Vector3(0.4, TOP + 0.003, -0.25);
 /** Centro de cada hueco del cajón (uno por valor de CAMBIO). */
 const SLOT_W = 0.078;
 const slotX = (i: number) => -((CAMBIO.length - 1) * SLOT_W) / 2 + i * SLOT_W;
@@ -35,6 +37,8 @@ export interface TillDeps {
   controls: OrbitControls;
   canvas: HTMLCanvasElement;
   register: THREE.Group;
+  /** Pantalla del datáfono de esta caja. */
+  pinpadScreen?: THREE.CanvasTexture;
   scanner: THREE.Mesh;
   belt: THREE.Texture;
   cashier: THREE.Object3D;
@@ -52,6 +56,7 @@ export interface TillDeps {
   ops?: {
     escanear(p: ProductId): ReturnType<typeof escanear>;
     darCambio(v: number): ReturnType<typeof darCambio>;
+    tarjeta(): ReturnType<typeof darCambio>;
   };
 }
 
@@ -86,10 +91,15 @@ export class Till {
   private billMats = new Map<number, THREE.Material[]>();
   private bag: THREE.Group;
   private served = new Set<number>();
+  /** El cliente actual paga con tarjeta. */
+  pagoTarjeta = false;
+  private cardMat = std({ map: T.cardTexture(), roughness: 0.35 });
+  private cardEdge = std({ color: 0x13306a, roughness: 0.4 });
   private get ops() {
     return this.d.ops ?? {
       escanear: (p: ProductId) => escanear(this.d.state(), p, this.d.caja),
       darCambio: (v: number) => darCambio(this.d.state(), v, this.d.caja),
+      tarjeta: () => cobrarTarjeta(this.d.state(), this.d.caja),
     };
   }
 
@@ -269,6 +279,8 @@ export class Till {
     this.tweens = [];
     this.bag.visible = false;
     this.bag.position.copy(BAG);
+    this.pagoTarjeta = false;
+    if (this.d.pinpadScreen) T.drawPinpad(this.d.pinpadScreen, 'reposo', 0);
     this.customerId = 0;
     this.phase = 'espera';
   }
@@ -328,13 +340,34 @@ export class Till {
   // ---------- Pago ----------
 
   private startPayment(c: Customer) {
+    // Se llega aquí por dos caminos (el último escaneo y la foto del anfitrión): solo cuenta el primero.
+    if (this.phase === 'pago') return;
     this.phase = 'pago';
     for (const it of this.items) it.obj.removeFromParent();
     this.items = [];
+    if (c.tarjeta) {
+      // Paga con tarjeta: la acerca al datáfono, que muestra el importe. No se abre el cajón.
+      this.pagoTarjeta = true;
+      const card = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.003, 0.054), [this.cardEdge, this.cardEdge, this.cardMat, this.cardMat, this.cardEdge, this.cardEdge]);
+      card.castShadow = true;
+      card.position.set(CARD_SPOT.x, TOP + 0.5, -0.75);
+      card.rotation.y = 0.3;
+      card.userData.pago = true;
+      this.d.register.add(card);
+      this.bill = card;
+      this.tween(card, CARD_SPOT.clone(), 0.55, 0.15, 0.1);
+      if (this.d.pinpadScreen) T.drawPinpad(this.d.pinpadScreen, 'pagar', c.pago);
+      sfx.click();
+      this.refocus();
+      this.d.onChange();
+      return;
+    }
+    this.pagoTarjeta = false;
     // El cliente deja el billete en el mostrador y se abre el cajón.
     const bill = this.money(c.pago);
     bill.position.set(BILL_SPOT.x, TOP + 0.5, -0.75);
     bill.rotation.y = 0.15;
+    bill.userData.pago = true;
     this.d.register.add(bill);
     this.bill = bill;
     this.tween(bill, BILL_SPOT.clone(), 0.55, 0.15, 0.1);
@@ -374,12 +407,33 @@ export class Till {
 
   get isLeaving() { return this.leaving; }
 
+  /** Para pruebas: billetes o tarjetas de clientes que hay ahora sobre el mostrador. */
+  loosePayments(): number { return this.d.register.children.filter((o) => o.userData.pago).length; }
+
   frontItem(): THREE.Vector3 | null { const it = this.items.find((i) => i.state === 'cinta'); return it ? it.obj.position.clone() : null; }
 
   get changeTotal() { return this.change.reduce((t, c) => t + c.value, 0); }
 
+  /** Cobra con el datáfono a quien paga con tarjeta. */
+  payCard() {
+    if (this.phase !== 'pago' || !this.pagoTarjeta) return;
+    const c = clienteEnCaja(this.d.state(), this.d.caja);
+    if (!c) return;
+    const r = this.ops.tarjeta();
+    if (!r || !r.ok) { sfx.error(); this.d.toast('El datáfono no ha podido cobrar: inténtalo otra vez', 'bad'); return; }
+    sfx.approved();
+    if (this.d.pinpadScreen) {
+      const scr = this.d.pinpadScreen;
+      T.drawPinpad(scr, 'ok', 0);
+      setTimeout(() => T.drawPinpad(scr, 'reposo', 0), 1400);
+    }
+    if (this.bill) { const card = this.bill; this.tween(card, new THREE.Vector3(CARD_SPOT.x, TOP + 0.4, -0.9), 0.4, 0.12, 0.35, () => card.removeFromParent()); this.bill = null; }
+    this.finish(c.id);
+  }
+
   giveChange() {
     if (this.phase !== 'pago') return;
+    if (this.pagoTarjeta) { this.payCard(); return; }
     const s = this.d.state();
     const c = clienteEnCaja(s, this.d.caja);
     if (!c) return;
@@ -392,11 +446,16 @@ export class Till {
     for (const ch of this.change) this.tween(ch.obj, toCustomer.clone(), 0.4, 0.15, Math.random() * 0.1, () => ch.obj.removeFromParent());
     this.change = [];
     if (this.bill) { const b = this.bill; this.tween(b, new THREE.Vector3(slotX(CAMBIO.length - 1), 0.06, 0).add(this.drawer.position), 0.35, 0.12, 0.05, () => b.removeFromParent()); this.bill = null; }
+    this.finish(c.id);
+  }
+
+  /** Cierra la venta: la bolsa se va con el cliente y la caja queda esperando al siguiente. */
+  private finish(id: number) {
     const bagTo = this.bag.position.clone().add(new THREE.Vector3(0, 0.25, -0.8));
     const bagBack = BAG.clone();
     this.tween(this.bag, bagTo, 0.45, 0.1, 0.2, () => { this.bag.visible = false; this.bag.position.copy(bagBack); });
     // Ya atendido: aunque la confirmación del anfitrión tarde un momento, no vuelve a cargarse.
-    this.served.add(c.id);
+    this.served.add(id);
     if (this.served.size > 50) this.served.delete(this.served.values().next().value as number);
     this.customerId = 0;
     this.phase = 'espera';
@@ -558,7 +617,7 @@ export class Till {
     if (moving || this.beltMoving > 0) this.d.belt.offset.x -= dt * 0.75;
     this.beltMoving = Math.max(0, this.beltMoving - dt);
     // Cajón
-    const want = this.phase === 'pago' ? 1 : 0;
+    const want = this.phase === 'pago' && !this.pagoTarjeta ? 1 : 0;
     this.drawerOpen += (want - this.drawerOpen) * Math.min(1, dt * 7);
     this.drawer.position.z = 0.2 + this.drawerOpen * 0.4;
     this.stepTweens(dt);
@@ -577,10 +636,10 @@ export class Till {
   }
 
   /** Datos para el panel de la caja. */
-  info(): { phase: Phase; scanned: number; total: number; sub: number; paid: number; due: number } {
+  info(): { phase: Phase; scanned: number; total: number; sub: number; paid: number; due: number; tarjeta: boolean } {
     const c = this.customerId ? clienteEnCaja(this.d.state(), this.d.caja) : null;
-    if (!c) return { phase: this.phase, scanned: 0, total: 0, sub: 0, paid: 0, due: 0 };
-    return { phase: this.phase, scanned: c.escaneados, total: totalArticulos(c), sub: importeEscaneado(c), paid: c.pago, due: importe(c) };
+    if (!c) return { phase: this.phase, scanned: 0, total: 0, sub: 0, paid: 0, due: 0, tarjeta: false };
+    return { phase: this.phase, scanned: c.escaneados, total: totalArticulos(c), sub: importeEscaneado(c), paid: c.pago, due: importe(c), tarjeta: this.pagoTarjeta };
   }
 }
 

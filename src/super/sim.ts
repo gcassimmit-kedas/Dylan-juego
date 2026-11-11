@@ -138,8 +138,10 @@ export interface Customer {
   escaneados: number;
   /** Unidades de cada producto ya pasadas por el escáner. */
   pasados: Partial<Record<ProductId, number>>;
-  /** Billete con el que paga (0 mientras se escanea). */
+  /** Billete con el que paga (0 mientras se escanea). Con tarjeta, el importe justo. */
   pago: number;
+  /** Paga con tarjeta: no hay cambio que dar. */
+  tarjeta: boolean;
   enfadado: boolean;
   /** Caja en cuya cola está (-1 si todavía no hace cola). */
   caja: number;
@@ -152,8 +154,8 @@ export type GameEvent =
   | { tipo: 'falta'; product: ProductId; id: number }
   | { tipo: 'coge'; product: ProductId; qty: number; id: number }
   | { tipo: 'escanea'; id: number; product: ProductId; caja: number }
-  | { tipo: 'paga'; billete: number; total: number; id: number; caja: number }
-  | { tipo: 'venta'; importe: number; cambio: number; sobra: number; propina: number; id: number; caja: number }
+  | { tipo: 'paga'; billete: number; total: number; id: number; caja: number; tarjeta: boolean }
+  | { tipo: 'venta'; importe: number; cambio: number; sobra: number; propina: number; id: number; caja: number; tarjeta: boolean }
   | { tipo: 'compra'; j: number; coste: number; lineas: [ProductId, number][] }
   | { tipo: 'mejora'; j: number; caja: number; mejora: MejoraId }
   | { tipo: 'seVa'; id: number }
@@ -427,6 +429,8 @@ function elegirPago(s: GameState, total: number): number {
 }
 
 export const cambioDebido = (c: Customer) => (c.pago ? c.pago - importe(c) : 0);
+/** Probabilidad de que un cliente pague con tarjeta. */
+export const PROB_TARJETA = 0.4;
 
 /**
  * El jugador pasa un producto por el escáner (si no dice cuál, el siguiente que falte).
@@ -444,8 +448,10 @@ export function escanear(s: GameState, product?: ProductId, k = 0): { pagaCon: n
   s.eventos.push({ tipo: 'escanea', id: c.id, product: p, caja: k });
   if (c.escaneados < totalArticulos(c)) return { escaneado: p };
   const total = importe(c);
-  c.pago = elegirPago(s, total);
-  s.eventos.push({ tipo: 'paga', billete: c.pago, total, id: c.id, caja: k });
+  // Unos 4 de cada 10 pagan con tarjeta (el importe justo); el resto, en efectivo.
+  c.tarjeta = rand(s) < PROB_TARJETA;
+  c.pago = c.tarjeta ? total : elegirPago(s, total);
+  s.eventos.push({ tipo: 'paga', billete: c.pago, total, id: c.id, caja: k, tarjeta: c.tarjeta });
   return { pagaCon: c.pago };
 }
 
@@ -457,6 +463,7 @@ export function darCambio(s: GameState, cambio: number, k = 0): { ok: true; sobr
   const c = clienteEnCaja(s, k);
   if (!c || !c.pago) return null;
   const debido = cambioDebido(c);
+  if (c.tarjeta && cambio !== 0) return null; // con tarjeta no hay cambio
   if (cambio < debido) return { ok: false, falta: debido - cambio };
   if (cambio > c.pago) return null; // no se puede dar más de lo que entregó... ni tiene sentido
   const total = importe(c), sobra = cambio - debido;
@@ -469,11 +476,18 @@ export function darCambio(s: GameState, cambio: number, k = 0): { ok: true; sobr
   s.stats.articulos += totalArticulos(c);
   s.stats.atendidos++;
   s.reputacion = Math.min(100, s.reputacion + (c.enfadado ? 0 : 2));
-  s.eventos.push({ tipo: 'venta', importe: total - sobra, cambio, sobra, propina, id: c.id, caja: k });
+  s.eventos.push({ tipo: 'venta', importe: total - sobra, cambio, sobra, propina, id: c.id, caja: k, tarjeta: c.tarjeta });
   s.cajas[k].cola.shift();
   salir(c, LAYOUT.queue(0, k));
   avanzarCola(s, k);
   return { ok: true, sobra, propina };
+}
+
+/** Cobra con el datáfono a un cliente que paga con tarjeta. */
+export function cobrarTarjeta(s: GameState, k = 0): ReturnType<typeof darCambio> {
+  const c = clienteEnCaja(s, k);
+  if (!c || !c.pago || !c.tarjeta) return null;
+  return darCambio(s, 0, k);
 }
 
 // ---------- Simulación ----------
@@ -646,7 +660,7 @@ function nuevoCliente(s: GameState): Customer {
   const c: Customer = {
     id: s.nextId++, x: LAYOUT.street.x + (rand(s) - 0.5) * 0.6, z: LAYOUT.street.z, dir: Math.PI, andando: true,
     path: [LAYOUT.entry], estado: 'entrando', lista, paso: 0, cesta: [], timer: 0,
-    paciencia: QUEUE_PATIENCE, pacienciaMax: QUEUE_PATIENCE, escaneados: 0, pasados: {}, pago: 0, enfadado: false, caja: -1, look: Math.floor(rand(s) * 1e6),
+    paciencia: QUEUE_PATIENCE, pacienciaMax: QUEUE_PATIENCE, escaneados: 0, pasados: {}, pago: 0, tarjeta: false, enfadado: false, caja: -1, look: Math.floor(rand(s) * 1e6),
   };
   s.stats.clientes++;
   s.eventos.push({ tipo: 'entra', id: c.id });

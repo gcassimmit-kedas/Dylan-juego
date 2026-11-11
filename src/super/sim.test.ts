@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   newGame, comprar, comprarPedido, costePedido, reponer, empezarTurno, siguienteDia, tick, escanear, clienteEnCaja,
-  route, importar, darCambio, sortearOferta, disponibles, esRara, CAMBIO, abrirCaja, mejorar, cambioDebido, importeEscaneado, BILLETES, exportar, horaTienda, totalArticulos, importe, PRODUCTS, PRODUCT_IDS, DISPLAYS, SHIFT_SECONDS, LAYOUT, walkable,
+  route, importar, darCambio, cobrarTarjeta, sortearOferta, disponibles, esRara, CAMBIO, abrirCaja, mejorar, cambioDebido, importeEscaneado, BILLETES, exportar, horaTienda, totalArticulos, importe, PRODUCTS, PRODUCT_IDS, DISPLAYS, SHIFT_SECONDS, LAYOUT, walkable,
   type GameState,
 } from './sim.ts';
 
@@ -161,7 +161,8 @@ test('dar cambio de más cierra la venta pero se pierde lo que sobra', () => {
   while (!clienteEnCaja(s)) tick(s, 0.1);
   const c = clienteEnCaja(s)!;
   while (!c.pago) escanear(s);
-  // Garantiza que haya margen para dar de más.
+  // Garantiza que haya margen para dar de más (y que pague en efectivo).
+  c.tarjeta = false;
   c.pago = Math.max(c.pago, importe(c) + 5);
   const dinero = s.jugadores[0].dinero, total = importe(c);
   assert.equal(darCambio(s, c.pago + 1), null, 'no se puede devolver más de lo que entregó');
@@ -422,4 +423,33 @@ test('el guardado conserva el dinero de los dos jugadores y las mejoras', () => 
   assert.equal(c.jugadores[1].dinero, 4321);
   assert.equal(c.cajas[1].propinas, true);
   assert.equal(c.cajas[1].abierta, false, 'la caja 2 se abre al entrar el segundo jugador, no al cargar');
+});
+
+// ---------- Pago con tarjeta ----------
+
+test('algunos clientes pagan con tarjeta: el importe justo y sin cambio', () => {
+  let tarjetas = 0, efectivo = 0;
+  for (let seed = 1; seed <= 60; seed++) {
+    const s = newGame(seed);
+    for (const p of PRODUCT_IDS) { s.almacen[p] = 100; reponer(s, p); }
+    empezarTurno(s);
+    while (!clienteEnCaja(s)) tick(s, 0.1);
+    const c = clienteEnCaja(s)!;
+    while (!c.pago) escanear(s);
+    const total = importe(c), dinero = s.jugadores[0].dinero;
+    if (c.tarjeta) {
+      tarjetas++;
+      assert.equal(c.pago, total, 'con tarjeta se cobra el total exacto');
+      assert.equal(cambioDebido(c), 0);
+      assert.equal(darCambio(s, 5), null, 'con tarjeta no se da cambio');
+      const r = cobrarTarjeta(s)!;
+      assert.ok(r.ok);
+      assert.equal(s.jugadores[0].dinero, dinero + total);
+      assert.ok(s.eventos.some((e) => e.tipo === 'venta' && e.tarjeta));
+    } else {
+      efectivo++;
+      assert.equal(cobrarTarjeta(s), null, 'si paga en efectivo no se cobra con tarjeta');
+    }
+  }
+  assert.ok(tarjetas >= 12 && efectivo >= 20, `tarjeta ${tarjetas}, efectivo ${efectivo}`);
 });

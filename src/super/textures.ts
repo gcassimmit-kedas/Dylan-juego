@@ -220,6 +220,36 @@ export function registerScreenTexture(total: number, items: number): THREE.Canva
   drawRegister(t, total, items);
   return t;
 }
+/** Tarjeta de pago del juego (sin imitar ninguna tarjeta ni banco reales). */
+export function cardTexture(): THREE.Texture {
+  const [c, g] = canvas(256, 160);
+  const grd = g.createLinearGradient(0, 0, 256, 160); grd.addColorStop(0, '#2f6fd8'); grd.addColorStop(1, '#13306a');
+  g.fillStyle = grd; g.fillRect(0, 0, 256, 160);
+  g.fillStyle = 'rgba(255,255,255,0.12)'; g.beginPath(); g.arc(220, 20, 90, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#e8c45a'; g.fillRect(24, 54, 44, 34);
+  g.strokeStyle = 'rgba(120,90,10,0.7)'; g.lineWidth = 2; g.strokeRect(24, 54, 44, 34); g.beginPath(); g.moveTo(46, 54); g.lineTo(46, 88); g.moveTo(24, 71); g.lineTo(68, 71); g.stroke();
+  g.fillStyle = '#ffffff'; g.font = `600 20px ${DISPLAY}`; g.fillText('**** **** **** 2027', 24, 124);
+  g.font = `700 22px ${DISPLAY}`; g.textAlign = 'right'; g.fillText('SUPER', 236, 38);
+  return tex(c);
+}
+
+/** Pantalla del datáfono: en reposo, pidiendo la tarjeta o aprobado. */
+export function pinpadTexture(): THREE.CanvasTexture {
+  const [c] = canvas(128, 80);
+  const t = tex(c);
+  drawPinpad(t, 'reposo', 0);
+  return t;
+}
+export function drawPinpad(t: THREE.CanvasTexture, estado: 'reposo' | 'pagar' | 'ok', importe: number) {
+  const c = t.image as HTMLCanvasElement, g = c.getContext('2d')!;
+  g.fillStyle = estado === 'ok' ? '#1f6b2c' : '#0d1a10'; g.fillRect(0, 0, 128, 80);
+  g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = estado === 'ok' ? '#ffffff' : '#7bd36b';
+  if (estado === 'reposo') { g.font = `600 16px ${DISPLAY}`; g.fillText('SUPER', 64, 40); }
+  else if (estado === 'pagar') { g.font = `700 24px ${DISPLAY}`; g.fillText(`RD$${importe}`, 64, 30); g.font = `600 13px ${DISPLAY}`; g.fillText('ACERQUE TARJETA', 64, 60); }
+  else { g.font = `700 22px ${DISPLAY}`; g.fillText('APROBADO', 64, 40); }
+  t.needsUpdate = true;
+}
+
 export function drawRegister(t: THREE.CanvasTexture, total: number, items: number) {
   const c = t.image as HTMLCanvasElement, g = c.getContext('2d')!;
   g.fillStyle = '#0d1a10'; g.fillRect(0, 0, 256, 96);

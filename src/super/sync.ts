@@ -2,7 +2,7 @@
 // el segundo jugador la dibuja y le manda sus acciones. Todo es código puro (se prueba con npm test).
 // Lo que llega del otro jugador nunca se da por bueno: se valida campo a campo.
 import {
-  PRODUCT_IDS, PRODUCTS, MEJORAS, CAMBIO, comprarPedido, reponer, escanear, darCambio, mejorar, empezarTurno, siguienteDia,
+  PRODUCT_IDS, PRODUCTS, MEJORAS, CAMBIO, comprarPedido, reponer, escanear, darCambio, cobrarTarjeta, mejorar, empezarTurno, siguienteDia,
   type GameState, type Customer, type CustomerState, type GameEvent, type ProductId, type MejoraId,
 } from './sim.ts';
 
@@ -34,7 +34,7 @@ const lineas = (l: Partial<Record<ProductId, number>> | { product: ProductId; qt
     .filter(([, q]) => q && q > 0).map(([p, q]) => `${PRODUCT_IDS.indexOf(p)}:${q}`).join(',');
 
 function encodeCustomer(c: Customer): (number | string)[] {
-  const flags = (c.andando ? 1 : 0) | (c.path.length === 0 ? 2 : 0) | (c.enfadado ? 4 : 0);
+  const flags = (c.andando ? 1 : 0) | (c.path.length === 0 ? 2 : 0) | (c.enfadado ? 4 : 0) | (c.tarjeta ? 8 : 0);
   return [c.id, r2(c.x), r2(c.z), r2(c.dir), ESTADOS.indexOf(c.estado), flags, c.caja, c.look,
     Math.round(c.paciencia * 10), Math.round(c.pacienciaMax * 10), c.pago, c.escaneados, lineas(c.cesta), lineas(c.pasados)];
 }
@@ -84,8 +84,8 @@ function parseEvent(e: unknown): GameEvent | null {
     case 'falta': return prod ? { tipo: 'falta', product: prod, id } : null;
     case 'coge': return prod ? { tipo: 'coge', product: prod, qty: int(o.qty, 1, 9), id } : null;
     case 'escanea': return prod ? { tipo: 'escanea', product: prod, id, caja } : null;
-    case 'paga': return { tipo: 'paga', billete: int(o.billete, 0, 1e6), total: int(o.total, 0, 1e6), id, caja };
-    case 'venta': return { tipo: 'venta', importe: int(o.importe, -1e6, 1e6), cambio: int(o.cambio, 0, 1e6), sobra: int(o.sobra, 0, 1e6), propina: int(o.propina, 0, 1e6), id, caja };
+    case 'paga': return { tipo: 'paga', billete: int(o.billete, 0, 1e6), total: int(o.total, 0, 1e6), id, caja, tarjeta: o.tarjeta === true };
+    case 'venta': return { tipo: 'venta', importe: int(o.importe, -1e6, 1e6), cambio: int(o.cambio, 0, 1e6), sobra: int(o.sobra, 0, 1e6), propina: int(o.propina, 0, 1e6), id, caja, tarjeta: o.tarjeta === true };
     case 'compra': return { tipo: 'compra', j, coste: int(o.coste, 0, 1e9), lineas: arr(o.lineas, 20).flatMap((l) => {
       const [p, n] = arr(l, 2);
       return typeof p === 'string' && (PRODUCT_IDS as string[]).includes(p) ? [[p as ProductId, int(n, 0, 99)] as [ProductId, number]] : [];
@@ -130,7 +130,7 @@ export function decodeSnap(raw: unknown, s: GameState): SnapExtra | null {
   s.clientes = arr(o.c, 20).flatMap((row) => {
     const a = arr(row, 14);
     if (a.length < 14) return [];
-    const id = int(a[0], 0, 1e9), flags = int(a[5], 0, 7);
+    const id = int(a[0], 0, 1e9), flags = int(a[5], 0, 15);
     const cesta = parseLineas(a[12]).map(([product, qty]) => ({ product, qty }));
     const pasados = Object.fromEntries(parseLineas(a[13])) as Partial<Record<ProductId, number>>;
     const old = prev.get(id);
@@ -139,7 +139,7 @@ export function decodeSnap(raw: unknown, s: GameState): SnapExtra | null {
       estado: ESTADOS[int(a[4], 0, ESTADOS.length - 1)], andando: (flags & 1) === 1,
       // El invitado no simula caminos: solo hace falta saber si ya ha llegado.
       path: (flags & 2) === 2 ? [] : [{ x: 0, z: 0 }],
-      enfadado: (flags & 4) === 4, caja: int(a[6], -1, 1, -1), look: int(a[7], 0, 1e6),
+      enfadado: (flags & 4) === 4, tarjeta: (flags & 8) === 8, caja: int(a[6], -1, 1, -1), look: int(a[7], 0, 1e6),
       paciencia: num(a[8], 0, 1e5) / 10, pacienciaMax: Math.max(1, num(a[9], 1, 1e5, 380) / 10), pago: int(a[10], 0, 1e6),
       escaneados: int(a[11], 0, 999), cesta, pasados,
       lista: old?.lista ?? [], paso: old?.paso ?? 0, timer: 0,
@@ -162,6 +162,7 @@ export type Accion =
   | { n: number; t: 'comprar'; pedido: Partial<Record<ProductId, number>> }
   | { n: number; t: 'escanear'; p: ProductId }
   | { n: number; t: 'cambio'; v: number }
+  | { n: number; t: 'tarjeta' }
   | { n: number; t: 'mejorar'; m: MejoraId; k: number }
   | { n: number; t: 'empezar' }
   | { n: number; t: 'siguiente' }
@@ -188,7 +189,7 @@ export function parseAccion(raw: unknown): Accion | null {
       return { n, t: 'comprar', pedido };
     }
     case 'mejorar': return typeof o.m === 'string' && o.m in MEJORAS && (o.k === 0 || o.k === 1) ? { n, t: 'mejorar', m: o.m as MejoraId, k: o.k } : null;
-    case 'empezar': case 'siguiente': return { n, t: o.t };
+    case 'empezar': case 'siguiente': case 'tarjeta': return { n, t: o.t };
     case 'pausa': return typeof o.v === 'boolean' ? { n, t: 'pausa', v: o.v } : null;
   }
   return null;
@@ -204,6 +205,7 @@ export function aplicarAccion(s: GameState, a: Accion, j: number): [0 | 1, strin
     case 'comprar': { const r = comprarPedido(s, a.pedido, j); return r.ok ? [1, ''] : [0, r.motivo]; }
     case 'escanear': return escanear(s, a.p, j) ? [1, ''] : [0, 'escanear'];
     case 'cambio': { const r = darCambio(s, a.v, j); return r && r.ok ? [1, ''] : [0, r ? `falta:${r.falta}` : 'cambio']; }
+    case 'tarjeta': return cobrarTarjeta(s, j)?.ok ? [1, ''] : [0, 'tarjeta'];
     case 'mejorar': { const r = mejorar(s, a.m, a.k, j); return r.ok ? [1, ''] : [0, r.motivo]; }
     case 'empezar': { const antes = s.fase; empezarTurno(s); return s.fase !== antes ? [1, ''] : [0, 'fase']; }
     case 'siguiente': { const antes = s.fase; siguienteDia(s); return s.fase !== antes ? [1, ''] : [0, 'fase']; }

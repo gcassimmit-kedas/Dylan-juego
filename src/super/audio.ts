@@ -41,6 +41,8 @@ export const sfx = {
   open() { tone(523, 0.14, 'triangle', 0.09); tone(659, 0.14, 'triangle', 0.09, 0.12); tone(784, 0.3, 'triangle', 0.09, 0.24); },
   close() { tone(784, 0.16, 'triangle', 0.08); tone(523, 0.4, 'triangle', 0.08, 0.14); },
   click() { tone(1200, 0.03, 'square', 0.02); },
+  /** Datáfono: pago aprobado. */
+  approved() { tone(1760, 0.08, 'sine', 0.06); tone(2349, 0.16, 'sine', 0.06, 0.1); },
   /** Cajón de la registradora al abrirse. */
   drawer() { tone(1568, 0.1, 'triangle', 0.07); tone(180, 0.12, 'square', 0.03, 0.05, 0.6); },
   coin() { tone(2400, 0.06, 'sine', 0.05); tone(3200, 0.12, 'sine', 0.035, 0.04); },

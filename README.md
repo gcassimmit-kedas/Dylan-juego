@@ -134,7 +134,8 @@ o la caja.
 - **Cobrar (en 3D):** "Ir a la caja" acerca la cámara al mostrador. El cliente pone su compra en la cinta y hay que
   **arrastrar cada producto hasta el escáner** (pasarlo por encima del cristal basta). Al pasar el último, paga con un
   billete de pesos: se abre el cajón y hay que **dar la vuelta** sacando monedas de 5, 10 y 25 y billetes de 50, 100, 200 y 500 a la bandeja,
-  y pulsar "Dar cambio". Si falta, el cliente espera; si sobra, se pierde la diferencia. En vertical la cámara gira para
+  y pulsar "Dar cambio". El panel dice cuánto hay que devolver y cuánto llevas. Si falta, el cliente espera; si sobra, se pierde la diferencia.
+  Unos 4 de cada 10 clientes **pagan con tarjeta**: la dejan junto al datáfono, que muestra el importe, y se cobra con "Cobrar con tarjeta" (sin cambio). En vertical la cámara gira para
   que el mostrador ocupe la pantalla. Teclado: Espacio pasa un producto, 1-7 sacan dinero, Retroceso deshace, Intro da el cambio.
 - **Recursos limitados:** el dinero y el género. Si un producto se agota, el cliente se enfada; si espera demasiado en la cola,
   deja la compra y se va. La reputación (0-100) decide cuántos clientes llegan.

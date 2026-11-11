@@ -534,6 +534,8 @@ export interface Checkout {
   closed: THREE.Object3D;
   /** Mejoras visibles en el mostrador. */
   speaker: THREE.Object3D; tipJar: THREE.Object3D;
+  /** Datáfono para pagar con tarjeta, con su pantalla. */
+  pinpad: THREE.Object3D; pinpadScreen: THREE.CanvasTexture;
 }
 
 /** Mostrador de caja con cinta, escáner y visor. El cliente se pone en z menor; el cajero detrás. */
@@ -578,7 +580,19 @@ export function checkout(x: number, z: number): Checkout {
   const coins = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.04, 18), std({ color: 0xc9961e, roughness: 0.3, metalness: 0.9 })); coins.position.y = 0.02; tipJar.add(coins);
   const tag = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.04, 0.002), MAT.gold); tag.position.set(0, 0.08, -0.061); tipJar.add(tag);
   tipJar.position.set(-1.25, 0.89, -0.28); tipJar.visible = false; g.add(tipJar);
-  return { group: g, belt, screen, hit, scanner, closed, speaker, tipJar };
+  // Datáfono (pago con tarjeta), mirando al cliente
+  const pinpad = new THREE.Group();
+  const pinpadScreen = T.pinpadTexture();
+  const ppBody = new THREE.Mesh(new RoundedBoxGeometry(0.1, 0.035, 0.17, 2, 0.012), std({ color: 0x2a2b2e, roughness: 0.45 }));
+  ppBody.position.y = 0.0175; pinpad.add(ppBody);
+  const ppScreen = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.05), std({ map: pinpadScreen, emissive: 0xffffff, emissiveMap: pinpadScreen, emissiveIntensity: 0.9 }));
+  ppScreen.rotation.x = -Math.PI / 2; ppScreen.position.set(0, 0.0355, -0.04); pinpad.add(ppScreen);
+  for (let i = 0; i < 9; i++) {
+    const key = box(0.018, 0.006, 0.014, MAT.metalWhite, ((i % 3) - 1) * 0.024, 0.037, 0.02 + Math.floor(i / 3) * 0.02); pinpad.add(key);
+  }
+  pinpad.position.set(0.55, 0.89, -0.25); pinpad.rotation.y = Math.PI;
+  g.add(pinpad);
+  return { group: g, belt, screen, hit, scanner, closed, speaker, tipJar, pinpad, pinpadScreen };
 }
 
 // ---------- Oficina con el ordenador ----------

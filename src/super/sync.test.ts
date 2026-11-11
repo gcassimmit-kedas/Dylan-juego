@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { newGame, tick, reponer, empezarTurno, abrirCaja, clienteEnCaja, escanear, PRODUCT_IDS, type GameState } from './sim.ts';
+import { newGame, tick, reponer, empezarTurno, abrirCaja, clienteEnCaja, escanear, importe, PRODUCT_IDS, type GameState } from './sim.ts';
 import { encodeSnap, decodeSnap, parseAccion, aplicarAccion, SNAP_MAX_BYTES, type SnapExtra } from './sync.ts';
 
 const extra = (): SnapExtra => ({ ack: 3, res: [[3, 1, '']], ev: [], g: 'peer-abc', pausa: 0 });
@@ -91,4 +91,20 @@ test('el invitado compra con su dinero y solo cobra en su caja', () => {
   const antes = c0.escaneados;
   aplicarAccion(s, { n: 2, t: 'escanear', p: ajeno }, 1);
   assert.equal(c0.escaneados, antes, 'no toca la caja del anfitrión');
+});
+
+test('el pago con tarjeta viaja al invitado y su acción se valida', () => {
+  const s = tiendaLlena(46);
+  while (!clienteEnCaja(s, 1)) tick(s, 0.1);
+  const c = clienteEnCaja(s, 1)!;
+  while (!c.pago) escanear(s, undefined, 1);
+  c.tarjeta = true; c.pago = importe(c);
+  const copia = newGame(1);
+  decodeSnap(JSON.parse(JSON.stringify(encodeSnap(s, extra()))), copia);
+  assert.equal(clienteEnCaja(copia, 1)!.tarjeta, true);
+  assert.deepEqual(parseAccion({ n: 9, t: 'tarjeta' }), { n: 9, t: 'tarjeta' });
+  const dinero = s.jugadores[1].dinero, total = importe(c);
+  assert.deepEqual(aplicarAccion(s, { n: 9, t: 'tarjeta' }, 1), [1, '']);
+  assert.equal(s.jugadores[1].dinero, dinero + total);
+  assert.deepEqual(aplicarAccion(s, { n: 10, t: 'tarjeta' }, 0), [0, 'tarjeta'], 'en la caja 1 no hay nadie pagando con tarjeta');
 });

@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import {
   newGame, tick, comprarPedido, costePedido, reponer, empezarTurno, siguienteDia, clienteEnCaja, CAMBIO, esMoneda, esRara, disponibles,
-  abrirCaja, mejorar, cambioDebido, escanear, darCambio, MEJORAS, MEJORA_IDS, type MejoraId, type Jugador,
+  abrirCaja, mejorar, cambioDebido, escanear, darCambio, cobrarTarjeta, MEJORAS, MEJORA_IDS, type MejoraId, type Jugador,
   horaTienda, exportar, importar,
   PRODUCTS, PRODUCT_IDS, DISPLAYS, LAYOUT, SHIFT_SECONDS,
   type GameState, type ProductId, type Customer,
@@ -60,6 +60,13 @@ function guestScan(p: ProductId): ReturnType<typeof escanear> {
   session!.send({ t: 'escanear', p } as Omit<Accion, 'n'>);
   sfx.scan();
   return { escaneado: p };
+}
+/** Invitado: pago con tarjeta; el anfitrión lo confirma. */
+function guestCard(): ReturnType<typeof darCambio> {
+  const c = clienteEnCaja(state, 1);
+  if (!c || !c.pago || !c.tarjeta) return null;
+  session!.send({ t: 'tarjeta' } as Omit<Accion, 'n'>);
+  return { ok: true, sobra: 0, propina: 0 };
 }
 /** Invitado: se comprueba el cambio aquí para responder al momento; el anfitrión lo confirma. */
 function guestChange(v: number): ReturnType<typeof darCambio> {
@@ -248,6 +255,7 @@ function buildWorld() {
   tills = regs.map((r, k) => new Till({
     scene, camera, controls: tillView as unknown as OrbitControls, canvas, register: r.group, scanner: r.scanner, belt: r.belt, cashier: cashier.group,
     state: () => state, toast, onChange: () => { if (inStore) renderTill(); },
+    pinpadScreen: r.pinpadScreen,
     freeHeight: () => {
       const h = innerHeight, hud = $('hud').getBoundingClientRect().bottom;
       const panel = $('till').hidden ? 170 : $('till').getBoundingClientRect().height;
@@ -259,6 +267,7 @@ function buildWorld() {
       // y se mandan al anfitrión, que es quien decide (y quien elige con qué billete se paga).
       escanear: (p) => (isGuest() ? guestScan(p) : escanearSim(p, k)),
       darCambio: (v) => (isGuest() ? guestChange(v) : darCambioSim(v, k)),
+      tarjeta: () => (isGuest() ? guestCard() : cobrarTarjeta(state, k)),
     },
   }));
   till = tills[0];
@@ -988,11 +997,24 @@ function renderTill() {
     tillMsg.textContent = 'Arrastra cada producto de la cinta hasta el escáner.';
     tillCount.textContent = `${i.scanned}/${i.total} · ${money(i.sub)}`;
   } else if (i.phase === 'pago') {
-    tillMsg.textContent = i.paid === i.due ? 'Paga con el importe justo: no hay que dar cambio.' : `Paga con un billete de ${money(i.paid)}. Saca la vuelta del cajón.`;
+    const vuelta = i.paid - i.due, llevas = till.changeTotal;
+    tillPay.classList.toggle('card', i.tarjeta);
     tillCount.textContent = '';
     $('tTotal').textContent = money(i.due);
-    $('tPaid').textContent = money(i.paid);
-    $('tChange').textContent = money(till.changeTotal);
+    if (i.tarjeta) {
+      tillMsg.textContent = `Paga con tarjeta: cóbrale ${money(i.due)} en el datáfono.`;
+      $('tPaid').textContent = 'Tarjeta';
+      tGive.lastChild!.textContent = 'Cobrar con tarjeta';
+    } else {
+      tillMsg.textContent = vuelta === 0 ? 'Paga con el importe justo: no hay que dar cambio.'
+        : llevas === vuelta ? '¡Justo! Pulsa Dar cambio.' : llevas > vuelta ? `Te has pasado ${money(llevas - vuelta)}: quita algo con Deshacer.` : `Saca del cajón ${money(vuelta - llevas)} más.`;
+      $('tPaid').textContent = money(i.paid);
+      $('tDue').textContent = money(vuelta);
+      $('tChange').textContent = money(llevas);
+      $('tChangeBox').classList.toggle('ok', llevas === vuelta);
+      $('tChangeBox').classList.toggle('over', llevas > vuelta);
+      tGive.lastChild!.textContent = 'Dar cambio';
+    }
     tUndo.disabled = till.change.length === 0;
   } else {
     const n = state.cajas[ME].cola.length;
@@ -1482,4 +1504,5 @@ $('mpSkinBtn').addEventListener('click', openSkins);
 (window as unknown as { __super: () => GameState }).__super = () => state;
 (window as unknown as { __player: Player }).__player = player;
 (window as unknown as { __tillPts: () => unknown }).__tillPts = () => tillScreenPoints(till, camera, regs[ME].group);
+(window as unknown as { __countMoney: () => number }).__countMoney = () => till.loosePayments();
 (window as unknown as { __superAvanzar: (s: number) => void }).__superAvanzar = (seg: number) => { for (let t = 0; t < seg; t += 0.05) tick(state, 0.05); };
