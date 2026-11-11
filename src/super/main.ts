@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import {
   newGame, tick, comprarPedido, costePedido, reponer, empezarTurno, siguienteDia, clienteEnCaja, CAMBIO, esMoneda, esRara, disponibles,
-  abrirCaja, mejorar, cambioDebido, escanear, darCambio, cobrarTarjeta, MEJORAS, MEJORA_IDS, type MejoraId, type Jugador,
+  abrirCaja, mejorar, cambioDebido, detrasDe, escanear, darCambio, cobrarTarjeta, MEJORAS, MEJORA_IDS, type MejoraId, type Jugador,
   horaTienda, exportar, importar,
   PRODUCTS, PRODUCT_IDS, DISPLAYS, LAYOUT, SHIFT_SECONDS,
   type GameState, type ProductId, type Customer,
@@ -914,7 +914,10 @@ function enterStore() {
   camera.clearViewOffset();
   fitCamera();
   lastFase = state.fase;
-  if (ME === 1) player.place(-2.6, 4.2, 0); else player.place(0.5, 4.2, 0);
+  // El segundo jugador aparece justo detrás del primero, mirando hacia el mismo lado.
+  const host = ME === 1 ? session?.partnerPos : null;
+  if (host) { const p = detrasDe(host[3] ? LAYOUT.cashiers[0].x : host[0], host[3] ? LAYOUT.cashiers[0].z : host[1], host[3] ? 0 : host[2]); player.place(p.x, p.z, host[3] ? 0 : host[2]); }
+  else player.place(0.5, 4.2, 0);
   player.enabled = true;
   prepBanner();
   toast(isTouch ? 'Joystick a la izquierda para andar · arrastra a la derecha para mirar' : 'Haz clic para mirar con el ratón (L o Esc lo suelta) · WASD para andar', '', 4200);

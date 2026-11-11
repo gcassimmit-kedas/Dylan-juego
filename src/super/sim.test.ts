@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   newGame, comprar, comprarPedido, costePedido, reponer, empezarTurno, siguienteDia, tick, escanear, clienteEnCaja,
-  route, importar, darCambio, cobrarTarjeta, sortearOferta, disponibles, esRara, CAMBIO, abrirCaja, mejorar, cambioDebido, importeEscaneado, BILLETES, exportar, horaTienda, totalArticulos, importe, PRODUCTS, PRODUCT_IDS, DISPLAYS, SHIFT_SECONDS, LAYOUT, walkable,
+  route, importar, darCambio, cobrarTarjeta, sortearOferta, disponibles, esRara, CAMBIO, abrirCaja, mejorar, cambioDebido, importeEscaneado, BILLETES, exportar, horaTienda, totalArticulos, importe, PRODUCTS, PRODUCT_IDS, DISPLAYS, SHIFT_SECONDS, LAYOUT, walkable, puntoLibre, detrasDe,
   type GameState,
 } from './sim.ts';
 
@@ -452,4 +452,28 @@ test('algunos clientes pagan con tarjeta: el importe justo y sin cambio', () => 
     }
   }
   assert.ok(tarjetas >= 12 && efectivo >= 20, `tarjeta ${tarjetas}, efectivo ${efectivo}`);
+});
+
+// ---------- Dónde aparecen los jugadores ----------
+
+test('nadie aparece dentro de un mueble: se le pone en el hueco libre más cercano', () => {
+  // Encima del mostrador de la caja 2 (donde aparecía antes el segundo jugador).
+  const dentro = { x: -2.6, z: 4.2 };
+  assert.equal(walkable(dentro), false);
+  const p = puntoLibre(dentro);
+  assert.ok(walkable(p));
+  assert.ok(Math.hypot(p.x - dentro.x, p.z - dentro.z) < 1.2, 'cerca de donde iba');
+  for (const d of DISPLAYS) assert.ok(walkable(puntoLibre({ x: d.x, z: d.z })), d.product);
+});
+
+test('el segundo jugador aparece justo detrás del primero', () => {
+  // Primero en el pasillo mirando al fondo (yaw 0 → mira a -z): el segundo, 1,3 m más hacia +z.
+  const p = detrasDe(0, 2, 0);
+  assert.ok(Math.abs(p.x - 0) < 0.01 && Math.abs(p.z - 3.3) < 0.01, JSON.stringify(p));
+  // Mirando hacia +x (yaw -π/2): detrás es -x.
+  const q = detrasDe(0, 2, -Math.PI / 2);
+  assert.ok(q.x < -1.2 && Math.abs(q.z - 2) < 0.05, JSON.stringify(q));
+  // Si detrás hay un mueble, se queda en el hueco libre más cercano.
+  const r = detrasDe(-4.7, -2.2, Math.PI);
+  assert.ok(walkable(r));
 });

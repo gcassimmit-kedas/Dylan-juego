@@ -543,6 +543,28 @@ const cellOf = (p: Point) => [
 ] as const;
 const centerOf = (i: number, j: number): Point => ({ x: GRID.x0 + (i + 0.5) * CELL, z: GRID.z0 + (j + 0.5) * CELL });
 
+/**
+ * El punto libre más cercano a `p` (el mismo si ya está libre): busca en anillos alrededor.
+ * Sirve para no aparecer nunca dentro de un mueble o de un mostrador.
+ */
+export function puntoLibre(p: Point): Point {
+  if (walkable(p)) return { x: p.x, z: p.z };
+  for (let r = 0.25; r <= 4; r += 0.25) {
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2, q = { x: p.x + Math.cos(a) * r, z: p.z + Math.sin(a) * r };
+      // Dentro de la tienda (no en la calle).
+      if (q.z < 7.2 && walkable(q)) return q;
+    }
+  }
+  return { ...LAYOUT.entry };
+}
+
+/** Dónde aparece el segundo jugador: justo detrás del primero (y nunca dentro de un mueble). */
+export function detrasDe(x: number, z: number, yaw: number, dist = 1.3): Point {
+  // Con yaw = 0 se mira hacia -z, así que "detrás" es +z.
+  return puntoLibre({ x: x + Math.sin(yaw) * dist, z: z + Math.cos(yaw) * dist });
+}
+
 /** ¿Se puede estar en este punto sin chocar con nada? */
 export function walkable(p: Point): boolean {
   const [i, j] = cellOf(p);

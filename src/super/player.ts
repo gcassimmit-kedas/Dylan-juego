@@ -4,7 +4,7 @@
 // - Móvil y tableta: joystick en la mitad izquierda para andar y arrastrar en la derecha para mirar.
 // Las colisiones usan la misma rejilla que los clientes (walkable de sim.ts).
 import * as THREE from 'three';
-import { walkable } from './sim.ts';
+import { walkable, puntoLibre } from './sim.ts';
 
 const EYE = 1.62;
 const WALK = 2.6, RUN = 4.4;
@@ -86,7 +86,8 @@ export class Player {
     if (walkable({ x: p.x, z: p.y })) this.pos.copy(p);
   }
 
-  place(x: number, z: number, yaw: number) { this.pos.set(x, z); this.yaw = yaw; this.pitch = -0.12; }
+  /** Coloca al jugador; si el sitio cae encima de un mueble, en el hueco libre más cercano. */
+  place(x: number, z: number, yaw: number) { const p = puntoLibre({ x, z }); this.pos.set(p.x, p.z); this.yaw = yaw; this.pitch = -0.12; }
 
   // ---------- Puntero ----------
 
