@@ -122,3 +122,29 @@ test('el invitado puede comprar en otras tiendas y avisar de que necesita una du
   decodeSnap(JSON.parse(JSON.stringify(encodeSnap(s, extra()))), copia);
   assert.equal(copia.cajas[1].sucio, true);
 });
+
+test('ladrones y armas viajan al invitado; el alcance se mide desde donde el anfitrión le ve', () => {
+  const s = tiendaLlena(43);
+  s.jugadores[1].armas = ['agua'];
+  s.stats.robos = 2; s.stats.perdidaRobo = 640;
+  let c = s.clientes.find((x) => x.ladron);
+  for (let i = 0; i < 4000 && !c; i++) { s.proximoCliente = Math.min(s.proximoCliente, 0.1); tick(s, 0.1); c = s.clientes.find((x) => x.ladron && x.estado !== 'saliendo'); }
+  assert.ok(c, 'debería entrar algún ladrón');
+  const copia = newGame(1);
+  const ev = [[1, { tipo: 'robo', id: 5, unidades: 3, coste: 640 }], [2, { tipo: 'ahuyentado', id: 6, j: 1, arma: 'agua', unidades: 2 }], [3, { tipo: 'arma', j: 1, arma: 'bazuca' }]];
+  const x = decodeSnap(JSON.parse(JSON.stringify(encodeSnap(s, { ...extra(), ev: ev as SnapExtra['ev'] }))), copia)!;
+  assert.deepEqual(copia.jugadores[1].armas, ['agua']);
+  assert.deepEqual(copia.jugadores[0].armas, []);
+  assert.equal(copia.stats.robos, 2);
+  assert.equal(copia.stats.perdidaRobo, 640);
+  assert.equal(copia.clientes.find((k) => k.id === c!.id)?.ladron, true);
+  assert.equal(x.ev.length, 2, 'un arma que no existe se descarta');
+  assert.equal(parseAccion({ n: 1, t: 'arma', a: 'bazuca' }), null);
+  assert.equal(parseAccion({ n: 1, t: 'ahuyentar', id: 'x' }), null);
+  const a = parseAccion({ n: 2, t: 'ahuyentar', id: c!.id })!;
+  assert.deepEqual(aplicarAccion(s, a, 1, null), [0, 'lejos']);
+  assert.deepEqual(aplicarAccion(s, a, 1, { x: c!.x + 30, z: c!.z }), [0, 'lejos']);
+  assert.deepEqual(aplicarAccion(s, a, 1, { x: c!.x + 2, z: c!.z }), [1, '']);
+  s.jugadores[0].dinero = 0;
+  assert.deepEqual(aplicarAccion(s, parseAccion({ n: 3, t: 'arma', a: 'red' })!, 0), [0, 'dinero']);
+});

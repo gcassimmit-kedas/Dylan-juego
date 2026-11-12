@@ -166,6 +166,15 @@ fuera llega al almacén de la tienda. Cada jugador tiene **energía** y **limpie
 energía se anda más lento y sin ducharse los clientes de su cola aguantan menos. Dormir recupera la energía y, con el
 turno terminado, empieza el día siguiente ("Ir a casa a dormir" en el resumen).
 
+**Ladrones y tienda de armas:** cada cliente puede ser un ladrón (sudadera negra, gorra y gafas oscuras), con una
+probabilidad que sube cada día: 4 % el día 1, 3 puntos más cada día, 35 % como máximo (`probLadron` en `sim.ts`), y
+nunca más de dos a la vez. El ladrón coge de 1 a 5 unidades de los estantes, salta la alarma y sale corriendo sin pasar
+por caja. Si escapa, se pierden esas unidades y el resumen muestra lo que costaron (precio de compra). La **tienda de
+armas**, junto a la casa, vende tres armas que espantan sin hacer daño: silbato (RD$800, 3,5 m), pistola de agua
+(RD$2500, 7 m) y lanzarredes (RD$6000, 12 m). Con el ladrón a su alcance, el botón Espantar (tecla F) hace que suelte
+todo (vuelve al estante) y se vaya con las manos vacías. Las armas son de cada jugador y se usa la de más alcance; en
+partidas de dos, el anfitrión mide el alcance desde donde ve al invitado.
+
 **Pasar partida:** el botón "Pasar partida" del menú da un código (`SUPER1-...`, `src/super/codigo.ts`) con la tienda,
 el dinero y el aspecto, para pegarlo en "Cargar partida" de otra copia del juego (otra página publicada, otro navegador
 u otro dispositivo). Cada página publicada guarda su partida por separado y ninguna puede leer la de otra: el código

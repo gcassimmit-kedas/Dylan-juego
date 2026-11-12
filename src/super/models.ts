@@ -749,6 +749,15 @@ export function person(look: number, uniform = false): Person {
   return buildPerson({ nombre: '', shirt: pick(SHIRT, 31), pants: pick(PANTS, 7), hair: pick(HAIR, 5) }, pick(SKIN, 1));
 }
 
+/** Ladrón: sudadera negra con capucha, gorra y gafas oscuras (se reconoce de lejos). */
+export function thiefModel(look: number): Person {
+  const p = buildPerson({ nombre: '', shirt: 0x1b1b1f, pants: 0x2a2c30, hair: 0x1a1a1a, hat: 'gorra', hatColor: 0x111114, glasses: true, shoes: 0xf2f2ee }, SKIN[Math.floor(look) % SKIN.length]);
+  // Capucha caída por detrás y bolsa de deporte vacía (ahí mete lo que roba).
+  const hood = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), colorMat(0x1b1b1f));
+  hood.position.set(0, 1.47, -0.12); hood.rotation.x = -1.9; hood.scale.set(1, 1, 0.6); hood.castShadow = true; p.group.add(hood);
+  return p;
+}
+
 /** Modelo de un jugador con su aspecto y tono de piel (valores fuera de rango se ajustan). */
 export function playerModel(skin: number, tono: number): Person {
   const o = SKINS[Math.min(SKINS.length - 1, Math.max(0, Math.floor(skin) || 0))];

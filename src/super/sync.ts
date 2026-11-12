@@ -2,14 +2,14 @@
 // el segundo jugador la dibuja y le manda sus acciones. Todo es código puro (se prueba con npm test).
 // Lo que llega del otro jugador nunca se da por bueno: se valida campo a campo.
 import {
-  PRODUCT_IDS, PRODUCTS, MEJORAS, CAMBIO, esProveedor, type ProveedorId, comprarPedido, reponer, escanear, darCambio, cobrarTarjeta, mejorar, empezarTurno, siguienteDia,
-  type GameState, type Customer, type CustomerState, type GameEvent, type ProductId, type MejoraId,
+  PRODUCT_IDS, PRODUCTS, MEJORAS, CAMBIO, ARMA_IDS, esArma, comprarArma, ahuyentar, type Point, esProveedor, type ProveedorId, comprarPedido, reponer, escanear, darCambio, cobrarTarjeta, mejorar, empezarTurno, siguienteDia,
+  type GameState, type ArmaId, type Customer, type CustomerState, type GameEvent, type ProductId, type MejoraId,
 } from './sim.ts';
 
 /** Tamaño máximo de lo que se comparte (el canal admite 4 KiB por jugador). */
 export const SNAP_MAX_BYTES = 3600;
 
-const ESTADOS: CustomerState[] = ['entrando', 'yendo', 'cogiendo', 'cola', 'saliendo', 'fuera'];
+const ESTADOS: CustomerState[] = ['entrando', 'yendo', 'cogiendo', 'cola', 'saliendo', 'fuera', 'huyendo'];
 const FASES = ['preparacion', 'turno', 'resumen'] as const;
 
 /** Evento numerado (para que el otro procese cada uno una sola vez). */
@@ -34,7 +34,7 @@ const lineas = (l: Partial<Record<ProductId, number>> | { product: ProductId; qt
     .filter(([, q]) => q && q > 0).map(([p, q]) => `${PRODUCT_IDS.indexOf(p)}:${q}`).join(',');
 
 function encodeCustomer(c: Customer): (number | string)[] {
-  const flags = (c.andando ? 1 : 0) | (c.path.length === 0 ? 2 : 0) | (c.enfadado ? 4 : 0) | (c.tarjeta ? 8 : 0);
+  const flags = (c.andando ? 1 : 0) | (c.path.length === 0 ? 2 : 0) | (c.enfadado ? 4 : 0) | (c.tarjeta ? 8 : 0) | (c.ladron ? 16 : 0);
   return [c.id, r2(c.x), r2(c.z), r2(c.dir), ESTADOS.indexOf(c.estado), flags, c.caja, c.look,
     Math.round(c.paciencia * 10), Math.round(c.pacienciaMax * 10), c.pago, c.escaneados, lineas(c.cesta), lineas(c.pasados)];
 }
@@ -46,9 +46,9 @@ export function encodeSnap(s: GameState, x: SnapExtra): Record<string, unknown> 
     f: FASES.indexOf(s.fase), d: s.dia, r: Math.round(s.reloj * 10), rep: Math.round(s.reputacion),
     est: PRODUCT_IDS.map((p) => s.estantes[p]), alm: PRODUCT_IDS.map((p) => s.almacen[p]),
     of: PRODUCT_IDS.map((p) => s.ofertaRara[p] ?? -1),
-    j: s.jugadores.map((j) => [j.dinero, j.ingresos, j.gastos, j.cambioDeMas]),
+    j: s.jugadores.map((j) => [j.dinero, j.ingresos, j.gastos, j.cambioDeMas, ARMA_IDS.reduce((m, a, i) => (j.armas.includes(a) ? m | (1 << i) : m), 0)]),
     k: s.cajas.map((k) => [k.abierta ? 1 : 0, k.musica ? 1 : 0, k.propinas ? 1 : 0, k.cola, k.sucio ? 1 : 0]),
-    st: [s.stats.clientes, s.stats.atendidos, s.stats.perdidos, s.stats.cansados, s.stats.articulos, s.stats.faltas],
+    st: [s.stats.clientes, s.stats.atendidos, s.stats.perdidos, s.stats.cansados, s.stats.articulos, s.stats.faltas, s.stats.robos, s.stats.robado, s.stats.perdidaRobo, s.stats.ahuyentados],
     md: s.mejorDia,
     c: s.clientes.map(encodeCustomer),
     ack: x.ack, res: x.res, ev: x.ev, g: x.g, pausa: x.pausa,
@@ -90,6 +90,10 @@ function parseEvent(e: unknown): GameEvent | null {
       const [p, n] = arr(l, 2);
       return typeof p === 'string' && (PRODUCT_IDS as string[]).includes(p) ? [[p as ProductId, int(n, 0, 99)] as [ProductId, number]] : [];
     }) };
+    case 'ladron': return { tipo: 'ladron', id };
+    case 'robo': return { tipo: 'robo', id, unidades: int(o.unidades, 0, 99), coste: int(o.coste, 0, 1e7) };
+    case 'ahuyentado': return esArma(o.arma) ? { tipo: 'ahuyentado', id, j, arma: o.arma, unidades: int(o.unidades, 0, 99) } : null;
+    case 'arma': return esArma(o.arma) ? { tipo: 'arma', j, arma: o.arma } : null;
     case 'mejora': return typeof o.mejora === 'string' && o.mejora in MEJORAS ? { tipo: 'mejora', j, caja, mejora: o.mejora as MejoraId } : null;
   }
   return null;
@@ -103,7 +107,7 @@ export function decodeSnap(raw: unknown, s: GameState): SnapExtra | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   if (o.v !== 1) return null;
-  const est = arr(o.est), alm = arr(o.alm), of = arr(o.of), j = arr(o.j, 2), k = arr(o.k, 2), st = arr(o.st, 6);
+  const est = arr(o.est), alm = arr(o.alm), of = arr(o.of), j = arr(o.j, 2), k = arr(o.k, 2), st = arr(o.st, 10);
   if (est.length !== PRODUCT_IDS.length || alm.length !== PRODUCT_IDS.length || j.length !== 2 || k.length !== 2) return null;
   s.fase = FASES[int(o.f, 0, 2)];
   s.dia = int(o.d, 1, 1e6, 1);
@@ -116,21 +120,23 @@ export function decodeSnap(raw: unknown, s: GameState): SnapExtra | null {
     if (v >= 0) s.ofertaRara[p] = v; else delete s.ofertaRara[p];
   });
   j.forEach((row, i) => {
-    const [d, ing, gas, cdm] = arr(row, 4);
-    Object.assign(s.jugadores[i], { dinero: int(d, -1e9, 1e9), ingresos: int(ing, -1e9, 1e9), gastos: int(gas, 0, 1e9), cambioDeMas: int(cdm, 0, 1e9) });
+    const [d, ing, gas, cdm, ar] = arr(row, 5);
+    const mask = int(ar, 0, 255);
+    Object.assign(s.jugadores[i], { dinero: int(d, -1e9, 1e9), ingresos: int(ing, -1e9, 1e9), gastos: int(gas, 0, 1e9), cambioDeMas: int(cdm, 0, 1e9), armas: ARMA_IDS.filter((_, k) => mask & (1 << k)) });
   });
   k.forEach((row, i) => {
     const [ab, mu, pr, cola, su] = arr(row, 5);
     Object.assign(s.cajas[i], { abierta: ab === 1, musica: mu === 1, propinas: pr === 1, sucio: su === 1, cola: arr(cola, 12).map((v) => int(v, 0, 1e9)) });
   });
-  const [cl, at, pe, ca, ar, fa] = st;
-  s.stats = { clientes: int(cl, 0, 1e6), atendidos: int(at, 0, 1e6), perdidos: int(pe, 0, 1e6), cansados: int(ca, 0, 1e6), articulos: int(ar, 0, 1e6), faltas: int(fa, 0, 1e6) };
+  const [cl, at, pe, ca, ar, fa, ro, rb, pr, ah] = st;
+  s.stats = { clientes: int(cl, 0, 1e6), atendidos: int(at, 0, 1e6), perdidos: int(pe, 0, 1e6), cansados: int(ca, 0, 1e6), articulos: int(ar, 0, 1e6), faltas: int(fa, 0, 1e6),
+    robos: int(ro, 0, 1e6), robado: int(rb, 0, 1e6), perdidaRobo: int(pr, 0, 1e9), ahuyentados: int(ah, 0, 1e6) };
   s.mejorDia = int(o.md, -1e9, 1e9);
   const prev = new Map(s.clientes.map((c) => [c.id, c]));
   s.clientes = arr(o.c, 20).flatMap((row) => {
     const a = arr(row, 14);
     if (a.length < 14) return [];
-    const id = int(a[0], 0, 1e9), flags = int(a[5], 0, 15);
+    const id = int(a[0], 0, 1e9), flags = int(a[5], 0, 31);
     const cesta = parseLineas(a[12]).map(([product, qty]) => ({ product, qty }));
     const pasados = Object.fromEntries(parseLineas(a[13])) as Partial<Record<ProductId, number>>;
     const old = prev.get(id);
@@ -144,6 +150,7 @@ export function decodeSnap(raw: unknown, s: GameState): SnapExtra | null {
       escaneados: int(a[11], 0, 999), cesta, pasados,
       lista: old?.lista ?? [], paso: old?.paso ?? 0, timer: 0,
     };
+    if (flags & 16) c.ladron = true;
     return [c];
   });
   return {
@@ -167,7 +174,9 @@ export type Accion =
   | { n: number; t: 'mejorar'; m: MejoraId; k: number }
   | { n: number; t: 'empezar' }
   | { n: number; t: 'siguiente' }
-  | { n: number; t: 'pausa'; v: boolean };
+  | { n: number; t: 'pausa'; v: boolean }
+  | { n: number; t: 'arma'; a: ArmaId }
+  | { n: number; t: 'ahuyentar'; id: number };
 
 /** Lee una acción que manda el invitado; null si no tiene buena forma. */
 export function parseAccion(raw: unknown): Accion | null {
@@ -195,6 +204,8 @@ export function parseAccion(raw: unknown): Accion | null {
     case 'empezar': case 'siguiente': case 'tarjeta': return { n, t: o.t };
     case 'pausa': return typeof o.v === 'boolean' ? { n, t: 'pausa', v: o.v } : null;
     case 'sucio': return typeof o.v === 'boolean' ? { n, t: 'sucio', v: o.v } : null;
+    case 'arma': return esArma(o.a) ? { n, t: 'arma', a: o.a } : null;
+    case 'ahuyentar': return typeof o.id === 'number' && Number.isInteger(o.id) && o.id >= 0 && o.id <= 1e9 ? { n, t: 'ahuyentar', id: o.id } : null;
   }
   return null;
 }
@@ -203,7 +214,7 @@ export function parseAccion(raw: unknown): Accion | null {
  * Aplica en el anfitrión una acción del jugador `j` (el invitado es el 1). El invitado solo puede usar
  * su propia caja. Devuelve [ok, motivo] para contárselo. La pausa la gestiona quien llama.
  */
-export function aplicarAccion(s: GameState, a: Accion, j: number): [0 | 1, string] {
+export function aplicarAccion(s: GameState, a: Accion, j: number, pos?: Point | null): [0 | 1, string] {
   switch (a.t) {
     case 'reponer': return reponer(s, a.p) > 0 ? [1, ''] : [0, 'reponer'];
     case 'comprar': { const r = comprarPedido(s, a.pedido, j, a.prov); return r.ok ? [1, ''] : [0, r.motivo]; }
@@ -215,6 +226,9 @@ export function aplicarAccion(s: GameState, a: Accion, j: number): [0 | 1, strin
     case 'empezar': { const antes = s.fase; empezarTurno(s); return s.fase !== antes ? [1, ''] : [0, 'fase']; }
     case 'siguiente': { const antes = s.fase; siguienteDia(s); return s.fase !== antes ? [1, ''] : [0, 'fase']; }
     case 'pausa': return [1, ''];
+    case 'arma': { const r = comprarArma(s, a.a, j); return r.ok ? [1, ''] : [0, r.motivo]; }
+    // El alcance se mide desde donde el anfitrión ve al invitado (nunca desde lo que diga el invitado).
+    case 'ahuyentar': { if (!pos) return [0, 'lejos']; const r = ahuyentar(s, a.id, j, pos); return r.ok ? [1, ''] : [0, r.motivo]; }
   }
 }
 

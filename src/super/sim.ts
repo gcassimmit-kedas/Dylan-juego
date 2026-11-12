@@ -116,7 +116,7 @@ const PICK_TIME = 1.1;
 const QUEUE_PATIENCE = 38;
 const MAX_IN_STORE = 12;
 
-export type CustomerState = 'entrando' | 'yendo' | 'cogiendo' | 'cola' | 'saliendo' | 'fuera';
+export type CustomerState = 'entrando' | 'yendo' | 'cogiendo' | 'cola' | 'saliendo' | 'fuera' | 'huyendo';
 
 export interface Customer {
   id: number;
@@ -147,6 +147,8 @@ export interface Customer {
   caja: number;
   /** Semilla de aspecto (ropa, pelo, piel) para que cada cliente se vea distinto. */
   look: number;
+  /** Ladrón: coge de 1 a 5 artículos y se va sin pagar. Se le reconoce por la sudadera negra. */
+  ladron?: boolean;
 }
 
 export type GameEvent =
@@ -159,6 +161,12 @@ export type GameEvent =
   | { tipo: 'compra'; j: number; coste: number; lineas: [ProductId, number][] }
   | { tipo: 'mejora'; j: number; caja: number; mejora: MejoraId }
   | { tipo: 'seVa'; id: number }
+  /** Un ladrón ha empezado a coger cosas. */
+  | { tipo: 'ladron'; id: number }
+  /** El ladrón ha salido con lo robado: se pierde lo que costó. */
+  | { tipo: 'robo'; id: number; unidades: number; coste: number }
+  | { tipo: 'ahuyentado'; id: number; j: number; arma: ArmaId; unidades: number }
+  | { tipo: 'arma'; j: number; arma: ArmaId }
   | { tipo: 'cierre' }
   | { tipo: 'fin' };
 
@@ -170,6 +178,11 @@ export interface ShiftStats {
   cansados: number;
   articulos: number;
   faltas: number;
+  /** Ladrones que salieron con algo, unidades robadas y lo que costaron. */
+  robos: number;
+  robado: number;
+  perdidaRobo: number;
+  ahuyentados: number;
 }
 
 /** Cada jugador tiene su dinero; los ingresos y gastos son los del día. */
@@ -179,6 +192,8 @@ export interface Jugador {
   gastos: number;
   /** Dinero perdido hoy por dar cambio de más. */
   cambioDeMas: number;
+  /** Armas compradas en la tienda de armas (son de cada jugador). */
+  armas: ArmaId[];
 }
 
 export interface Caja {
@@ -199,6 +214,70 @@ export const MEJORAS = {
 } as const;
 export type MejoraId = keyof typeof MEJORAS;
 export const MEJORA_IDS = Object.keys(MEJORAS) as MejoraId[];
+
+/**
+ * Tienda de armas: todas espantan sin hacer daño. El ladrón suelta lo que llevaba (vuelve a su
+ * estante) y sale corriendo. Se usa siempre la de más alcance que se tenga.
+ */
+export const ARMAS = {
+  silbato: { nombre: 'Silbato', coste: 800, alcance: 3.5, desc: 'Un pitido fuerte. Hay que estar cerca del ladrón.' },
+  agua: { nombre: 'Pistola de agua', coste: 2500, alcance: 7, desc: 'Un buen chorro de agua fría a media distancia.' },
+  red: { nombre: 'Lanzarredes', coste: 6000, alcance: 12, desc: 'Atrapa al ladrón desde lejos con una red.' },
+} as const;
+export type ArmaId = keyof typeof ARMAS;
+export const ARMA_IDS = Object.keys(ARMAS) as ArmaId[];
+export const esArma = (v: unknown): v is ArmaId => typeof v === 'string' && (ARMA_IDS as string[]).includes(v);
+
+/** Probabilidad de que un cliente sea un ladrón: sube cada día (4 % el primero, 35 % como mucho). */
+export function probLadron(dia: number): number {
+  return Math.min(0.35, 0.04 + 0.03 * (Math.max(1, dia) - 1));
+}
+/** Como mucho, dos ladrones a la vez en la tienda. */
+const MAX_LADRONES = 2;
+
+/** El arma de más alcance del jugador (null si no tiene ninguna). */
+export function mejorArma(j: Jugador): ArmaId | null {
+  let best: ArmaId | null = null;
+  for (const a of j.armas) if (esArma(a) && (!best || ARMAS[a].alcance > ARMAS[best].alcance)) best = a;
+  return best;
+}
+
+/** Compra un arma en la tienda de armas. */
+export function comprarArma(s: GameState, a: ArmaId, j = 0): { ok: true } | { ok: false; motivo: 'tiene' | 'dinero' } {
+  const pl = s.jugadores[j];
+  if (pl.armas.includes(a)) return { ok: false, motivo: 'tiene' };
+  const c = ARMAS[a].coste;
+  if (pl.dinero < c) return { ok: false, motivo: 'dinero' };
+  pl.dinero -= c; pl.gastos += c; pl.armas.push(a);
+  s.eventos.push({ tipo: 'arma', j, arma: a });
+  return { ok: true };
+}
+
+/** ¿Está este cliente robando ahora (todavía se le puede espantar)? */
+export const robando = (c: Customer) => !!c.ladron && (c.estado === 'yendo' || c.estado === 'cogiendo' || c.estado === 'huyendo' || c.estado === 'entrando');
+
+/**
+ * El jugador `j`, en `pos`, usa su arma contra el ladrón `id`: si está a su alcance, el ladrón suelta
+ * todo (vuelve al estante) y se va corriendo con las manos vacías.
+ */
+export function ahuyentar(s: GameState, id: number, j: number, pos: Point): { ok: true; unidades: number } | { ok: false; motivo: 'sinArma' | 'lejos' | 'nadie' } {
+  const c = s.clientes.find((x) => x.id === id);
+  if (!c || !robando(c) || s.fase !== 'turno') return { ok: false, motivo: 'nadie' };
+  const arma = mejorArma(s.jugadores[j]);
+  if (!arma) return { ok: false, motivo: 'sinArma' };
+  if (Math.hypot(c.x - pos.x, c.z - pos.z) > ARMAS[arma].alcance) return { ok: false, motivo: 'lejos' };
+  const unidades = c.cesta.reduce((t, l) => t + l.qty, 0);
+  devolver(s, c);
+  s.stats.ahuyentados++;
+  s.eventos.push({ tipo: 'ahuyentado', id, j, arma, unidades });
+  salir(c, { x: c.x, z: c.z });
+  return { ok: true, unidades };
+}
+
+/** Lo que costó (precio de compra por unidad) lo que lleva un ladrón. */
+export function costeRobado(c: { cesta: { product: ProductId; qty: number }[] }): number {
+  return c.cesta.reduce((t, l) => t + Math.round((costeCaja(l.product) / PRODUCTS[l.product].caja) * l.qty), 0);
+}
 
 export type Phase = 'preparacion' | 'turno' | 'resumen';
 
@@ -224,8 +303,8 @@ export interface GameState {
   ofertaRara: Partial<Record<ProductId, number>>;
 }
 
-const emptyStats = (): ShiftStats => ({ clientes: 0, atendidos: 0, perdidos: 0, cansados: 0, articulos: 0, faltas: 0 });
-const nuevoJugador = (dinero: number): Jugador => ({ dinero, ingresos: 0, gastos: 0, cambioDeMas: 0 });
+const emptyStats = (): ShiftStats => ({ clientes: 0, atendidos: 0, perdidos: 0, cansados: 0, articulos: 0, faltas: 0, robos: 0, robado: 0, perdidaRobo: 0, ahuyentados: 0 });
+const nuevoJugador = (dinero: number): Jugador => ({ dinero, ingresos: 0, gastos: 0, cambioDeMas: 0, armas: [] });
 const nuevaCaja = (abierta: boolean): Caja => ({ cola: [], abierta, musica: false, propinas: false });
 /** Dinero con el que empieza cada jugador. */
 export const DINERO_INICIAL = 1500;
@@ -699,10 +778,25 @@ function elegirProducto(s: GameState, excluir: ProductId[]): ProductId {
   return opciones[opciones.length - 1];
 }
 
-function nuevoCliente(s: GameState): Customer {
-  const n = 1 + Math.floor(rand(s) * (s.dia >= 3 ? 4 : 3));
+/** Lo que piensa llevarse un ladrón: de 1 a 5 unidades en total, de 1 a 3 productos. */
+function listaLadron(s: GameState): Customer['lista'] {
+  let total = 1 + Math.floor(rand(s) * 5);
   const lista: Customer['lista'] = [];
+  const n = Math.min(total, 1 + Math.floor(rand(s) * 3));
   for (let i = 0; i < n; i++) {
+    const p = elegirProducto(s, lista.map((l) => l.product));
+    const q = i === n - 1 ? total : 1 + Math.floor(rand(s) * (total - (n - 1 - i)));
+    lista.push({ product: p, qty: q });
+    total -= q;
+  }
+  return lista;
+}
+
+function nuevoCliente(s: GameState): Customer {
+  const ladron = rand(s) < probLadron(s.dia) && s.clientes.filter((c) => c.ladron && c.estado !== 'saliendo').length < MAX_LADRONES;
+  const n = 1 + Math.floor(rand(s) * (s.dia >= 3 ? 4 : 3));
+  const lista: Customer['lista'] = ladron ? listaLadron(s) : [];
+  if (!ladron) for (let i = 0; i < n; i++) {
     const p = elegirProducto(s, lista.map((l) => l.product));
     lista.push({ product: p, qty: rand(s) < 0.3 ? 2 : 1 });
   }
@@ -713,7 +807,8 @@ function nuevoCliente(s: GameState): Customer {
     path: [LAYOUT.entry], estado: 'entrando', lista, paso: 0, cesta: [], timer: 0,
     paciencia: QUEUE_PATIENCE, pacienciaMax: QUEUE_PATIENCE, escaneados: 0, pasados: {}, pago: 0, tarjeta: false, enfadado: false, caja: -1, look: Math.floor(rand(s) * 1e6),
   };
-  s.stats.clientes++;
+  // Los ladrones no cuentan como clientes.
+  if (ladron) c.ladron = true; else s.stats.clientes++;
   s.eventos.push({ tipo: 'entra', id: c.id });
   return c;
 }
@@ -723,6 +818,13 @@ function irAlSiguiente(s: GameState, c: Customer) {
   if (c.paso < c.lista.length) {
     c.estado = 'yendo';
     c.path = route(here, displayOf(c.lista[c.paso].product).pick);
+    return;
+  }
+  if (c.ladron) {
+    // El ladrón no pasa por caja: sale corriendo con lo que haya cogido.
+    if (!c.cesta.length) { salir(c, here); return; }
+    c.estado = 'huyendo';
+    c.path = [...route(here, LAYOUT.entry), { ...LAYOUT.street }];
     return;
   }
   // Va a la caja abierta con menos cola.
@@ -750,8 +852,11 @@ function devolver(s: GameState, c: Customer) {
   c.cesta = [];
 }
 
+/** El ladrón va deprisa cuando escapa (con lo robado o espantado). */
+const RUN_FACTOR = 1.7;
+
 function mover(c: Customer, dt: number) {
-  let left = WALK_SPEED * dt;
+  let left = WALK_SPEED * dt * (c.ladron && (c.estado === 'huyendo' || c.estado === 'saliendo') ? RUN_FACTOR : 1);
   c.andando = c.path.length > 0;
   while (left > 0 && c.path.length) {
     const t = c.path[0];
@@ -778,12 +883,15 @@ function actualizar(s: GameState, c: Customer, dt: number) {
         const { product, qty } = c.lista[c.paso];
         const n = Math.min(qty, s.estantes[product]);
         if (n > 0) {
+          if (c.ladron && !c.cesta.length) s.eventos.push({ tipo: 'ladron', id: c.id });
           s.estantes[product] -= n;
           const l = c.cesta.find((k) => k.product === product);
           if (l) l.qty += n; else c.cesta.push({ product, qty: n });
           s.eventos.push({ tipo: 'coge', product, qty: n, id: c.id });
         }
-        if (n < qty && isRara(product)) {
+        if (c.ladron) {
+          // Al ladrón le da igual que falte algo.
+        } else if (n < qty && isRara(product)) {
           // Lo difícil de conseguir: si no hay, no pasa nada.
         } else if (n < qty) {
           s.stats.faltas++;
@@ -817,6 +925,16 @@ function actualizar(s: GameState, c: Customer, dt: number) {
     }
     case 'saliendo':
       if (llegado) c.estado = 'fuera';
+      break;
+    case 'huyendo':
+      if (llegado) {
+        // Se ha escapado: lo que llevaba no vuelve, y se pierde lo que costó.
+        const unidades = c.cesta.reduce((t, l) => t + l.qty, 0), coste = costeRobado(c);
+        s.stats.robos++; s.stats.robado += unidades; s.stats.perdidaRobo += coste;
+        s.eventos.push({ tipo: 'robo', id: c.id, unidades, coste });
+        c.cesta = [];
+        c.estado = 'fuera';
+      }
       break;
   }
 }
@@ -866,11 +984,13 @@ export interface Save {
   mejorDia: number;
   seed: number;
   ofertaRara?: Record<string, number>;
+  /** Armas de cada jugador. */
+  armas?: string[][];
 }
 
 /** Guarda lo necesario para seguir otro día. Solo se guarda entre turnos. */
 export function exportar(s: GameState): Save {
-  return { v: 3, dia: s.dia, dinero: s.jugadores[0].dinero, dinero2: s.jugadores[1].dinero, mejoras: s.cajas.map((k) => [k.musica, k.propinas]), reputacion: s.reputacion, almacen: { ...s.almacen }, estantes: { ...s.estantes }, mejorDia: s.mejorDia, seed: s.seed, ofertaRara: { ...s.ofertaRara } as Record<string, number> };
+  return { v: 3, dia: s.dia, dinero: s.jugadores[0].dinero, dinero2: s.jugadores[1].dinero, mejoras: s.cajas.map((k) => [k.musica, k.propinas]), reputacion: s.reputacion, almacen: { ...s.almacen }, estantes: { ...s.estantes }, mejorDia: s.mejorDia, seed: s.seed, ofertaRara: { ...s.ofertaRara } as Record<string, number>, armas: s.jugadores.map((j) => [...j.armas]) };
 }
 
 /** Restaura una partida guardada validando cada dato (si algo no cuadra, partida nueva). */
@@ -896,5 +1016,6 @@ export function importar(data: unknown): GameState | null {
   if (d.ofertaRara && typeof d.ofertaRara === 'object') {
     for (const p of PRODUCT_IDS) if (isRara(p)) s.ofertaRara[p] = int(d.ofertaRara[p], 0, 9) ?? 0;
   } else sortearOferta(s);
+  if (Array.isArray(d.armas)) d.armas.slice(0, 2).forEach((l, k) => { if (Array.isArray(l)) s.jugadores[k].armas = ARMA_IDS.filter((a) => l.includes(a)); });
   return s;
 }

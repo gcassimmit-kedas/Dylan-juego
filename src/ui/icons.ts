@@ -75,6 +75,8 @@ import maximize from 'lucide-static/icons/maximize.svg?raw';
 import minimize from 'lucide-static/icons/minimize.svg?raw';
 import gauge from 'lucide-static/icons/gauge.svg?raw';
 import droplets from 'lucide-static/icons/droplets.svg?raw';
+import siren from 'lucide-static/icons/siren.svg?raw';
+import shieldAlert from 'lucide-static/icons/shield-alert.svg?raw';
 import bed from 'lucide-static/icons/bed.svg?raw';
 
 /** Extrae solo el contenido interior de un SVG de Lucide (sin comentario de licencia ni atributos). */
@@ -108,6 +110,12 @@ const CUSTOM = {
   madera: '<circle cx="7" cy="16" r="3"/><circle cx="17" cy="16" r="3"/><circle cx="12" cy="9" r="3"/><circle cx="7" cy="16" r=".5"/><circle cx="17" cy="16" r=".5"/><circle cx="12" cy="9" r=".5"/>',
   // Pinchos: tabla con púas
   pinchos: '<path d="M3 19h18"/><path d="M4 19l2-9 2 9"/><path d="M9 19l3-13 3 13"/><path d="M16 19l2-9 2 9"/>',
+  // Silbato: cuerpo redondo, boquilla y cordón
+  silbato: '<circle cx="9" cy="14" r="5"/><path d="M12.6 10.6 21 7v4l-6.2 2.2"/><circle cx="9" cy="14" r="1.5"/><path d="M5.5 10.5 3 8"/>',
+  // Pistola de agua: depósito arriba, cañón y gotas
+  pistolaAgua: '<path d="M3 10h12a2 2 0 0 1 2 2H8"/><path d="M17 11h2.5"/><path d="M8 12l-1.5 6.8a1 1 0 0 0 1 1.2h2a1 1 0 0 0 1-.8L12 12"/><rect x="5" y="4" width="7" height="6" rx="2"/><path d="M22 8.5v.01"/><path d="M22 13.5v.01"/>',
+  // Lanzarredes: tubo y red abierta
+  lanzarredes: '<path d="M2.5 18.5l3 3 5-5-3-3z"/><path d="M10 14 13 3"/><path d="M10 14l11-3"/><path d="M10 14l8.5-8.5"/><path d="M13 3c3.5.6 6.6 3.4 8 8"/><path d="M11.8 8.5c2 .4 3.6 1.7 4.4 3.8"/>',
   // Menú hamburguesa (no usamos glifos de texto)
   menu: '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>',
 };
@@ -117,7 +125,7 @@ const LUCIDE = {
   footprints, magnet, drone, shieldCheck, brickWall, settings, x, chevronRight, arrowLeft,
   trophy, check, fileText, info, crosshair, grid, rotateCcw, hammer, fence, castle, hospital, plane, zapOff, userRound, shieldOff,
   globe, search, lock, users, flag, copy, refreshCw, logIn, logOut, plus, wifiOff, ban, keyRound,
-  store, shoppingCart, shoppingBasket, monitor, packageIc, scanBarcode, clock, truck, warehouse, smile, receipt, minus, refrigerator, trendingUp, packagePlus, userX, circleHelp, banknote, maximize, minimize, gauge, droplets, bed,
+  store, shoppingCart, shoppingBasket, monitor, packageIc, scanBarcode, clock, truck, warehouse, smile, receipt, minus, refrigerator, trendingUp, packagePlus, userX, circleHelp, banknote, maximize, minimize, gauge, droplets, bed, siren, shieldAlert,
 };
 
 export type IconName = keyof typeof LUCIDE | keyof typeof CUSTOM;

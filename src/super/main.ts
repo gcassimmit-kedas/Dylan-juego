@@ -5,7 +5,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import {
   newGame, tick, comprarPedido, costePedido, reponer, empezarTurno, siguienteDia, clienteEnCaja, CAMBIO, esMoneda, esRara, disponibles,
   abrirCaja, mejorar, cambioDebido, detrasDe, costeCaja, vende, PROVEEDORES, type ProveedorId, escanear, darCambio, cobrarTarjeta, MEJORAS, MEJORA_IDS, type MejoraId, type Jugador,
-  horaTienda, exportar, importar,
+  horaTienda, exportar, importar, ARMAS, ARMA_IDS, ahuyentar, comprarArma, mejorArma, robando, type ArmaId,
   PRODUCTS, PRODUCT_IDS, DISPLAYS, LAYOUT, SHIFT_SECONDS,
   type GameState, type ProductId, type Customer,
 } from './sim.ts';
@@ -18,7 +18,7 @@ import { aplicarAccion, type Accion } from './sync.ts';
 import { codigoPartida, leerCodigo } from './codigo.ts';
 import { buildWorld as buildExterior, LUGARES, type World } from './world.ts';
 import { sfx, unlock, isMuted, setMuted } from './audio.ts';
-import { icon, hydrateIcons } from '../ui/icons.ts';
+import { icon, hydrateIcons, type IconName } from '../ui/icons.ts';
 import '../ui/pwa.ts';
 
 const $ = <E extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as E;
@@ -338,13 +338,15 @@ function makeThumbs(): Record<ProductId, string> {
 interface CustomerView {
   p: M.Person; phase: number; bar: THREE.Sprite; barTex: THREE.CanvasTexture; barF: number;
   items: number; bag: THREE.Mesh; inBasket: THREE.Object3D[];
+  /** Cartel de ladrón (solo los ladrones). */
+  tag?: THREE.Sprite;
 }
 const views = new Map<number, CustomerView>();
 const bagGeo = new THREE.BoxGeometry(0.3, 0.36, 0.18);
 const bagMat = new THREE.MeshStandardMaterial({ color: 0xc8a272, roughness: 0.9 });
 
 function customerView(c: Customer): CustomerView {
-  const p = M.person(c.look);
+  const p = c.ladron ? M.thiefModel(c.look) : M.person(c.look);
   p.group.position.set(c.x, 0, c.z);
   scene.add(p.group);
   const barTex = T.patienceBar(null, 1);
@@ -353,7 +355,24 @@ function customerView(c: Customer): CustomerView {
   p.group.add(bar);
   const bag = new THREE.Mesh(bagGeo, bagMat); bag.position.set(0.3, 0.72, 0.05); bag.visible = false; bag.castShadow = true;
   p.group.add(bag);
-  return { p, phase: Math.random() * 6, bar, barTex, barF: 1, items: 0, bag, inBasket: [] };
+  let tag: THREE.Sprite | undefined;
+  if (c.ladron) {
+    tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: thiefTagTex(), transparent: true, depthTest: false }));
+    tag.scale.set(0.8, 0.2, 1); tag.position.y = 2.15; tag.renderOrder = 12; tag.visible = false; p.group.add(tag);
+  }
+  return { p, phase: Math.random() * 6, bar, barTex, barF: 1, items: 0, bag, inBasket: [], tag };
+}
+let thiefTag: THREE.CanvasTexture | null = null;
+/** Cartel rojo sobre el ladrón mientras roba (una sola textura para todos). */
+function thiefTagTex(): THREE.CanvasTexture {
+  if (thiefTag) return thiefTag;
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+  const g = c.getContext('2d')!;
+  g.fillStyle = 'rgba(160,24,30,0.92)'; g.fillRect(0, 0, 256, 64);
+  g.fillStyle = '#ffffff'; g.font = "600 36px 'Oswald', sans-serif"; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('LADRÓN', 128, 33);
+  thiefTag = new THREE.CanvasTexture(c); thiefTag.colorSpace = THREE.SRGBColorSpace;
+  return thiefTag;
 }
 
 function addToBasket(v: CustomerView, product: ProductId, qty: number) {
@@ -397,7 +416,8 @@ function syncCustomers(dt: number, t: number) {
     v.p.armR.rotation.x = THREE.MathUtils.lerp(v.p.armR.rotation.x, reach || swing * 0.3, 0.3);
     g.position.y = walking ? Math.abs(Math.sin(v.phase)) * 0.035 : 0;
     // Cesta mientras compra, bolsa al pagar
-    v.p.basket.visible = c.estado !== 'entrando' && !v.bag.visible && !(till.active && c.id === state.cajas[ME].cola[0] && c.path.length === 0);
+    v.p.basket.visible = !c.ladron && c.estado !== 'entrando' && !v.bag.visible && !(till.active && c.id === state.cajas[ME].cola[0] && c.path.length === 0);
+    if (v.tag) { v.tag.visible = robando(c) && c.cesta.length > 0; if (v.tag.visible && !reducedMotion) v.tag.position.y = 2.15 + Math.sin(t * 8) * 0.03; }
     // Paciencia en la cola
     const inQueue = c.estado === 'cola';
     v.bar.visible = inQueue;
@@ -655,13 +675,14 @@ $('shAll').addEventListener('click', () => {
 
 // ---------- Ventanas ----------
 let openModal: HTMLElement | null = null, opener: HTMLElement | null = null;
-function open(id: 'pc' | 'shelves' | 'help' | 'confirm' | 'mp' | 'skins' | 'transfer') {
+function open(id: 'pc' | 'shelves' | 'help' | 'confirm' | 'mp' | 'skins' | 'transfer' | 'armas') {
   if (openModal) close();
   player?.unlock(); player?.release();
   const el = $(id);
   opener = document.activeElement as HTMLElement | null;
   if (id === 'pc') renderPc();
   if (id === 'shelves') renderShelves();
+  if (id === 'armas') renderArmas();
   el.hidden = false;
   openModal = el;
   el.querySelector<HTMLElement>('button:not([disabled])')?.focus();
@@ -673,7 +694,7 @@ function close() {
   opener?.focus?.();
 }
 document.querySelectorAll<HTMLElement>('[data-close]').forEach((b) => b.addEventListener('click', close));
-for (const id of ['pc', 'shelves', 'help', 'confirm', 'mp', 'skins', 'transfer']) $(id).addEventListener('pointerdown', (e) => { if (e.target === e.currentTarget) close(); });
+for (const id of ['pc', 'shelves', 'help', 'confirm', 'mp', 'skins', 'transfer', 'armas']) $(id).addEventListener('pointerdown', (e) => { if (e.target === e.currentTarget) close(); });
 pcBtn.addEventListener('click', () => { pcProv = 'ordenador'; open('pc'); });
 shelvesBtn.addEventListener('click', () => open('shelves'));
 
@@ -731,9 +752,100 @@ $('pcMejoras').addEventListener('click', (e) => {
   renderPc();
 });
 
+// ---------- Tienda de armas y ladrones ----------
+const ARMA_ICON: Record<ArmaId, IconName> = { silbato: 'silbato', agua: 'pistolaAgua', red: 'lanzarredes' };
+function renderArmas() {
+  const j = yo(), best = mejorArma(j);
+  $('arMoney').textContent = money(j.dinero);
+  $('arBody').innerHTML = ARMA_IDS.map((a) => {
+    const d = ARMAS[a], tiene = j.armas.includes(a);
+    return `<article class="prod mejora${tiene ? ' sel' : ''}"><div class="mj-ic">${icon(ARMA_ICON[a])}</div><h3>${d.nombre}</h3>
+      <div class="meta"><b>Alcance: ${String(d.alcance).replace('.', ',')} m${best === a ? ' · la que usas' : ''}</b><br />${d.desc}</div>
+      <div class="row"><span class="price">${icon('coins')}${money(d.coste)}</span>
+      <button class="ghost" data-a="${a}" ${tiene || d.coste > j.dinero ? 'disabled' : ''}>${tiene ? 'Ya la tienes' : 'Comprar'}</button></div></article>`;
+  }).join('');
+}
+$('arBody').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-a]');
+  if (!b) return;
+  const a = b.dataset.a as ArmaId;
+  const r = comprarArma(state, a, ME);
+  if (!r.ok) { sfx.error(); toast(r.motivo === 'dinero' ? 'No tienes dinero suficiente' : 'Ya tienes esa arma', 'bad'); return; }
+  if (isGuest()) session!.send({ t: 'arma', a } as Omit<Accion, 'n'>);
+  sfx.buy();
+  pulse(hudMoneyEl, 'spend');
+  toast(`Has comprado: ${ARMAS[a].nombre.toLowerCase()}. Alcance ${String(ARMAS[a].alcance).replace('.', ',')} m`, 'ok', 2800);
+  save();
+  renderArmas();
+});
+
+const useBtn = $<HTMLButtonElement>('useBtn'), useLbl = $('useLbl'), thiefAlert = $('thiefAlert'), thiefTxt = $('thiefTxt');
+/** Ladrones que todavía se pueden espantar (con algo en la bolsa o camino de cogerlo). */
+const ladrones = () => state.clientes.filter((c) => robando(c));
+/** El ladrón más cercano al jugador. */
+function ladronCercano(): { c: Customer; d: number } | null {
+  let best: { c: Customer; d: number } | null = null;
+  for (const c of ladrones()) { const d = Math.hypot(c.x - player.pos.x, c.z - player.pos.y); if (!best || d < best.d) best = { c, d }; }
+  return best;
+}
+let lastUse = 0;
+function espantar() {
+  if (state.fase !== 'turno' || performance.now() - lastUse < 600) return;
+  const arma = mejorArma(yo()), t = ladronCercano();
+  if (!t) return;
+  if (!arma) { sfx.error(); toast('No tienes con qué espantarlo: compra algo en la tienda de armas, junto a tu casa', 'bad', 3000); return; }
+  const alcance = ARMAS[arma].alcance;
+  if (t.d > alcance) { sfx.error(); toast(`Está demasiado lejos: tu ${ARMAS[arma].nombre.toLowerCase()} llega a ${String(alcance).replace('.', ',')} m`, 'bad', 2200); return; }
+  lastUse = performance.now();
+  shoot(arma, t.c);
+  if (isGuest()) { session!.send({ t: 'ahuyentar', id: t.c.id } as Omit<Accion, 'n'>); return; }
+  ahuyentar(state, t.c.id, ME, { x: player.pos.x, z: player.pos.y });
+}
+/** Efecto del arma: sonido y lo que sale disparado hacia el ladrón. */
+function shoot(arma: ArmaId, c: Customer) {
+  const from = camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(0.5)).add(new THREE.Vector3(0, -0.25, 0));
+  const to = new THREE.Vector3(c.x, 1.3, c.z);
+  if (arma === 'silbato') { sfx.whistle(); floatText('¡Fuera!', '#ffffff', to.clone().setY(2.2)); return; }
+  if (arma === 'agua') {
+    sfx.splash();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x7fc8ff, transparent: true, opacity: 0.8, roughness: 0.1 });
+    for (let i = 0; i < 6; i++) {
+      const d = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), mat); d.position.copy(from); scene.add(d);
+      flies.push({ obj: d, t: -i * 0.04, dur: 0.35, from: from.clone(), to: to.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3, 0)), kind: 'item' });
+    }
+  } else {
+    sfx.net();
+    const n = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 6), new THREE.MeshStandardMaterial({ color: 0xe8e0c8, wireframe: true }));
+    n.position.copy(from); scene.add(n);
+    flies.push({ obj: n, t: 0, dur: 0.45, from, to, kind: 'item' });
+  }
+  floatText('¡Fuera!', '#ffffff', to.clone().setY(2.2));
+}
+useBtn.addEventListener('click', espantar);
+addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'f' && inStore && player.enabled && canAct()) espantar(); });
+let useKey = '';
+function updateThieves() {
+  const t = player.enabled && canAct() && state.fase === 'turno' ? ladronCercano() : null;
+  const arma = mejorArma(yo());
+  const visible = !!t && !!arma;
+  const enRango = !!t && !!arma && t.d <= ARMAS[arma].alcance;
+  const key = `${visible}|${enRango}|${arma}`;
+  if (key !== useKey) {
+    useKey = key;
+    useBtn.hidden = !visible;
+    useBtn.classList.toggle('far', !enRango);
+    useLbl.textContent = enRango ? 'Espantar' : 'Acércate';
+    useBtn.setAttribute('aria-label', enRango ? `Espantar al ladrón con ${ARMAS[arma!]?.nombre.toLowerCase() ?? ''}` : 'El ladrón está lejos: acércate');
+  }
+  const n = state.fase === 'turno' ? ladrones().filter((c) => c.cesta.length > 0).length : 0;
+  thiefAlert.hidden = n === 0;
+  const txt = n > 1 ? `${n} ladrones en la tienda` : 'Ladrón en la tienda';
+  if (thiefTxt.textContent !== txt) thiefTxt.textContent = txt;
+}
+
 // ---------- Partida de dos: vestíbulo, anfitrión e invitado ----------
 const MOTIVOS: Record<string, string> = {
-  dinero: 'No tienes dinero suficiente', agotado: 'El proveedor no tiene tantas cajas hoy', ya: 'Esa caja ya tiene esa mejora',
+  tiene: 'Ya tienes esa arma', lejos: 'El ladrón está demasiado lejos', sinArma: 'No tienes ningún arma', dinero: 'No tienes dinero suficiente', agotado: 'El proveedor no tiene tantas cajas hoy', ya: 'Esa caja ya tiene esa mejora',
 };
 const sessionHooks = {
   onPartner(present: boolean) {
@@ -744,8 +856,10 @@ const sessionHooks = {
     mejorasKey = '';
   },
   onAction(a: Accion): [0 | 1, string] {
-    const r = aplicarAccion(state, a, 1);
-    if (a.t === 'reponer' || a.t === 'comprar' || a.t === 'mejorar') save();
+    // El alcance de su arma se mide desde donde se le ve aquí, no desde lo que diga el invitado.
+    const pp = session?.partnerPos;
+    const r = aplicarAccion(state, a, 1, pp ? { x: pp[0], z: pp[1] } : null);
+    if (a.t === 'reponer' || a.t === 'comprar' || a.t === 'mejorar' || a.t === 'arma') save();
     return r;
   },
   onSnap(x: { ev: [number, GameState['eventos'][number]][]; res: [number, 0 | 1, string][] }) {
@@ -1053,6 +1167,8 @@ function showSummary() {
   $('sItems').textContent = String(s.articulos);
   $('sIncome').textContent = money(j.ingresos);
   $('sCost').textContent = money(j.gastos);
+  $('sStolen').textContent = s.perdidaRobo ? `-${money(s.perdidaRobo)}` : money(0);
+  $('sScared').textContent = String(s.ahuyentados);
   const pe = $('sProfit');
   pe.textContent = (profit < 0 ? '-' : '') + money(Math.abs(profit));
   pe.classList.toggle('neg', profit < 0);
@@ -1061,6 +1177,7 @@ function showSummary() {
   if (s.faltas > 0) tips.push(`${s.faltas === 1 ? 'Una vez' : `${s.faltas} veces`} un cliente no encontró lo que buscaba: compra más género en el ordenador.`);
   if (j.cambioDeMas > 0) tips.push(`Diste ${money(j.cambioDeMas)} de más en cambios.`);
   if (session) tips.push(`Tu compañero ganó ${money(state.jugadores[1 - ME].ingresos)} hoy.`);
+  if (s.robos > 0) tips.push(`${s.robos === 1 ? 'Un ladrón se llevó' : `${s.robos} ladrones se llevaron`} ${s.robado} ${s.robado === 1 ? 'artículo' : 'artículos'}, que te habían costado ${money(s.perdidaRobo)}.${mejorArma(j) ? '' : ' Compra un arma en la tienda de armas para espantarlos.'}`);
   if (s.cansados > 0) tips.push('Hubo clientes que se cansaron de esperar en la caja: cóbrales más rápido.');
   $('sumTip').textContent = tips.length ? tips.join(' ') : 'Día perfecto: todos los clientes se fueron contentos.';
   close();
@@ -1247,6 +1364,7 @@ function act(o: THREE.Object3D) {
     till.enter();
   } else if (a === 'ordenador') { pcProv = 'ordenador'; for (const p of PRODUCT_IDS) cart[p] = 0; open('pc'); }
   else if (a === 'mayorista' || a === 'fruteria') { pcProv = a; for (const p of PRODUCT_IDS) cart[p] = 0; open('pc'); }
+  else if (a === 'armas') open('armas');
   else if (a === 'cama') dormir();
   else if (a === 'ducha') ducharse();
   else if (a === 'almacen') open('shelves');
@@ -1266,6 +1384,7 @@ function describe(o: THREE.Object3D): string {
   if (a === 'ordenador') return 'Hacer pedidos en el ordenador';
   if (a === 'mayorista') return 'Comprar en el Mayorista (más barato)';
   if (a === 'fruteria') return 'Comprar en la Frutería';
+  if (a === 'armas') return 'Tienda de armas: para espantar ladrones';
   if (a === 'cama') return state.fase === 'turno' ? 'Cama (ahora estás trabajando)' : state.fase === 'resumen' ? 'Dormir hasta mañana' : 'Echarse una siesta';
   if (a === 'ducha') return 'Bañarse';
   return 'Ver el almacén';
@@ -1282,7 +1401,7 @@ function updateAim() {
     promptEl.hidden = !o;
     promptText.textContent = text;
     actBtn.hidden = !o || !isTouch;
-    if (o) actLbl.textContent = o.userData.product ? 'Reponer' : ({ cobrar: 'Atender', ordenador: 'Ordenador', mayorista: 'Comprar', fruteria: 'Comprar', cama: 'Dormir', ducha: 'Bañarse' } as Record<string, string>)[o.userData.action] ?? 'Almacén';
+    if (o) actLbl.textContent = o.userData.product ? 'Reponer' : ({ cobrar: 'Atender', ordenador: 'Ordenador', mayorista: 'Comprar', fruteria: 'Comprar', armas: 'Comprar', cama: 'Dormir', ducha: 'Bañarse' } as Record<string, string>)[o.userData.action] ?? 'Almacén';
   }
 }
 actBtn.addEventListener('click', () => { if (aimed) act(aimed); });
@@ -1359,6 +1478,25 @@ function handleEvents(now: number) {
       case 'compra':
         if (ev.j !== ME) toast(`Tu compañero compró: ${ev.lineas.map(([p, n]) => `${n} ${n === 1 ? 'caja' : 'cajas'} de ${PRODUCTS[p].nombre.toLowerCase()}`).join(', ')}`, '', 3200);
         break;
+      case 'ladron': {
+        sfx.alarm();
+        const sin = !mejorArma(yo());
+        banner('Alarma', '¡Un ladrón!', sin ? 'No tienes con qué espantarlo: compra un arma en la tienda de armas' : 'Espántalo antes de que salga por la puerta');
+        break;
+      }
+      case 'robo':
+        sfx.angry();
+        toast(`El ladrón se escapó con ${ev.unidades} ${ev.unidades === 1 ? 'artículo' : 'artículos'}: perdiste ${money(ev.coste)} en género`, 'bad', 3600);
+        toastLock = now + 2;
+        break;
+      case 'ahuyentado':
+        if (ev.j !== ME) { const c = state.clientes.find((x) => x.id === ev.id); if (c) shoot(ev.arma, c); }
+        toast(ev.j === ME ? (ev.unidades ? `¡Ladrón espantado! Ha soltado ${ev.unidades} ${ev.unidades === 1 ? 'artículo' : 'artículos'}` : '¡Ladrón espantado antes de robar!') : 'Tu compañero ha espantado a un ladrón', 'ok', 2600);
+        toastLock = now + 1.5;
+        break;
+      case 'arma':
+        if (ev.j !== ME) toast(`Tu compañero ha comprado: ${ARMAS[ev.arma].nombre.toLowerCase()}`, '', 2600);
+        break;
       case 'mejora':
         if (ev.j !== ME) {
           sfx.buy();
@@ -1407,6 +1545,7 @@ function frame(now: number) {
   }
   syncCustomers(running ? dt : 0, elapsed);
   updateWorldState();
+  updateThieves();
   updateFlies(dt);
 
   // Sombras alrededor del jugador (el mundo es grande)

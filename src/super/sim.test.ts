@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  newGame, comprar, comprarPedido, costePedido, reponer, empezarTurno, siguienteDia, tick, escanear, clienteEnCaja,
+  newGame, comprar, comprarPedido, probLadron, ahuyentar, comprarArma, mejorArma, ARMAS, costePedido, reponer, empezarTurno, siguienteDia, tick, escanear, clienteEnCaja,
   route, importar, darCambio, cobrarTarjeta, costeCaja, vende, sortearOferta, disponibles, esRara, CAMBIO, abrirCaja, mejorar, cambioDebido, importeEscaneado, BILLETES, exportar, horaTienda, totalArticulos, importe, PRODUCTS, PRODUCT_IDS, DISPLAYS, SHIFT_SECONDS, LAYOUT, walkable, puntoLibre, detrasDe,
   type GameState,
 } from './sim.ts';
@@ -517,4 +517,97 @@ test('si el cajero no se ha bañado, los clientes de su cola aguantan menos', ()
     return s.clientes.find((c) => c.id === s.cajas[0].cola[0])!.pacienciaMax;
   };
   assert.ok(pac(true) < pac(false) * 0.75);
+});
+
+// ---------- Ladrones y tienda de armas ----------
+
+/** Turno con un ladrón ya dentro y a punto de coger cosas (sin más clientes). */
+function conLadron(dia = 3) {
+  const s = newGame(7);
+  s.dia = dia;
+  for (const p of PRODUCT_IDS) s.estantes[p] = PRODUCTS[p].capacidad;
+  empezarTurno(s);
+  s.proximoCliente = 1e9;
+  let c: ReturnType<typeof clienteEnCaja> = null;
+  // Se fuerza un cliente ladrón con la misma lógica de la simulación.
+  for (let i = 0; i < 400 && !c; i++) {
+    s.proximoCliente = 0;
+    tick(s, 0.01);
+    const n = s.clientes[s.clientes.length - 1];
+    if (n?.ladron) c = n; else s.clientes = s.clientes.filter((x) => x.ladron);
+  }
+  s.proximoCliente = 1e9;
+  assert.ok(c, 'debería aparecer un ladrón');
+  s.eventos.length = 0;
+  return { s, c: c! };
+}
+
+test('cada día es más probable que entre un ladrón (con un máximo)', () => {
+  assert.ok(Math.abs(probLadron(1) - 0.04) < 1e-9);
+  assert.ok(Math.abs(probLadron(2) - 0.07) < 1e-9);
+  for (let d = 1; d < 40; d++) assert.ok(probLadron(d + 1) >= probLadron(d));
+  assert.equal(probLadron(100), 0.35);
+});
+
+test('un ladrón coge de 1 a 5 artículos, no pasa por caja y, si escapa, se pierde lo que costó', () => {
+  for (let k = 0; k < 6; k++) {
+    const { s, c } = conLadron(3 + k);
+    const total = c.lista.reduce((t, l) => t + l.qty, 0);
+    assert.ok(total >= 1 && total <= 5, `quiere llevarse ${total}`);
+    const antes = { ...s.estantes };
+    const dinero = s.jugadores[0].dinero;
+    run(s, 200);
+    assert.equal(s.cajas[0].cola.length, 0);
+    assert.equal(s.stats.robos, 1);
+    assert.equal(s.stats.robado, total);
+    const esperado = c.lista.reduce((t, l) => t + Math.round((costeCaja(l.product) / PRODUCTS[l.product].caja) * l.qty), 0);
+    assert.equal(s.stats.perdidaRobo, esperado);
+    // Solo falta lo que se llevó, no todo el género.
+    const faltan = PRODUCT_IDS.reduce((t, p) => t + antes[p] - s.estantes[p], 0);
+    assert.equal(faltan, total);
+    assert.equal(s.jugadores[0].dinero, dinero, 'el dinero no se toca: lo perdido es el género');
+  }
+});
+
+test('sin arma no se puede espantar al ladrón; con ella, suelta lo robado y se va', () => {
+  const { s, c } = conLadron();
+  for (let i = 0; i < 400 && !c.cesta.length; i++) tick(s, 0.05);
+  assert.ok(c.cesta.length > 0);
+  assert.ok(s.eventos.some((e) => e.tipo === 'ladron' && e.id === c.id));
+  assert.deepEqual(ahuyentar(s, c.id, 0, { x: c.x, z: c.z }), { ok: false, motivo: 'sinArma' });
+  s.jugadores[0].dinero = 10000;
+  assert.deepEqual(comprarArma(s, 'silbato', 0), { ok: true });
+  assert.deepEqual(comprarArma(s, 'silbato', 0), { ok: false, motivo: 'tiene' });
+  assert.equal(s.jugadores[0].dinero, 10000 - ARMAS.silbato.coste);
+  assert.deepEqual(ahuyentar(s, c.id, 0, { x: c.x + ARMAS.silbato.alcance + 0.5, z: c.z }), { ok: false, motivo: 'lejos' });
+  const enEstante = PRODUCT_IDS.reduce((t, p) => t + s.estantes[p], 0), llevaba = c.cesta.reduce((t, l) => t + l.qty, 0);
+  const r = ahuyentar(s, c.id, 0, { x: c.x + 1, z: c.z });
+  assert.deepEqual(r, { ok: true, unidades: llevaba });
+  assert.equal(PRODUCT_IDS.reduce((t, p) => t + s.estantes[p], 0), enEstante + llevaba, 'lo robado vuelve al estante');
+  assert.equal(c.estado, 'saliendo');
+  assert.equal(ahuyentar(s, c.id, 0, { x: c.x, z: c.z }).ok, false, 'una vez espantado ya no cuenta');
+  run(s, 200);
+  assert.equal(s.stats.robos, 0);
+  assert.equal(s.stats.ahuyentados, 1);
+});
+
+test('se usa el arma de más alcance; las armas son de cada jugador y se guardan', () => {
+  const { s, c } = conLadron();
+  s.jugadores[1].dinero = 20000;
+  comprarArma(s, 'silbato', 1); comprarArma(s, 'red', 1);
+  assert.equal(mejorArma(s.jugadores[1]), 'red');
+  assert.equal(mejorArma(s.jugadores[0]), null);
+  assert.equal(ahuyentar(s, c.id, 1, { x: c.x + 10, z: c.z }).ok, true);
+  assert.ok(s.eventos.some((e) => e.tipo === 'ahuyentado' && e.j === 1 && e.arma === 'red'));
+  const r = importar(JSON.parse(JSON.stringify(exportar(s))))!;
+  assert.deepEqual(r.jugadores[1].armas, ['silbato', 'red']);
+  assert.deepEqual(r.jugadores[0].armas, []);
+  assert.deepEqual(importar({ ...exportar(s), armas: [['bazuca'], 7] })!.jugadores[0].armas, []);
+});
+
+test('sin dinero no se compra un arma', () => {
+  const s = newGame();
+  s.jugadores[0].dinero = 100;
+  assert.deepEqual(comprarArma(s, 'agua', 0), { ok: false, motivo: 'dinero' });
+  assert.deepEqual(s.jugadores[0].armas, []);
 });

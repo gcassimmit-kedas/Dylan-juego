@@ -59,6 +59,8 @@
   <div id="aim" aria-hidden="true"><span></span></div>
   <div id="prompt" aria-live="polite" hidden><kbd id="promptKey">E</kbd><span id="promptText"></span></div>
   <button id="actBtn" class="primary act" hidden><span data-icon="check"></span><span id="actLbl">Usar</span></button>
+  <button id="useBtn" class="primary act use" hidden title="Espantar al ladrón (F)"><span data-icon="siren"></span><span id="useLbl">Espantar</span></button>
+  <div id="thiefAlert" class="thief-alert" role="status" aria-live="assertive" hidden><span data-icon="shieldAlert"></span><span id="thiefTxt">Ladrón en la tienda</span></div>
   <div id="joy" aria-hidden="true"><div class="knob"></div></div>
   <div id="banner" aria-live="polite"><div class="kicker" id="bannerKicker"></div><div class="title" id="bannerTitle"></div><div class="sub" id="bannerSub"></div></div>
   <div id="toast" role="status" aria-live="polite"></div>
@@ -160,6 +162,24 @@
     </div>
   </section>
 
+  <!-- Tienda de armas -->
+  <section id="armas" class="screen" hidden aria-labelledby="arTitle">
+    <div class="panel pc-panel" role="dialog" aria-modal="true">
+      <header class="pc-head">
+        <div>
+          <p class="kicker"><span data-icon="shieldAlert"></span> Para espantar ladrones</p>
+          <h2 id="arTitle">Tienda de armas</h2>
+        </div>
+        <div class="wallet" aria-label="Dinero disponible"><span data-icon="coins"></span><span id="arMoney">0</span></div>
+        <button class="btn close" data-close="armas" aria-label="Cerrar tienda de armas"><span data-icon="x"></span></button>
+      </header>
+      <div id="arBody" class="pc-body"></div>
+      <footer class="pc-foot">
+        <p class="help">Ninguna hace daño: el ladrón suelta lo que ha cogido y sale corriendo. Acércate a él y pulsa Espantar (tecla F). Se usa siempre la de más alcance que tengas.</p>
+      </footer>
+    </div>
+  </section>
+
   <!-- Estanterías y almacén -->
   <section id="shelves" class="screen" hidden aria-labelledby="shTitle">
     <div class="panel pc-panel" role="dialog" aria-modal="true">
@@ -204,6 +224,8 @@
         <div><dt>Artículos</dt><dd id="sItems">0</dd></div>
         <div><dt>Ingresos</dt><dd id="sIncome" class="ok">0</dd></div>
         <div><dt>Gastos</dt><dd id="sCost" class="bad">0</dd></div>
+        <div><dt>Robado</dt><dd id="sStolen" class="bad">0</dd></div>
+        <div><dt>Ladrones espantados</dt><dd id="sScared">0</dd></div>
         <div class="wide"><dt>Beneficio del día</dt><dd id="sProfit">0</dd></div>
       </dl>
       <p class="help" id="sumTip"></p>

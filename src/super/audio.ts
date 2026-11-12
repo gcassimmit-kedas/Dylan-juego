@@ -57,5 +57,20 @@ export const sfx = {
   /** Cajón de la registradora al abrirse. */
   drawer() { tone(1568, 0.1, 'triangle', 0.07); tone(180, 0.12, 'square', 0.03, 0.05, 0.6); },
   coin() { tone(2400, 0.06, 'sine', 0.05); tone(3200, 0.12, 'sine', 0.035, 0.04); },
+  /** Alarma de la tienda: dos tonos que se alternan. */
+  alarm() { for (let i = 0; i < 4; i++) { tone(880, 0.18, 'square', 0.04, i * 0.36); tone(660, 0.18, 'square', 0.04, i * 0.36 + 0.18); } },
+  /** Silbato. */
+  whistle() { tone(2900, 0.5, 'sine', 0.07, 0, 1.08); tone(2950, 0.5, 'triangle', 0.03, 0.02, 1.05); },
+  /** Chorro de la pistola de agua. */
+  splash() {
+    if (muted || !ctx) return;
+    const len = Math.floor(ctx.sampleRate * 0.5), buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.min(1, i / 800, (len - i) / 6000);
+    const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    f.type = 'highpass'; f.frequency.value = 1800; g.gain.value = 0.12;
+    src.buffer = buf; src.connect(f).connect(g).connect(ctx.destination); src.start();
+  },
+  /** Disparo del lanzarredes: golpe sordo y silbido. */
+  net() { tone(140, 0.18, 'sine', 0.12, 0, 0.5); tone(900, 0.3, 'triangle', 0.03, 0.05, 0.6); },
   bill() { tone(400, 0.05, 'triangle', 0.025, 0, 1.6); },
 };

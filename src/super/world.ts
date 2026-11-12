@@ -19,6 +19,7 @@ export const LUGARES = {
   casa: { x0: -20, x1: -6, z0: 30, z1: 40, puerta: -12 },
   mayorista: { x0: 4, x1: 18, z0: 30, z1: 41, puerta: 11 },
   fruteria: { x0: 21, x1: 30, z0: 30, z1: 37, puerta: 25.5 },
+  armas: { x0: -32.5, x1: -23.5, z0: 30, z1: 37, puerta: -28 },
 };
 
 const std = (o: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial(o);
@@ -28,7 +29,7 @@ const box = (w: number, h: number, d: number, m: THREE.Material | THREE.Material
 
 export interface World {
   group: THREE.Group;
-  /** Cosas que se pueden usar: userData.action = 'cama' | 'ducha' | 'mayorista' | 'fruteria'. */
+  /** Cosas que se pueden usar: userData.action = 'cama' | 'ducha' | 'mayorista' | 'fruteria' | 'armas'. */
   hits: THREE.Mesh[];
   /** ¿Se puede estar aquí? (tienda incluida). */
   walkable(p: Point): boolean;
@@ -78,7 +79,7 @@ export function buildWorld(): World {
     const top = new THREE.Mesh(new THREE.SphereGeometry(1.3 * s, 12, 10), leaves); top.position.set(x, 2.6 * s, z); top.castShadow = true; g.add(top);
     solid(x - 0.25, z - 0.25, x + 0.25, z + 0.25);
   };
-  for (const [x, z, s] of [[-14, 10, 1.1], [16, 10, 1], [-30, 34, 1.2], [-24, 42, 1], [2, 43, 1.1], [32, 41, 1], [-28, 12, 1.3], [28, 14, 1], [-16, -10, 1.2], [14, -11, 1], [0, -12, 1.1]] as const) tree(x, z, s);
+  for (const [x, z, s] of [[-14, 10, 1.1], [16, 10, 1], [-32, 42, 1.2], [-24, 42, 1], [2, 43, 1.1], [32, 41, 1], [-28, 12, 1.3], [28, 14, 1], [-16, -10, 1.2], [14, -11, 1], [0, -12, 1.1]] as const) tree(x, z, s);
   const lamp = (x: number, z: number) => {
     g.add(box(0.12, 4.2, 0.12, MAT.metalDark, x, 2.1, z));
     g.add(box(0.8, 0.12, 0.3, MAT.metalDark, x, 4.2, z));
@@ -195,6 +196,26 @@ export function buildWorld(): World {
   g.add(box(2.6, 1.0, 0.7, std({ map: T.woodTexture(), roughness: 0.7 }), F.puerta, 0.5, 34.2)); solid(F.puerta - 1.3, 33.85, F.puerta + 1.3, 34.55);
   seller(777, F.puerta, 35.2);
   interact('fruteria', F.puerta, 34, 2.8, 1.6);
+
+  // Tienda de armas (todas para espantar ladrones, sin hacer daño)
+  const A = LUGARES.armas;
+  building(A, 0x5a5f52, std({ color: 0x6b6b66, roughness: 0.9 }), 0x23281e, 3.2, 1.6);
+  sign('Armas', '#23281e', A.puerta, A.z0, 3);
+  // Expositor en la pared del fondo: silbatos, pistolas de agua y redes
+  const rack = std({ color: 0x3a3d40, roughness: 0.7, metalness: 0.3 });
+  g.add(box(A.x1 - A.x0 - 1, 2.2, 0.15, rack, (A.x0 + A.x1) / 2, 1.3, A.z1 - 0.25));
+  const tank = std({ color: 0x2a8ad8, roughness: 0.35 }), body = std({ color: 0xff8a1a, roughness: 0.4 }), net = std({ color: 0xd8d0b8, roughness: 0.9, wireframe: true });
+  for (let i = 0; i < 4; i++) {
+    const x = A.x0 + 1.5 + i * 2;
+    g.add(box(0.5, 0.14, 0.12, body, x, 1.7, A.z1 - 0.4)); g.add(box(0.2, 0.18, 0.12, tank, x - 0.1, 1.84, A.z1 - 0.4)); g.add(box(0.1, 0.22, 0.1, body, x - 0.12, 1.55, A.z1 - 0.4));
+    const n = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), net); n.position.set(x + 0.9, 1.15, A.z1 - 0.45); n.scale.z = 0.3; g.add(n);
+    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.16, 12), std({ color: 0xc8c8c8, metalness: 0.8, roughness: 0.25 })); w.rotation.z = Math.PI / 2; w.position.set(x, 0.9, A.z1 - 0.4); g.add(w);
+  }
+  solid(A.x0, A.z1 - 0.6, A.x1, A.z1);
+  g.add(box(2.6, 1.0, 0.7, std({ color: 0x23281e, roughness: 0.6 }), A.puerta, 0.5, 34.2)); g.add(box(2.7, 0.05, 0.8, MAT.metalDark, A.puerta, 1.02, 34.2));
+  solid(A.puerta - 1.3, 33.85, A.puerta + 1.3, 34.55);
+  seller(4242, A.puerta, 35.2);
+  interact('armas', A.puerta, 34, 2.8, 1.6);
 
   // La propia tienda vista desde fuera bloquea el paso (menos por la puerta, que lleva su rejilla).
   solid(-9.7, -7.7, 9.7, 7.55);
