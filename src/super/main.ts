@@ -5,7 +5,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import {
   newGame, tick, comprarPedido, costePedido, reponer, empezarTurno, siguienteDia, clienteEnCaja, CAMBIO, esMoneda, esRara, disponibles,
   abrirCaja, mejorar, cambioDebido, detrasDe, costeCaja, vende, PROVEEDORES, type ProveedorId, escanear, darCambio, cobrarTarjeta, MEJORAS, MEJORA_IDS, type MejoraId, type Jugador,
-  horaTienda, exportar, importar, ARMAS, ARMA_IDS, ahuyentar, comprarArma, mejorArma, robando, type ArmaId,
+  horaTienda, exportar, importar, precioVenta, ARMAS, ARMA_IDS, ahuyentar, comprarArma, mejorArma, robando, type ArmaId,
   PRODUCTS, PRODUCT_IDS, DISPLAYS, LAYOUT, SHIFT_SECONDS,
   type GameState, type ProductId, type Customer,
 } from './sim.ts';
@@ -16,6 +16,7 @@ import { Player } from './player.ts';
 import { Session, getRoom, listServers, readSkin, SERVERS, type ServerInfo, type EndReason, type Skin } from './multi.ts';
 import { aplicarAccion, type Accion } from './sync.ts';
 import { codigoPartida, leerCodigo } from './codigo.ts';
+import { INCLUIDOS, EFECTOS, EFECTO_IDS, leerGuardado, efectoActivo, validarMod, codigoMod, leerMod, describir, type Mod, type ModsGuardados, type Efecto } from './mods.ts';
 import { buildWorld as buildExterior, LUGARES, type World } from './world.ts';
 import { sfx, unlock, isMuted, setMuted } from './audio.ts';
 import { icon, hydrateIcons, type IconName } from '../ui/icons.ts';
@@ -540,7 +541,7 @@ function updateWorldState() {
     const c = clienteEnCaja(state, k);
     let total = 0, items = 0;
     if (c) {
-      for (const l of c.cesta) { const n = Math.min(l.qty, c.pasados[l.product] ?? 0); total += n * PRODUCTS[l.product].precio; items += n; }
+      for (const l of c.cesta) { const n = Math.min(l.qty, c.pasados[l.product] ?? 0); total += n * precioVenta(l.product, c.px); items += n; }
     }
     const key = `${total}/${items}`;
     if (key !== shownRegister[k]) { T.drawRegister(r.screen, total, items); shownRegister[k] = key; }
@@ -565,7 +566,7 @@ function buildPc() {
     const card = document.createElement('article');
     card.className = 'prod';
     card.innerHTML = `<img alt="" src="${thumbs[p]}" /><h3>${d.nombre}</h3>
-      <div class="meta">${esRara(p) ? '<span class="tag">Difícil de conseguir</span><br />' : ''}Caja de <b>${d.caja}</b> uds. · Venta <b>${money(d.precio)}</b>/ud.<br /><span class="st"></span></div>
+      <div class="meta">${esRara(p) ? '<span class="tag">Difícil de conseguir</span><br />' : ''}Caja de <b>${d.caja}</b> uds. · Venta <b>${money(precioVenta(p, state.mods.precio))}</b>/ud.<br /><span class="st"></span></div>
       <div class="row"><span class="price">${icon('coins')}<span class="pv">${money(d.costoCaja)}</span><small class="help">&nbsp;/ caja</small></span>
       <div class="stepper"><button class="m" aria-label="Quitar una caja de ${d.nombre}">${icon('minus')}</button><output aria-live="polite">0</output><button class="p" aria-label="Añadir una caja de ${d.nombre}">${icon('plus')}</button></div></div>`;
     const minus = card.querySelector<HTMLButtonElement>('.m')!, plus = card.querySelector<HTMLButtonElement>('.p')!;
@@ -578,14 +579,14 @@ function buildPc() {
   body.append(mejoras);
 }
 function renderPc() {
-  const total = costePedido(cart, pcProv);
+  const total = costePedido(cart, pcProv, state.mods.coste);
   const P = PROVEEDORES[pcProv];
   $('pcTitle').textContent = pcProv === 'ordenador' ? 'Pedidos' : P.nombre;
   $('pcKicker').lastChild!.textContent = pcProv === 'ordenador' ? ' Proveedor' : pcProv === 'mayorista' ? ' Más barato que el ordenador' : ' Fruta fresca, siempre';
   $('pcMejoras').hidden = pcProv !== 'ordenador';
   for (const [p, r] of pcRows) {
     r.card.hidden = !vende(pcProv, p);
-    r.pv.textContent = money(costeCaja(p, pcProv));
+    r.pv.textContent = money(costeCaja(p, pcProv, state.mods.coste));
     r.qty.value = String(cart[p]);
     r.minus.disabled = cart[p] === 0;
     r.card.classList.toggle('sel', cart[p] > 0);
@@ -630,7 +631,7 @@ function buildShelves() {
     const el = document.createElement('article');
     el.className = 'prod shelf';
     el.innerHTML = `<img alt="" src="${thumbs[p]}" /><h3>${d.nombre}</h3><div class="meta"><span class="t"></span><div class="bar"><span></span></div></div>
-      <div class="row"><span class="help">Venta ${money(d.precio)}/ud.</span><button class="ghost">${icon('packagePlus')}Reponer</button></div>`;
+      <div class="row"><span class="help">Venta ${money(precioVenta(p, state.mods.precio))}/ud.</span><button class="ghost">${icon('packagePlus')}Reponer</button></div>`;
     const btn = el.querySelector<HTMLButtonElement>('button')!;
     btn.addEventListener('click', () => restock(p));
     body.append(el);
@@ -675,7 +676,7 @@ $('shAll').addEventListener('click', () => {
 
 // ---------- Ventanas ----------
 let openModal: HTMLElement | null = null, opener: HTMLElement | null = null;
-function open(id: 'pc' | 'shelves' | 'help' | 'confirm' | 'mp' | 'skins' | 'transfer' | 'armas') {
+function open(id: 'pc' | 'shelves' | 'help' | 'confirm' | 'mp' | 'skins' | 'transfer' | 'armas' | 'mods') {
   if (openModal) close();
   player?.unlock(); player?.release();
   const el = $(id);
@@ -694,7 +695,7 @@ function close() {
   opener?.focus?.();
 }
 document.querySelectorAll<HTMLElement>('[data-close]').forEach((b) => b.addEventListener('click', close));
-for (const id of ['pc', 'shelves', 'help', 'confirm', 'mp', 'skins', 'transfer', 'armas']) $(id).addEventListener('pointerdown', (e) => { if (e.target === e.currentTarget) close(); });
+for (const id of ['pc', 'shelves', 'help', 'confirm', 'mp', 'skins', 'transfer', 'armas', 'mods']) $(id).addEventListener('pointerdown', (e) => { if (e.target === e.currentTarget) close(); });
 pcBtn.addEventListener('click', () => { pcProv = 'ordenador'; open('pc'); });
 shelvesBtn.addEventListener('click', () => open('shelves'));
 
@@ -1531,6 +1532,8 @@ function frame(now: number) {
     pauseSeen = paused && p !== 0;
   }
   const running = inStore && !paused && $('summary').hidden;
+  // Los mods activos (en partida de dos, el invitado usa los del anfitrión, que llegan en cada foto).
+  if (!isGuest()) state.mods = modsEf;
   if (running && !isGuest()) {
     // Pasos fijos: la simulación avanza igual en un móvil lento y en un ordenador rápido.
     let left = dt;
@@ -1720,6 +1723,114 @@ trYes.addEventListener('click', () => {
   toast(`Partida cargada: día ${state.dia}`, 'ok', 3000);
 });
 
+// ---------- Mods (solo datos: cambian números del juego) ----------
+const MODS_KEY = 'super.mods';
+let modsG: ModsGuardados = (() => { try { return leerGuardado(JSON.parse(localStorage.getItem(MODS_KEY) ?? 'null')); } catch { return leerGuardado(null); } })();
+let modsEf: Efecto = efectoActivo(modsG);
+const modsMsg = $('modsMsg'), modsIn = $<HTMLTextAreaElement>('modsIn'), modsName = $<HTMLInputElement>('modsName');
+const nuevo: Partial<Efecto> = {};
+function modsMessage(text: string, kind: '' | 'ok' | 'bad' = '') { modsMsg.textContent = text; modsMsg.className = 'help ' + kind; }
+function guardarMods() {
+  modsEf = efectoActivo(modsG);
+  if (!isGuest()) state.mods = modsEf;
+  try { localStorage.setItem(MODS_KEY, JSON.stringify(modsG)); } catch { /* sin almacenamiento */ }
+  const n = modsG.activos.length;
+  $('modsCount').hidden = n === 0; $('modsCount').textContent = String(n);
+}
+const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+function modItem(m: Mod) {
+  const on = modsG.activos.includes(m.id), bloqueado = isGuest();
+  return `<li class="${on ? 'on' : ''}"><div><b>${esc(m.nombre)}</b><small>${esc(m.desc)}</small>${m.incluido ? '' : `<small class="fx">${esc(describir(m.efectos))}</small>`}</div>
+    <span class="mods-acts">${m.incluido ? '' : `<button class="btn" data-copy="${m.id}" aria-label="Copiar el código de ${esc(m.nombre)}" title="Copiar código">${icon('copy')}</button><button class="btn" data-del="${m.id}" aria-label="Borrar ${esc(m.nombre)}" title="Borrar">${icon('trash')}</button>`}
+    <button class="${on ? 'primary' : 'ghost'}" data-tog="${m.id}" aria-pressed="${on}" ${bloqueado ? 'disabled' : ''}>${on ? 'Activo' : 'Activar'}</button></span></li>`;
+}
+function renderMods() {
+  $('modsList').innerHTML = INCLUIDOS.map(modItem).join('');
+  $('modsOwn').innerHTML = modsG.propios.length ? modsG.propios.map(modItem).join('') : '<li class="empty">Todavía no tienes mods propios: añade uno con un código o crea el tuyo abajo.</li>';
+  const fx = describir(isGuest() ? state.mods : modsEf);
+  $('modsSum').textContent = isGuest() ? `En partida de dos mandan los mods de quien creó la partida. Ahora: ${fx || 'ninguno'}.` : fx ? `Activos ahora: ${fx}.` : 'Ningún mod activo: el juego normal.';
+}
+function renderSliders() {
+  $('modsSliders').innerHTML = EFECTO_IDS.map((k) => {
+    const d = EFECTOS[k], v = nuevo[k] ?? d.neutro;
+    return `<label><span>${d.nombre}</span><input type="range" min="${d.min}" max="${d.max}" step="${d.paso}" value="${v}" data-k="${k}" /><output>${fmtFx(k, v)}</output></label>`;
+  }).join('');
+}
+const fmtFx = (k: keyof Efecto, v: number) => EFECTOS[k].tipo === 'rd' ? money(v) : v === 0 ? 'Nada' : `x${String(Math.round(v * 100) / 100).replace('.', ',')}`;
+$('modsSliders').addEventListener('input', (e) => {
+  const el = e.target as HTMLInputElement, k = el.dataset.k as keyof Efecto | undefined;
+  if (!k) return;
+  const v = Number(el.value);
+  if (v === EFECTOS[k].neutro) delete nuevo[k]; else nuevo[k] = v;
+  el.nextElementSibling!.textContent = fmtFx(k, v);
+});
+function addMod(m: Mod, msg: string) {
+  if (INCLUIDOS.some((x) => x.id === m.id) || modsG.propios.some((x) => x.id === m.id)) { sfx.error(); modsMessage('Ya tienes ese mod.', 'bad'); return false; }
+  if (modsG.propios.length >= 30) { sfx.error(); modsMessage('Tienes demasiados mods: borra alguno primero.', 'bad'); return false; }
+  modsG.propios.push(m);
+  if (!isGuest()) modsG.activos.push(m.id);
+  guardarMods(); renderMods(); sfx.buy();
+  modsMessage(msg, 'ok');
+  return true;
+}
+const MOD_MOTIVOS = { formato: 'Eso no es un mod: el código empieza por MOD1-.', incompleto: 'El código está incompleto o tiene algo cambiado. Cópialo otra vez entero.', datos: 'Ese mod no tiene nada que el juego pueda usar.' };
+$('modsAdd').addEventListener('click', () => {
+  const r = leerMod(modsIn.value);
+  if (!r.ok) { sfx.error(); modsMessage(MOD_MOTIVOS[r.motivo], 'bad'); return; }
+  if (addMod(r.mod, `Añadido y activado: ${r.mod.nombre}.`)) modsIn.value = '';
+});
+const modsFile = $<HTMLInputElement>('modsFile');
+$('modsFileBtn').addEventListener('click', () => modsFile.click());
+modsFile.addEventListener('change', () => {
+  const f = modsFile.files?.[0];
+  modsFile.value = '';
+  if (!f) return;
+  if (f.size > 20000) { sfx.error(); modsMessage('Ese archivo es demasiado grande para ser un mod.', 'bad'); return; }
+  f.text().then((t) => {
+    const r = leerMod(t);
+    if (!r.ok) { sfx.error(); modsMessage(MOD_MOTIVOS[r.motivo], 'bad'); return; }
+    addMod(r.mod, `Añadido y activado: ${r.mod.nombre}.`);
+  }, () => { sfx.error(); modsMessage('No se pudo leer el archivo.', 'bad'); });
+});
+$('modsCreate').addEventListener('click', () => {
+  const m = validarMod({ nombre: modsName.value || 'Mi mod', efectos: nuevo });
+  if (!m) { sfx.error(); modsMessage('Mueve al menos un deslizador para que el mod cambie algo.', 'bad'); return; }
+  if (addMod(m, `Mod creado y activado: ${m.nombre}. Copia su código para pasárselo a otra persona.`)) {
+    modsName.value = '';
+    for (const k of EFECTO_IDS) delete nuevo[k];
+    renderSliders();
+  }
+});
+$('mods').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-tog],button[data-del],button[data-copy]');
+  if (!b) return;
+  if (b.dataset.tog) {
+    if (isGuest()) return;
+    const id = b.dataset.tog, on = modsG.activos.includes(id);
+    modsG.activos = on ? modsG.activos.filter((x) => x !== id) : [...modsG.activos, id];
+    sfx.click(); guardarMods(); renderMods();
+    modsMessage('');
+    $('mods').querySelector<HTMLElement>(`button[data-tog="${id}"]`)?.focus();
+  } else if (b.dataset.del) {
+    const id = b.dataset.del, m = modsG.propios.find((x) => x.id === id);
+    modsG.propios = modsG.propios.filter((x) => x.id !== id);
+    modsG.activos = modsG.activos.filter((x) => x !== id);
+    sfx.click(); guardarMods(); renderMods();
+    if (m) modsMessage(`Borrado: ${m.nombre}.`);
+  } else if (b.dataset.copy) {
+    const m = modsG.propios.find((x) => x.id === b.dataset.copy);
+    if (!m) return;
+    const code = codigoMod(m);
+    const ok = () => { sfx.click(); modsMessage(`Código de «${m.nombre}» copiado. Pégalo en «Añadir un mod» de otra copia del juego.`, 'ok'); };
+    const manual = () => { modsIn.value = code; modsIn.focus(); modsIn.select(); modsMessage('Copia el código que aparece en el recuadro.', ''); };
+    try { navigator.clipboard.writeText(code).then(ok, manual); } catch { manual(); }
+  }
+});
+function openMods() { renderMods(); renderSliders(); modsMessage(''); open('mods'); }
+$('modsBtn').addEventListener('click', openMods);
+$('pauseModsBtn').addEventListener('click', openMods);
+guardarMods();
+
 // ---------- Energía y limpieza ----------
 const NEEDS_KEY = 'super.necesidades';
 const needs = (() => {
@@ -1731,11 +1842,12 @@ function saveNeeds() { try { localStorage.setItem(NEEDS_KEY, JSON.stringify({ e:
 function updateNeeds(dt: number) {
   // Se gastan trabajando (con la tienda abierta); correr cansa más.
   if (dt > 0 && state.fase === 'turno') {
-    needs.e = Math.max(0, needs.e - dt * (player.running ? 0.6 : 0.35));
-    needs.l = Math.max(0, needs.l - dt * 0.3);
+    const k = state.mods.cansancio;
+    needs.e = Math.max(0, needs.e - dt * (player.running ? 0.6 : 0.35) * k);
+    needs.l = Math.max(0, needs.l - dt * 0.3 * k);
   }
   const tired = needs.e < 20, dirty = needs.l < 20;
-  player.speedFactor = tired ? 0.6 : 1;
+  player.speedFactor = (tired ? 0.6 : 1) * state.mods.velocidad;
   if (tired && !wasTired) toast('Estás muy cansado: vas más lento. Duerme en tu casa', 'bad', 3200);
   if (dirty && !wasDirty) toast('Necesitas una ducha: los clientes de tu caja se impacientan antes', 'bad', 3400);
   wasTired = tired; wasDirty = dirty;

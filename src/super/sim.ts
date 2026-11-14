@@ -1,5 +1,6 @@
 // Supermercado: simulación pura (sin DOM ni Three.js), para poder probarla con `npm test`.
 // Todo lo que pasa en la tienda (clientes, existencias, dinero) se decide aquí; main.ts solo lo dibuja.
+import { NEUTRO, type Efecto } from './mods.ts';
 
 /** Datos de cada producto. Precios en pesos dominicanos (RD$), siempre enteros. */
 export interface Product {
@@ -147,6 +148,8 @@ export interface Customer {
   caja: number;
   /** Semilla de aspecto (ropa, pelo, piel) para que cada cliente se vea distinto. */
   look: number;
+  /** Multiplicador de precios de los mods al entrar (si se cambian los mods, su compra no cambia de precio). */
+  px?: number;
   /** Ladrón: coge de 1 a 5 artículos y se va sin pagar. Se le reconoce por la sudadera negra. */
   ladron?: boolean;
 }
@@ -275,8 +278,8 @@ export function ahuyentar(s: GameState, id: number, j: number, pos: Point): { ok
 }
 
 /** Lo que costó (precio de compra por unidad) lo que lleva un ladrón. */
-export function costeRobado(c: { cesta: { product: ProductId; qty: number }[] }): number {
-  return c.cesta.reduce((t, l) => t + Math.round((costeCaja(l.product) / PRODUCTS[l.product].caja) * l.qty), 0);
+export function costeRobado(c: { cesta: { product: ProductId; qty: number }[] }, mod = 1): number {
+  return c.cesta.reduce((t, l) => t + Math.round((costeCaja(l.product, 'ordenador', mod) / PRODUCTS[l.product].caja) * l.qty), 0);
 }
 
 export type Phase = 'preparacion' | 'turno' | 'resumen';
@@ -301,6 +304,8 @@ export interface GameState {
   mejorDia: number;
   /** Cajas que le quedan hoy al proveedor de cada producto difícil de conseguir. */
   ofertaRara: Partial<Record<ProductId, number>>;
+  /** Efecto de los mods activos (no se guarda con la partida: lo pone quien juega, o el anfitrión). */
+  mods: Efecto;
 }
 
 const emptyStats = (): ShiftStats => ({ clientes: 0, atendidos: 0, perdidos: 0, cansados: 0, articulos: 0, faltas: 0, robos: 0, robado: 0, perdidaRobo: 0, ahuyentados: 0 });
@@ -331,6 +336,7 @@ function crearPartida(seed: number): GameState {
     jugadores: [nuevoJugador(DINERO_INICIAL), nuevoJugador(DINERO_INICIAL)],
     cajas: [nuevaCaja(true), nuevaCaja(false)],
     reputacion: 50,
+    mods: { ...NEUTRO },
     estantes: byProduct((id) => start[id]?.[0] ?? 0),
     almacen: byProduct((id) => start[id]?.[1] ?? 0),
     reloj: 0,
@@ -372,9 +378,9 @@ export function vende(prov: ProveedorId, p: ProductId): boolean {
 }
 
 /** Precio de una caja según dónde se compre (redondeado a 10 pesos). */
-export function costeCaja(p: ProductId, prov: ProveedorId = 'ordenador'): number {
-  const base = PRODUCTS[p].costoCaja, f = isRara(p) ? PROVEEDORES[prov].factorRara : PROVEEDORES[prov].factor;
-  return f === 1 ? base : Math.round((base * f) / 10) * 10;
+export function costeCaja(p: ProductId, prov: ProveedorId = 'ordenador', mod = 1): number {
+  const base = PRODUCTS[p].costoCaja, f = (isRara(p) ? PROVEEDORES[prov].factorRara : PROVEEDORES[prov].factor) * mod;
+  return f === 1 ? base : Math.max(10, Math.round((base * f) / 10) * 10);
 }
 
 /** Cajas que se pueden pedir hoy de un producto (sin límite si no es difícil de conseguir o en la Frutería). */
@@ -402,7 +408,7 @@ const jugadorValido = (j: number) => j === 0 || j === 1;
 export function comprar(s: GameState, p: ProductId, cajas = 1, j = 0, prov: ProveedorId = 'ordenador'): BuyResult {
   if (!Number.isInteger(cajas) || cajas <= 0 || !jugadorValido(j) || !esProveedor(prov)) return { ok: false, motivo: 'cantidad' };
   if (cajas > disponibles(s, p, prov)) return { ok: false, motivo: 'agotado' };
-  const coste = costeCaja(p, prov) * cajas, jug = s.jugadores[j];
+  const coste = costeCaja(p, prov, s.mods.coste) * cajas, jug = s.jugadores[j];
   if (coste > jug.dinero) return { ok: false, motivo: 'dinero' };
   if (isRara(p) && prov === 'ordenador') s.ofertaRara[p] = (s.ofertaRara[p] ?? 0) - cajas;
   jug.dinero -= coste;
@@ -417,7 +423,7 @@ export function comprarPedido(s: GameState, pedido: Partial<Record<ProductId, nu
   const lineas = PRODUCT_IDS.map((p) => [p, pedido[p] ?? 0] as const).filter(([, n]) => n !== 0);
   if (!lineas.length || lineas.some(([, n]) => !Number.isInteger(n) || n < 0 || n > 99)) return { ok: false, motivo: 'cantidad' };
   if (lineas.some(([p, n]) => n > disponibles(s, p, prov))) return { ok: false, motivo: 'agotado' };
-  const coste = costePedido(pedido, prov);
+  const coste = costePedido(pedido, prov, s.mods.coste);
   if (coste > s.jugadores[j].dinero) return { ok: false, motivo: 'dinero' };
   for (const [p, n] of lineas) if (n > 0) comprar(s, p, n, j, prov);
   // El otro jugador ve lo que se ha comprado.
@@ -465,8 +471,8 @@ export function abrirCaja(s: GameState, k: number, abierta: boolean) {
   if (otra >= 0) avanzarCola(s, otra);
 }
 
-export const costePedido = (pedido: Partial<Record<ProductId, number>>, prov: ProveedorId = 'ordenador') =>
-  PRODUCT_IDS.reduce((t, p) => t + costeCaja(p, prov) * Math.max(0, pedido[p] ?? 0), 0);
+export const costePedido = (pedido: Partial<Record<ProductId, number>>, prov: ProveedorId = 'ordenador', mod = 1) =>
+  PRODUCT_IDS.reduce((t, p) => t + costeCaja(p, prov, mod) * Math.max(0, pedido[p] ?? 0), 0);
 
 /** Lleva género del almacén a su estantería, hasta llenarla. Devuelve las unidades repuestas. */
 export function reponer(s: GameState, p: ProductId): number {
@@ -486,6 +492,9 @@ export function empezarTurno(s: GameState) {
   for (const k of s.cajas) k.cola = [];
   s.eventos = [];
   // Los gastos de preparación (pedidos antes de abrir) cuentan para el día.
+  // Regalo diario de los mods.
+  const bono = Math.round(s.mods.bono);
+  if (bono > 0) for (const j of s.jugadores) j.dinero += bono;
 }
 
 /** Tras ver el resumen: se prepara el día siguiente. */
@@ -507,7 +516,9 @@ export function clienteEnCaja(s: GameState, k = 0): Customer | null {
 }
 
 export const totalArticulos = (c: Customer) => c.cesta.reduce((t, l) => t + l.qty, 0);
-export const importe = (c: Customer) => c.cesta.reduce((t, l) => t + l.qty * PRODUCTS[l.product].precio, 0);
+/** Precio de venta por unidad con el multiplicador de los mods (múltiplo de 5, al menos RD$5). */
+export const precioVenta = (p: ProductId, x = 1) => (x === 1 ? PRODUCTS[p].precio : Math.max(5, Math.round((PRODUCTS[p].precio * x) / 5) * 5));
+export const importe = (c: Customer) => c.cesta.reduce((t, l) => t + l.qty * precioVenta(l.product, c.px), 0);
 
 /** Producto que toca escanear ahora en la cesta del cliente (el primero que falte). */
 export function siguienteArticulo(c: Customer): ProductId | null {
@@ -517,7 +528,7 @@ export function siguienteArticulo(c: Customer): ProductId | null {
 
 /** Lo que suma lo escaneado hasta ahora. */
 export const importeEscaneado = (c: Customer) =>
-  c.cesta.reduce((t, l) => t + Math.min(l.qty, c.pasados[l.product] ?? 0) * PRODUCTS[l.product].precio, 0);
+  c.cesta.reduce((t, l) => t + Math.min(l.qty, c.pasados[l.product] ?? 0) * precioVenta(l.product, c.px), 0);
 
 /** Billetes de pesos con los que pagan los clientes. */
 export const BILLETES = [50, 100, 200, 500, 1000, 2000] as const;
@@ -767,7 +778,7 @@ function avanzarCola(s: GameState, k: number) {
 /** Segundos hasta el siguiente cliente: más rápido con más días y más reputación. */
 export function intervaloClientes(s: GameState): number {
   const base = Math.max(3.2, 8.5 - (s.dia - 1) * 0.45);
-  return base * (1.45 - (s.reputacion / 100) * 0.8);
+  return (base * (1.45 - (s.reputacion / 100) * 0.8)) / s.mods.clientes;
 }
 
 function elegirProducto(s: GameState, excluir: ProductId[]): ProductId {
@@ -793,7 +804,7 @@ function listaLadron(s: GameState): Customer['lista'] {
 }
 
 function nuevoCliente(s: GameState): Customer {
-  const ladron = rand(s) < probLadron(s.dia) && s.clientes.filter((c) => c.ladron && c.estado !== 'saliendo').length < MAX_LADRONES;
+  const ladron = rand(s) < Math.min(0.9, probLadron(s.dia) * s.mods.ladrones) && s.clientes.filter((c) => c.ladron && c.estado !== 'saliendo').length < MAX_LADRONES;
   const n = 1 + Math.floor(rand(s) * (s.dia >= 3 ? 4 : 3));
   const lista: Customer['lista'] = ladron ? listaLadron(s) : [];
   if (!ladron) for (let i = 0; i < n; i++) {
@@ -809,6 +820,7 @@ function nuevoCliente(s: GameState): Customer {
   };
   // Los ladrones no cuentan como clientes.
   if (ladron) c.ladron = true; else s.stats.clientes++;
+  if (s.mods.precio !== 1) c.px = s.mods.precio;
   s.eventos.push({ tipo: 'entra', id: c.id });
   return c;
 }
@@ -842,7 +854,7 @@ function irAlSiguiente(s: GameState, c: Customer) {
   c.caja = k;
   const caja = s.cajas[k];
   caja.cola.push(c.id);
-  c.paciencia = c.pacienciaMax = QUEUE_PATIENCE * (caja.musica ? 1.5 : 1) * (caja.sucio ? 0.7 : 1);
+  c.paciencia = c.pacienciaMax = QUEUE_PATIENCE * (caja.musica ? 1.5 : 1) * (caja.sucio ? 0.7 : 1) * s.mods.paciencia;
   c.path = route(here, LAYOUT.queue(caja.cola.length - 1, k));
 }
 
@@ -929,7 +941,7 @@ function actualizar(s: GameState, c: Customer, dt: number) {
     case 'huyendo':
       if (llegado) {
         // Se ha escapado: lo que llevaba no vuelve, y se pierde lo que costó.
-        const unidades = c.cesta.reduce((t, l) => t + l.qty, 0), coste = costeRobado(c);
+        const unidades = c.cesta.reduce((t, l) => t + l.qty, 0), coste = costeRobado(c, s.mods.coste);
         s.stats.robos++; s.stats.robado += unidades; s.stats.perdidaRobo += coste;
         s.eventos.push({ tipo: 'robo', id: c.id, unidades, coste });
         c.cesta = [];

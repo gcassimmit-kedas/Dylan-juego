@@ -5,6 +5,7 @@ import {
   PRODUCT_IDS, PRODUCTS, MEJORAS, CAMBIO, ARMA_IDS, esArma, comprarArma, ahuyentar, type Point, esProveedor, type ProveedorId, comprarPedido, reponer, escanear, darCambio, cobrarTarjeta, mejorar, empezarTurno, siguienteDia,
   type GameState, type ArmaId, type Customer, type CustomerState, type GameEvent, type ProductId, type MejoraId,
 } from './sim.ts';
+import { empaquetarEfecto, leerEfecto } from './mods.ts';
 
 /** Tamaño máximo de lo que se comparte (el canal admite 4 KiB por jugador). */
 export const SNAP_MAX_BYTES = 3600;
@@ -36,7 +37,7 @@ const lineas = (l: Partial<Record<ProductId, number>> | { product: ProductId; qt
 function encodeCustomer(c: Customer): (number | string)[] {
   const flags = (c.andando ? 1 : 0) | (c.path.length === 0 ? 2 : 0) | (c.enfadado ? 4 : 0) | (c.tarjeta ? 8 : 0) | (c.ladron ? 16 : 0);
   return [c.id, r2(c.x), r2(c.z), r2(c.dir), ESTADOS.indexOf(c.estado), flags, c.caja, c.look,
-    Math.round(c.paciencia * 10), Math.round(c.pacienciaMax * 10), c.pago, c.escaneados, lineas(c.cesta), lineas(c.pasados)];
+    Math.round(c.paciencia * 10), Math.round(c.pacienciaMax * 10), c.pago, c.escaneados, lineas(c.cesta), lineas(c.pasados), c.px ?? 1];
 }
 
 /** Foto del estado para el otro jugador (sin semillas ni nada que no necesite para dibujar). */
@@ -50,6 +51,7 @@ export function encodeSnap(s: GameState, x: SnapExtra): Record<string, unknown> 
     k: s.cajas.map((k) => [k.abierta ? 1 : 0, k.musica ? 1 : 0, k.propinas ? 1 : 0, k.cola, k.sucio ? 1 : 0]),
     st: [s.stats.clientes, s.stats.atendidos, s.stats.perdidos, s.stats.cansados, s.stats.articulos, s.stats.faltas, s.stats.robos, s.stats.robado, s.stats.perdidaRobo, s.stats.ahuyentados],
     md: s.mejorDia,
+    mo: empaquetarEfecto(s.mods),
     c: s.clientes.map(encodeCustomer),
     ack: x.ack, res: x.res, ev: x.ev, g: x.g, pausa: x.pausa,
   };
@@ -132,9 +134,11 @@ export function decodeSnap(raw: unknown, s: GameState): SnapExtra | null {
   s.stats = { clientes: int(cl, 0, 1e6), atendidos: int(at, 0, 1e6), perdidos: int(pe, 0, 1e6), cansados: int(ca, 0, 1e6), articulos: int(ar, 0, 1e6), faltas: int(fa, 0, 1e6),
     robos: int(ro, 0, 1e6), robado: int(rb, 0, 1e6), perdidaRobo: int(pr, 0, 1e9), ahuyentados: int(ah, 0, 1e6) };
   s.mejorDia = int(o.md, -1e9, 1e9);
+  // En partida de dos mandan los mods del anfitrión.
+  s.mods = leerEfecto(o.mo);
   const prev = new Map(s.clientes.map((c) => [c.id, c]));
   s.clientes = arr(o.c, 20).flatMap((row) => {
-    const a = arr(row, 14);
+    const a = arr(row, 15);
     if (a.length < 14) return [];
     const id = int(a[0], 0, 1e9), flags = int(a[5], 0, 31);
     const cesta = parseLineas(a[12]).map(([product, qty]) => ({ product, qty }));
@@ -151,6 +155,8 @@ export function decodeSnap(raw: unknown, s: GameState): SnapExtra | null {
       lista: old?.lista ?? [], paso: old?.paso ?? 0, timer: 0,
     };
     if (flags & 16) c.ladron = true;
+    const px = num(a[14], 0.5, 3, 1);
+    if (px !== 1) c.px = px;
     return [c];
   });
   return {

@@ -77,6 +77,10 @@ import gauge from 'lucide-static/icons/gauge.svg?raw';
 import droplets from 'lucide-static/icons/droplets.svg?raw';
 import siren from 'lucide-static/icons/siren.svg?raw';
 import shieldAlert from 'lucide-static/icons/shield-alert.svg?raw';
+import puzzle from 'lucide-static/icons/puzzle.svg?raw';
+import slidersHorizontal from 'lucide-static/icons/sliders-horizontal.svg?raw';
+import trash from 'lucide-static/icons/trash-2.svg?raw';
+import upload from 'lucide-static/icons/upload.svg?raw';
 import bed from 'lucide-static/icons/bed.svg?raw';
 
 /** Extrae solo el contenido interior de un SVG de Lucide (sin comentario de licencia ni atributos). */
@@ -125,7 +129,7 @@ const LUCIDE = {
   footprints, magnet, drone, shieldCheck, brickWall, settings, x, chevronRight, arrowLeft,
   trophy, check, fileText, info, crosshair, grid, rotateCcw, hammer, fence, castle, hospital, plane, zapOff, userRound, shieldOff,
   globe, search, lock, users, flag, copy, refreshCw, logIn, logOut, plus, wifiOff, ban, keyRound,
-  store, shoppingCart, shoppingBasket, monitor, packageIc, scanBarcode, clock, truck, warehouse, smile, receipt, minus, refrigerator, trendingUp, packagePlus, userX, circleHelp, banknote, maximize, minimize, gauge, droplets, bed, siren, shieldAlert,
+  store, shoppingCart, shoppingBasket, monitor, packageIc, scanBarcode, clock, truck, warehouse, smile, receipt, minus, refrigerator, trendingUp, packagePlus, userX, circleHelp, banknote, maximize, minimize, gauge, droplets, bed, siren, shieldAlert, puzzle, slidersHorizontal, trash, upload,
 };
 
 export type IconName = keyof typeof LUCIDE | keyof typeof CUSTOM;

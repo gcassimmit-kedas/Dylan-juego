@@ -21,6 +21,7 @@ debe verificarse en la documentación oficial justo antes de enviar.
 - [x] Android: SDK objetivo 36, mínimo Android 7 (API 24); teléfonos, tabletas y Chromebooks; pantalla completa inmersiva.
 - [x] iOS: iPhone y iPad (iOS 15 o superior), todas las orientaciones, sin barra de estado, `ITSAppUsesNonExemptEncryption = NO`.
 - [x] Navegador (PC, Mac, Linux, Chromebook): instalable y jugable sin conexión tras la primera carga (service worker generado al compilar).
+- [x] Mods del Supermercado (`src/super/mods.ts`): solo datos (números con rango fijo), nunca código, así que cumplen la norma 2.5.2 de Apple (no se descarga ni ejecuta código). Se añaden pegando un código o abriendo un archivo, se guardan solo en el dispositivo y no salen de él; en partida de dos solo viaja el efecto numérico del anfitrión, nunca el nombre escrito del mod.
 - [x] Mandos (Xbox, PlayStation y genéricos) en PC, Android y iPad; se pausa si el mando se desconecta.
 - [x] Probado en 13 tamaños de pantalla, de un iPhone SE en horizontal (568×320) a un monitor de 2560×1440.
 - [x] Nombre de la app: **Shooter 2027** (decidido el 7 de noviembre de 2026). La app abre directamente el juego; Tres en Raya 3D va incluido como juego extra en "Otros juegos". "Shooter" es una palabra genérica muy usada en las tiendas: acompañarla de un subtítulo descriptivo en la ficha (por ejemplo, "oleadas de robots") para que se encuentre en las búsquedas.

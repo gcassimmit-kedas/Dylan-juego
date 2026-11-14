@@ -110,6 +110,7 @@
       <button id="mpBtn" class="ghost" hidden><span data-icon="users"></span>Multijugador</button>
       <button id="skinBtn" class="ghost"><span data-icon="userRound"></span>Aspecto</button>
       <button id="transferBtn" class="ghost"><span data-icon="copy"></span>Pasar partida</button>
+      <button id="modsBtn" class="ghost"><span data-icon="puzzle"></span>Mods<span id="modsCount" class="mods-count" hidden></span></button>
       <button id="newBtn" class="ghost" hidden><span data-icon="rotateCcw"></span>Nueva partida</button>
       <button id="helpBtn" class="ghost"><span data-icon="circleHelp"></span>Cómo se juega</button>
     </div>
@@ -205,6 +206,7 @@
       <h2 id="pauseTitle">Pausa</h2>
       <button id="resumeBtn" class="primary big"><span data-icon="play"></span>Continuar</button>
       <button id="qualityBtn" class="ghost"><span data-icon="gauge"></span><span id="qualityLbl">Gráficos: automático</span></button>
+      <button id="pauseModsBtn" class="ghost"><span data-icon="puzzle"></span>Mods</button>
       <button id="kickBtn" class="ghost" hidden><span data-icon="ban"></span>Sacar a tu compañero</button>
       <button id="quitBtn" class="ghost"><span data-icon="house"></span>Salir al menú</button>
       <p class="help" id="quitHelp"></p>
@@ -277,6 +279,33 @@
       <button id="trLoad" class="ghost"><span data-icon="logIn"></span>Cargar partida</button>
       <button id="trYes" class="primary" hidden><span data-icon="check"></span>Sí, cambiar mi partida por esta</button>
       <button class="ghost" data-close="transfer">Cerrar</button>
+    </div>
+  </section>
+
+  <!-- Mods -->
+  <section id="mods" class="screen" hidden aria-labelledby="modsTitle">
+    <div class="panel menu-panel mods-panel" role="dialog" aria-modal="true">
+      <p class="kicker"><span data-icon="puzzle"></span>Cambia el juego a tu gusto</p>
+      <h2 id="modsTitle">Mods</h2>
+      <p id="modsSum" class="help mods-sum" aria-live="polite"></p>
+      <h3 class="mp-sub">Incluidos</h3>
+      <ul id="modsList" class="mods-list"></ul>
+      <h3 class="mp-sub">Tus mods</h3>
+      <ul id="modsOwn" class="mods-list"></ul>
+      <h3 class="mp-sub">Añadir un mod</h3>
+      <p class="help">Pega el código de un mod (empieza por MOD1-) o abre un archivo de mod (.json). Los mods solo cambian números del juego: nunca llevan programas.</p>
+      <textarea id="modsIn" rows="2" placeholder="Pega aquí el código del mod" aria-label="Código del mod" spellcheck="false" autocomplete="off"></textarea>
+      <div class="mods-row">
+        <button id="modsAdd" class="primary"><span data-icon="plus"></span>Añadir mod</button>
+        <button id="modsFileBtn" class="ghost"><span data-icon="upload"></span>Abrir archivo</button>
+        <input id="modsFile" type="file" accept=".json,application/json,text/plain" hidden />
+      </div>
+      <p id="modsMsg" class="help" aria-live="polite"></p>
+      <h3 class="mp-sub">Crear un mod</h3>
+      <label class="mods-name">Nombre<input id="modsName" type="text" maxlength="32" placeholder="Mi mod" autocomplete="off" spellcheck="false" /></label>
+      <div id="modsSliders" class="mods-sliders"></div>
+      <button id="modsCreate" class="ghost"><span data-icon="slidersHorizontal"></span>Guardar mod</button>
+      <button class="ghost" data-close="mods">Cerrar</button>
     </div>
   </section>
 

@@ -417,3 +417,40 @@ body.fp.instore:not(.attill) #useBtn.far { background: rgba(200, 32, 42, 0.45); 
 }
 /* En la caja, abajo están los controles de cobro: el aviso sube. */
 body.attill .thief-alert { bottom: auto; top: calc(env(safe-area-inset-top) + 74px); }
+
+/* ---------- Mods ---------- */
+.mods-panel { width: min(100%, 560px); text-align: left; }
+.mods-panel .kicker, .mods-panel h2 { align-self: center; }
+.mods-count { margin-left: 8px; min-width: 22px; height: 22px; padding: 0 6px; display: inline-grid; place-items: center; background: var(--accent); color: #241a00; font-size: 0.8rem; border-radius: 11px; }
+.mods-count[hidden] { display: none; }
+.mods-sum { color: var(--accent); }
+.mods-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.mods-list li { display: flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.24); border: 1px solid var(--line); padding: 8px 10px; }
+.mods-list li.on { border-color: rgba(255, 200, 61, 0.6); }
+.mods-list li.empty { color: var(--muted); font-size: 0.88rem; line-height: 1.45; }
+.mods-list li > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mods-list b { font-family: var(--display); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.mods-list small { color: var(--muted); font-size: 0.82rem; line-height: 1.35; }
+.mods-list small.fx { color: var(--accent); }
+.mods-acts { display: flex; align-items: center; gap: 6px; flex: none; }
+.mods-acts .primary, .mods-acts .ghost { padding: 8px 12px; font-size: 0.85rem; min-width: 92px; justify-content: center; }
+.mods-acts .btn { width: 40px; height: 40px; }
+.mods-acts .ic { width: 18px; height: 18px; }
+.mods-panel textarea, .mods-name input { width: 100%; color: var(--text); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line-strong); padding: 8px 10px; font: 500 0.9rem/1.4 var(--body, 'Inter', sans-serif); }
+.mods-panel textarea { resize: none; font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace; font-size: 0.78rem; word-break: break-all; user-select: text; -webkit-user-select: text; }
+.mods-panel textarea:focus-visible, .mods-name input:focus-visible, .mods-sliders input:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.mods-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.mods-row > button { flex: 1 1 160px; }
+#modsMsg.bad { color: var(--danger); }
+#modsMsg.ok { color: var(--ok); }
+.mods-name { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+.mods-sliders { display: flex; flex-direction: column; gap: 4px; }
+.mods-sliders label { display: grid; grid-template-columns: minmax(0, 9.5rem) 1fr 4.5rem; align-items: center; gap: 10px; font-size: 0.85rem; }
+.mods-sliders input { width: 100%; accent-color: var(--accent); height: 28px; }
+.mods-sliders output { font-family: var(--display); font-weight: 600; text-align: right; color: var(--accent); }
+@media (max-width: 420px) {
+  .mods-list li { flex-wrap: wrap; }
+  .mods-acts { width: 100%; justify-content: flex-end; }
+  .mods-sliders label { grid-template-columns: 1fr 4rem; }
+  .mods-sliders label span { grid-column: 1 / -1; }
+}

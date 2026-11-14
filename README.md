@@ -175,6 +175,15 @@ armas**, junto a la casa, vende tres armas que espantan sin hacer daño: silbato
 todo (vuelve al estante) y se vaya con las manos vacías. Las armas son de cada jugador y se usa la de más alcance; en
 partidas de dos, el anfitrión mide el alcance desde donde ve al invitado.
 
+**Mods** (`src/super/mods.ts`, botón "Mods" del menú y de la pausa): cambian números del juego, nunca llevan código.
+Efectos posibles, cada uno con su rango: precio de venta (x0,5 a x3), coste del género (x0,25 a x2), clientes (x0,5 a
+x3), paciencia (x0,5 a x3), ladrones (x0 a x3), regalo al empezar cada turno (RD$0 a RD$5000), velocidad al andar (x0,5
+a x2) y cansancio (x0 a x2). Hay 7 mods incluidos; se pueden crear más con deslizadores, pasarlos con un código
+`MOD1-...` o abrirlos desde un archivo `.json` (`{"nombre": "...", "efectos": {"precio": 2}}`). Varios mods activos se
+combinan (multiplicadores multiplicados, regalos sumados, todo recortado a rango). Cada cliente guarda el precio con
+el que entró, así que activar un mod a mitad de una venta no cambia lo que paga. En partida de dos mandan los mods del
+anfitrión.
+
 **Pasar partida:** el botón "Pasar partida" del menú da un código (`SUPER1-...`, `src/super/codigo.ts`) con la tienda,
 el dinero y el aspecto, para pegarlo en "Cargar partida" de otra copia del juego (otra página publicada, otro navegador
 u otro dispositivo). Cada página publicada guarda su partida por separado y ninguna puede leer la de otra: el código
