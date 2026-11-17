@@ -16,6 +16,7 @@ Reglas obligatorias para cualquier cambio en este repositorio. Si una petición 
   - paleta oliva oscuro + dorado `#ffc83d` (variables en `src/shooter/style.css`);
   - paneles y botones con **esquina recortada** (clip-path), botón principal dorado y secundarios translúcidos;
   - cada pantalla con estructura de juego comercial: título con logotipo, HUD con barra de vida e indicador de oleada, anuncios de oleada, pantalla final con estadísticas.
+  - **Excepción: Bloques** (`bloques.html`) es de supervivencia, no de oleadas. Su estructura equivalente: título con logotipo, HUD con 10 corazones y aviso de día/noche, anuncios (anochece, amanece), inventario con crafteo y pantalla de muerte con reaparecer.
 
 ## 2. Cumplimiento de tiendas (App Store y Google Play)
 
@@ -33,6 +34,7 @@ Reglas obligatorias para cualquier cambio en este repositorio. Si una petición 
 - El servidor (`server/index.ts`) manda: la simulación corre allí y el cliente solo envía su entrada. Nunca confiar en lo que llega del cliente.
 - Con conexión, cada partida es un servidor público con nombre aleatorio (hasta 7 jugadores) que aparece en la lista de Multijugador; sin conexión se juega solo. Los jugadores no escriben nada: nombres automáticos y sin chat.
 - Si algún día se permite escribir (nombres, chat), debe pasar por `src/shooter/moderation.ts` en el servidor y actualizarse antes la política de privacidad.
+- **Bloques:** cada mundo es público (aparece en la lista) y se puede invitar con un enlace `bloques.html?mundo=<id>`. El enlace solo lleva el identificador aleatorio del mundo, nunca datos de nadie. El servidor (`server/mundo.ts`) simula todo: movimiento, minado, crafteo y monstruos.
 - Denunciar y bloquear jugadores deben seguir disponibles (norma 1.2 de Apple).
 - Producción solo con HTTPS/WSS.
 - Cualquier dato nuevo que se trate exige actualizar antes `privacidad.html`, `docs/TIENDAS.md` y las fichas de privacidad.

@@ -20,8 +20,8 @@ export function fpInput(yaw: number, sx: number, sy: number, fire: boolean): Inp
 }
 
 /** Aplica un giro de ratón o dedo (en píxeles) a la mirada. Arrastrar a la derecha gira a la derecha. */
-export function applyLook(yaw: number, pitch: number, dx: number, dy: number, sensitivity: number): [number, number] {
+export function applyLook(yaw: number, pitch: number, dx: number, dy: number, sensitivity: number, limit = PITCH_LIMIT): [number, number] {
   const y = yaw - dx * sensitivity;
-  const p = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch - dy * sensitivity));
+  const p = Math.max(-limit, Math.min(limit, pitch - dy * sensitivity));
   return [Math.atan2(Math.sin(y), Math.cos(y)), p];
 }

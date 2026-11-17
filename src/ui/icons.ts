@@ -54,6 +54,13 @@ import ban from 'lucide-static/icons/ban.svg?raw';
 import keyRound from 'lucide-static/icons/key-round.svg?raw';
 import handFist from 'lucide-static/icons/hand-fist.svg?raw';
 import blocks from 'lucide-static/icons/blocks.svg?raw';
+import pickaxe from 'lucide-static/icons/pickaxe.svg?raw';
+import box from 'lucide-static/icons/box.svg?raw';
+import chevronUp from 'lucide-static/icons/chevron-up.svg?raw';
+import backpack from 'lucide-static/icons/backpack.svg?raw';
+import userPlus from 'lucide-static/icons/user-plus.svg?raw';
+import sun from 'lucide-static/icons/sun.svg?raw';
+import moon from 'lucide-static/icons/moon.svg?raw';
 
 /** Extrae solo el contenido interior de un SVG de Lucide (sin comentario de licencia ni atributos). */
 const inner = (svg: string) => svg.replace(/<!--[\s\S]*?-->/g, '').replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '').trim();
@@ -97,6 +104,7 @@ const LUCIDE = {
   footprints, magnet, drone, shieldCheck, brickWall, settings, x, chevronRight, arrowLeft,
   trophy, check, fileText, info, crosshair, grid, rotateCcw, hammer, fence, castle, hospital, plane, zapOff, userRound, shieldOff,
   globe, search, lock, users, flag, copy, refreshCw, logIn, logOut, plus, wifiOff, ban, keyRound, handFist, blocks,
+  pickaxe, box, chevronUp, backpack, userPlus, sun, moon,
 };
 
 export type IconName = keyof typeof LUCIDE | keyof typeof CUSTOM;

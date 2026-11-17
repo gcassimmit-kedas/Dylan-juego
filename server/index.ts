@@ -25,6 +25,8 @@ import {
   type ClientMsg, type ServerMsg, type RoomInfo,
 } from '../src/shooter/protocol.ts';
 import { createThrottle } from '../src/shooter/visits.ts';
+import { onWorldMessage, leave as leaveWorld, type MClient } from './mundo.ts';
+import type { MClientMsg } from '../src/bloques/protocol.ts';
 
 const PORT = Number(process.env.PORT) || 8080;
 const DIST = resolve(process.env.DIST_DIR || join(import.meta.dirname, '..', 'dist'));
@@ -34,7 +36,9 @@ const VISITS_FILE = resolve(process.env.VISITS_FILE || join(import.meta.dirname,
 
 // ---------------- Salas ----------------
 
-interface Client { ws: WebSocket; pid: string; name: string; character: CharacterId; room: Room | null; msgs: number; lastInput: number; paused: boolean }
+interface Client { ws: WebSocket; pid: string; name: string; character: CharacterId; room: Room | null; msgs: number; lastInput: number; paused: boolean;
+  /** El mismo jugador en los mundos de Bloques. */
+  m: MClient }
 interface Room {
   id: string; name: string;
   /** Juego de la sala: Shooter 2027 y Bloques tienen listas de servidores separadas. */
@@ -119,6 +123,11 @@ function startWave(room: Room) {
 }
 
 // ---------------- Denuncias ----------------
+
+/** Guarda una denuncia (sin identidad ni IP de quien denuncia). */
+function saveReport(entry: object) {
+  void appendFile(REPORTS_FILE, JSON.stringify(entry) + '\n').catch(() => { /* sin disco: la denuncia cuenta igualmente */ });
+}
 
 /** Borra las denuncias de más de 30 días (al arrancar y cada hora). */
 async function purgeOldReports() {
@@ -215,6 +224,8 @@ function onMessage(c: Client, raw: string) {
   let m: ClientMsg;
   try { m = JSON.parse(raw); } catch { return; }
   if (!m || typeof m !== 'object') return;
+  // Bloques (mundos compartidos): mensajes que empiezan por 'm'
+  if (typeof m.t === 'string' && m.t.startsWith('m') && onWorldMessage(c.m, m as unknown as MClientMsg, saveReport)) return;
   const room = c.room, w = room?.world;
   switch (m.t) {
     case 'list': return send(c, { t: 'rooms', rooms: serverList(gameOf(m.game)) });
@@ -310,10 +321,12 @@ const http = createServer((req, res) => { void serveStatic(req, res); });
 const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 4096 });
 
 wss.on('connection', (ws) => {
-  const c: Client = { ws, pid: makeId(), name: 'Soldado', character: 'sargento', room: null, msgs: 0, lastInput: 0, paused: false };
+  const pid = makeId();
+  const c: Client = { ws, pid, name: 'Soldado', character: 'sargento', room: null, msgs: 0, lastInput: 0, paused: false,
+    m: { ws, pid, name: 'Jugador', look: 'coloso', world: null, paused: false, lastInput: 0 } };
   const reset = setInterval(() => (c.msgs = 0), 1000);
   ws.on('message', (data) => onMessage(c, data.toString()));
-  ws.on('close', () => { clearInterval(reset); leaveRoom(c); });
+  ws.on('close', () => { clearInterval(reset); leaveRoom(c); leaveWorld(c.m); });
   ws.on('error', () => ws.close());
 });
 

@@ -4,7 +4,8 @@ import * as THREE from 'three';
 
 export type TexName =
   | 'grass' | 'grassSide' | 'dirt' | 'stone' | 'cobble' | 'planks' | 'log' | 'logTop' | 'leaves'
-  | 'sand' | 'crate' | 'metal' | 'metalDark' | 'gold' | 'brick' | 'glow';
+  | 'sand' | 'crate' | 'metal' | 'metalDark' | 'gold' | 'brick' | 'glow'
+  | 'gravel' | 'oreCoal' | 'oreIron' | 'oreGold' | 'oreDiamond' | 'bedrock' | 'tableTop' | 'tableSide' | 'torch' | 'furnace' | 'furnaceTop';
 
 const N = 16;
 type RGB = [number, number, number];
@@ -111,7 +112,56 @@ const PAINT: Record<TexName, Painter> = {
     return { c: joint ? [176, 168, 150] : shade([150, 72, 52], 0.88 + r() * 0.16), h: joint ? 0 : 0.8 };
   },
   glow: () => ({ c: [255, 255, 255], h: 1 }),
+  gravel: (x, y, r) => {
+    const v = r(), pebble = ((x * 5 + y * 3) % 7 === 0) || ((x + y * 7) % 11 === 0);
+    const base: RGB = pebble ? [150, 140, 132] : v < 0.4 ? [104, 98, 94] : v < 0.8 ? [124, 118, 112] : [88, 84, 80];
+    return { c: shade(base, 0.94 + r() * 0.1), h: pebble ? 1 : v * 0.6 };
+  },
+  oreCoal: (x, y, r) => ore(x, y, r, [40, 40, 42], 3),
+  oreIron: (x, y, r) => ore(x, y, r, [216, 168, 128], 5),
+  oreGold: (x, y, r) => ore(x, y, r, [252, 222, 80], 7),
+  oreDiamond: (x, y, r) => ore(x, y, r, [96, 232, 226], 9),
+  bedrock: (_x, _y, r) => {
+    const v = r();
+    const base: RGB = v < 0.3 ? [40, 40, 42] : v < 0.7 ? [70, 70, 72] : [102, 102, 104];
+    return { c: base, h: v };
+  },
+  tableTop: (x, y, r) => {
+    const frame = x === 0 || y === 0 || x === 15 || y === 15;
+    const grid = (x === 5 || x === 10 || y === 5 || y === 10) && !frame;
+    const p = PAINT.planks(x, y, r);
+    return frame ? { c: shade([126, 90, 52], 0.85), h: 1 } : grid ? { c: shade(p.c, 0.7), h: 0.2 } : p;
+  },
+  tableSide: (x, y, r) => {
+    const p = PAINT.planks(x, y, r);
+    // Herramientas colgadas: una sierra y un martillo dibujados en la tabla
+    const saw = y >= 3 && y <= 6 && x >= 2 && x <= 7;
+    const hammer = (x === 11 && y >= 3 && y <= 9) || (y === 3 && x >= 9 && x <= 13);
+    if (y < 2) return { c: shade([126, 90, 52], 0.85), h: 1 };
+    if (saw) return { c: y === 6 && x % 2 === 0 ? [90, 92, 96] : [168, 172, 176], h: 0.9 };
+    if (hammer) return { c: x === 11 && y > 3 ? [92, 64, 36] : [120, 124, 128], h: 0.9 };
+    return p;
+  },
+  torch: (x, y) => {
+    // Palo con la llama arriba; el resto transparente
+    if (x >= 7 && x <= 8 && y >= 6 && y <= 15) return { c: y <= 7 ? [255, 214, 90] : [120, 88, 50], h: 1 };
+    if (x >= 6 && x <= 9 && y >= 4 && y <= 6) return { c: y === 4 ? [255, 250, 200] : [255, 170, 40], h: 1 };
+    return { c: [0, 0, 0], h: 0, a: 0 };
+  },
+  furnace: (x, y, r) => {
+    const p = PAINT.cobble(x, y, r);
+    const mouth = x >= 4 && x <= 11 && y >= 8 && y <= 12;
+    if (mouth) return { c: y >= 11 ? [255, 140, 40] : [24, 22, 22], h: 0 };
+    return p;
+  },
+  furnaceTop: (x, y, r) => PAINT.stone(x, y, r),
 };
+/** Mineral: piedra con manchas de color. */
+function ore(x: number, y: number, r: () => number, color: RGB, k: number): Px {
+  const spot = ((x * k + y * 3) % 13 < 3 && (x + y * k) % 5 < 3) || ((x * 3 + y * k) % 17 < 2);
+  if (spot) return { c: shade(color, 0.85 + r() * 0.3), h: 1 };
+  return PAINT.stone(x, y, r);
+}
 
 function paint(name: TexName, seed: number) {
   const r = rng(seed);
@@ -157,8 +207,10 @@ function tex(c: HTMLCanvasElement, srgb: boolean) {
 const SEED: Record<TexName, number> = {
   grass: 11, grassSide: 12, dirt: 13, stone: 14, cobble: 15, planks: 16, log: 17, logTop: 18, leaves: 19,
   sand: 20, crate: 21, metal: 22, metalDark: 23, gold: 24, brick: 25, glow: 26,
+  gravel: 27, oreCoal: 28, oreIron: 29, oreGold: 30, oreDiamond: 31, bedrock: 32, tableTop: 33, tableSide: 34, torch: 35, furnace: 36, furnaceTop: 37,
 };
-const RELIEF: Partial<Record<TexName, number>> = { cobble: 2.2, brick: 2, planks: 1.6, crate: 1.8, metal: 1.6, metalDark: 1.6, stone: 1.4, log: 1.6 };
+const RELIEF: Partial<Record<TexName, number>> = {
+  oreCoal: 2, oreIron: 2, oreGold: 2, oreDiamond: 2, gravel: 1.6, bedrock: 1.4, furnace: 1.8, cobble: 2.2, brick: 2, planks: 1.6, crate: 1.8, metal: 1.6, metalDark: 1.6, stone: 1.4, log: 1.6 };
 
 const cache = new Map<string, THREE.MeshStandardMaterial>();
 let anisotropy = 1;
@@ -191,4 +243,48 @@ export function blockMat(name: TexName, opts: { repeat?: number; tint?: number; 
   if (opts.emissive !== undefined) { m.emissive = new THREE.Color(opts.emissive); m.emissiveIntensity = 1.6; }
   cache.set(key, m);
   return m;
+}
+
+// ---------- Atlas: todas las texturas en una sola imagen (para el mundo de bloques) ----------
+
+/** Lado de cada casilla del atlas: la textura de 16 px más un borde repetido para que no sangren los colores al alejarse. */
+const PAD = 4, CELL = N + PAD * 2;
+export interface Atlas { map: THREE.Texture; normal: THREE.Texture; uv: (name: TexName) => [number, number, number, number]; cols: number; icon: (name: TexName) => string }
+
+/** Construye el atlas (color y relieve) con las texturas pedidas. */
+export function buildAtlas(names: TexName[]): Atlas {
+  const cols = Math.ceil(Math.sqrt(names.length)), size = cols * CELL;
+  const color = document.createElement('canvas'), normal = document.createElement('canvas');
+  color.width = color.height = normal.width = normal.height = size;
+  const gc = color.getContext('2d')!, gn = normal.getContext('2d')!;
+  const pos = new Map<TexName, number>();
+  const icons = new Map<TexName, string>();
+  names.forEach((name, i) => {
+    pos.set(name, i);
+    const { color: c, height } = paint(name, SEED[name]);
+    const n = normalsOf(height, RELIEF[name] ?? 1);
+    const cx = (i % cols) * CELL, cy = Math.floor(i / cols) * CELL;
+    for (const [g, data] of [[gc, c], [gn, n]] as const) {
+      const tile = canvasOf(data as Uint8ClampedArray<ArrayBuffer>);
+      // Borde: la propia textura repetida alrededor, recortada a su casilla
+      g.save(); g.beginPath(); g.rect(cx, cy, CELL, CELL); g.clip();
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) g.drawImage(tile, cx + PAD + dx * N, cy + PAD + dy * N);
+      g.restore();
+    }
+    const ic = document.createElement('canvas'); ic.width = ic.height = N;
+    ic.getContext('2d')!.drawImage(canvasOf(c), 0, 0);
+    icons.set(name, ic.toDataURL());
+  });
+  const mk = (cv: HTMLCanvasElement, srgb: boolean) => {
+    const t = new THREE.CanvasTexture(cv);
+    t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestMipmapLinearFilter;
+    t.generateMipmaps = true; t.anisotropy = anisotropy; t.flipY = false;
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  };
+  return {
+    map: mk(color, true), normal: mk(normal, false), cols,
+    uv: (name) => { const i = pos.get(name) ?? 0, u0 = ((i % cols) * CELL + PAD) / size, v0 = (Math.floor(i / cols) * CELL + PAD) / size; return [u0, v0, u0 + N / size, v0 + N / size]; },
+    icon: (name) => icons.get(name) ?? '',
+  };
 }

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#1d2416" />
-  <meta name="description" content="Bloques: oleadas de robots en primera persona, solo o con amigos en servidores públicos." />
+  <meta name="description" content="Bloques: explora, mina, craftea y sobrevive en un mundo de bloques, solo o con tus amigos." />
   <link rel="icon" type="image/svg+xml" href="./icons/emblema.svg" />
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
   <link rel="manifest" href="./manifest.webmanifest" />
@@ -15,66 +15,78 @@
 <body>
   <canvas id="scene"></canvas>
 
-  <!-- Pantalla de carga (se oculta al dibujar el primer fotograma) -->
   <div id="loading" aria-live="polite">
-    <img src="./icons/emblema.svg" alt="" />
+    <div class="logo-blocks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
     <div class="loadbar"><span></span></div>
-    <p>Construyendo el mundo</p>
+    <p id="loadingText">Construyendo el mundo</p>
   </div>
 
-  <!-- HUD: solo visible durante la partida -->
+  <!-- HUD -->
   <div id="hud">
     <div class="left">
-      <div id="hp" class="hpbar" role="meter" aria-label="Vida" aria-valuemin="0">
-        <span class="hp-ic" data-icon="heart"></span>
-        <div class="track"><div class="fill" id="hpFill"></div></div>
-        <span class="val" id="hpVal">5/5</span>
-      </div>
       <div id="roomChip" class="room-chip" hidden><span data-icon="globe"></span><span></span></div>
-      <ul id="playersHud" class="players-hud" hidden aria-label="Equipo"></ul>
+      <ul id="playersHud" class="players-hud" hidden aria-label="Jugadores en el mundo"></ul>
     </div>
     <div class="center">
-      <div class="wave" id="wave" aria-live="polite">
-        <span class="lbl">Oleada</span><span class="n" id="waveN">1</span>
-      </div>
-      <div class="remaining" id="remaining" aria-label="Robots restantes"><span data-icon="crosshair"></span><span id="enemiesN">0</span></div>
-      <div id="bossBar" class="boss-bar" hidden role="meter" aria-label="Vida del jefe" aria-valuemin="0" aria-valuemax="100"><span class="lbl">Jefe</span><div class="track"><div class="fill" id="bossFill"></div></div></div>
+      <div class="clock" id="clock" aria-live="off"><span id="clockIc"></span><span id="clockText">Día</span></div>
     </div>
     <div class="right">
-      <div id="coins" class="stat" aria-label="Monedas"><span data-icon="coins"></span><span id="coinsN">0</span></div>
-      <div id="score" class="stat score" aria-label="Puntuación"><span data-icon="trophy"></span><span id="scoreN">0</span></div>
-      <button id="pauseBtn" class="btn" aria-label="Pausar" title="Pausar (P)"></button>
+      <button id="inviteBtn" class="btn" aria-label="Invitar a tus amigos" hidden></button>
+      <button id="invBtn" class="btn" aria-label="Inventario y crafteo"></button>
+      <button id="pauseBtn" class="btn" aria-label="Pausar"></button>
       <button id="mute" class="btn" aria-label="Silenciar"></button>
     </div>
   </div>
-  <div id="rapid" hidden><span data-icon="zap"></span> Disparo rápido</div>
-  <div id="banner" aria-live="polite"><div class="kicker" id="bannerKicker"></div><div class="title" id="bannerTitle"></div><div class="sub" id="bannerSub"></div></div>
-  <div id="toast" aria-live="polite"></div>
-  <div id="toolbar"><div id="weaponName"></div><div id="weapons"></div></div>
   <div id="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
   <div id="hurtFlash" aria-hidden="true"></div>
+  <div id="toast" aria-live="polite"></div>
+  <div id="banner" aria-live="polite"><div class="kicker" id="bannerKicker"></div><div class="title" id="bannerTitle"></div><div class="sub" id="bannerSub"></div></div>
   <div id="lockHint" hidden><span data-icon="crosshair"></span> Haz clic para jugar</div>
-  <button id="fireBtn" class="touch-btn fire" aria-label="Atacar"><span data-icon="crosshair"></span></button>
+  <div id="bottom">
+    <div id="hearts" role="meter" aria-label="Vida" aria-valuemin="0" aria-valuemax="20"></div>
+    <div id="hotbar" role="toolbar" aria-label="Barra rápida"></div>
+    <div id="heldName" aria-live="polite"></div>
+  </div>
+  <!-- Botones táctiles -->
+  <button id="breakBtn" class="touch-btn break" aria-label="Romper o atacar (mantener)"><span data-icon="pickaxe"></span></button>
+  <button id="placeBtn" class="touch-btn place" aria-label="Colocar bloque"><span data-icon="box"></span></button>
+  <button id="jumpBtn" class="touch-btn jump" aria-label="Saltar"><span data-icon="chevronUp"></span></button>
   <div class="stick" id="stickL"><div class="knob"></div></div>
 
-  <!-- Tienda entre oleadas -->
-  <div id="shop" class="screen" hidden>
-    <div class="panel">
-      <header class="shop-head">
+  <!-- Inventario y crafteo -->
+  <div id="inventory" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="invTitle">
+    <div class="panel inv-panel">
+      <div class="head">
         <div>
-          <p class="kicker" id="shopTitle">Oleada superada</p>
-          <h2>Tienda</h2>
-          <p id="shopSub"></p>
+          <p class="kicker" id="invKicker">Mochila</p>
+          <h2 id="invTitle">Inventario</h2>
         </div>
-        <div class="wallets">
-          <div class="wallet" aria-label="Monedas disponibles"><span data-icon="coins"></span><span id="shopCoins">0</span></div>
-        </div>
-      </header>
-      <div id="shopBody"></div>
-      <footer class="shop-foot">
-        <p id="shopTimer" class="shop-timer" hidden aria-live="polite"></p>
-        <button id="nextWave" class="primary big">Siguiente oleada <span data-icon="chevronRight"></span></button>
-      </footer>
+        <button id="invClose" class="btn" aria-label="Cerrar inventario" data-icon="x"></button>
+      </div>
+      <div class="inv-body">
+        <section class="inv-slots" aria-labelledby="slotsTitle">
+          <h3 id="slotsTitle">Tus cosas</h3>
+          <p class="help" id="slotsHelp">Toca una casilla y luego otra para cambiarlas de sitio. La fila de abajo es tu barra rápida.</p>
+          <div id="invGrid" class="slot-grid"></div>
+          <div id="invHotbar" class="slot-grid hot"></div>
+        </section>
+        <section class="inv-craft" aria-labelledby="craftTitle">
+          <h3 id="craftTitle">Crafteo</h3>
+          <p class="stations" id="stations"></p>
+          <div id="recipes"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- Has muerto -->
+  <div id="death" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="deathTitle">
+    <div class="panel menu-panel result">
+      <p class="kicker danger">Fuera de combate</p>
+      <h2 id="deathTitle">Has muerto</h2>
+      <p class="help">Conservas todo tu inventario. Vuelves al centro del mundo.</p>
+      <button id="respawnBtn" class="primary big"><span data-icon="rotateCcw"></span> Reaparecer</button>
+      <button id="deathMenu" class="ghost"><span data-icon="house"></span> Menú principal</button>
     </div>
   </div>
 
@@ -83,8 +95,13 @@
     <div class="panel menu-panel">
       <p class="kicker" id="pauseKicker">Partida en pausa</p>
       <h2 id="pauseTitle">Pausa</h2>
+      <section id="inviteBox" class="invite" hidden aria-labelledby="inviteTitle">
+        <h3 id="inviteTitle">Invita a tus amigos</h3>
+        <p class="help">Copia el enlace y mándaselo. Al abrirlo entran directo a este mundo, desde cualquier dispositivo.</p>
+        <div class="invite-row"><input id="inviteLink" type="text" readonly aria-label="Enlace para invitar" /><button id="copyLink" class="primary"><span data-icon="copy"></span> Copiar</button></div>
+      </section>
       <section id="pausePlayers" class="team" hidden aria-labelledby="teamTitle">
-        <h3 id="teamTitle">Jugadores en la sala</h3>
+        <h3 id="teamTitle">Jugadores en el mundo</h3>
         <ul id="playersList"></ul>
       </section>
       <button id="resume" class="primary big"><span data-icon="play"></span> Continuar</button>
@@ -94,65 +111,43 @@
     </div>
   </div>
 
-  <!-- Fin de partida -->
-  <div id="gameover" class="screen" hidden>
-    <div class="panel menu-panel result">
-      <p class="kicker danger">Partida terminada</p>
-      <h2>Has caído en la oleada <span id="goWave">1</span></h2>
-      <div class="newrecord" id="goRecord" hidden><span data-icon="trophy"></span> Nuevo récord</div>
-      <dl class="stats">
-        <div><dt>Puntuación</dt><dd id="goScore">0</dd></div>
-        <div><dt>Robots derribados</dt><dd id="goKills">0</dd></div>
-        <div><dt>Monedas ganadas</dt><dd id="goCoins">0</dd></div>
-        <div><dt id="goBestLabel">Récord</dt><dd id="goBest">0</dd></div>
-      </dl>
-      <p class="help" id="goAuto" hidden>Nueva partida en unos segundos</p>
-      <button id="retry" class="primary big"><span data-icon="rotateCcw"></span> Reintentar</button>
-      <button id="goMenu" class="ghost"><span data-icon="house"></span> Menú principal</button>
-    </div>
-  </div>
-
-  <!-- Pantalla de título -->
+  <!-- Portada -->
   <div id="overlay" class="screen title">
     <div class="brand">
       <div class="logo-blocks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <h1 aria-label="Bloques"><span class="l1" aria-hidden="true">Bloques</span><span class="l2" aria-hidden="true">Oleadas</span></h1>
-      <p class="tagline">Recoge monedas, compra armas y aguanta las oleadas con tus amigos.</p>
+      <h1 aria-label="Bloques"><span class="l1" aria-hidden="true">Bloques</span><span class="l2" aria-hidden="true">Supervivencia</span></h1>
+      <p class="tagline">Explora, mina, craftea y sobrevive. Solo o con tus amigos.</p>
+      <p class="invited" id="invited" hidden><span data-icon="users"></span> Te han invitado a un mundo</p>
     </div>
     <div class="menu">
       <button id="play" class="primary big"><span data-icon="play"></span> Jugar</button>
-      <button id="multiBtn" class="ghost"><span data-icon="users"></span> Multijugador</button>
+      <button id="multiBtn" class="ghost"><span data-icon="users"></span> Mundos de otros</button>
       <button id="menuSettings" class="ghost"><span data-icon="settings"></span> Ajustes</button>
       <a href="./creditos.html" class="ghost"><span data-icon="info"></span> Créditos</a>
       <a href="./juegos.html" class="ghost"><span data-icon="grid"></span> Otros juegos</a>
     </div>
-    <dl class="records" id="records">
-      <div><dt>Mejor puntuación</dt><dd id="bestScore">0</dd></div>
-      <div><dt>Mejor oleada</dt><dd id="bestWave">0</dd></div>
-    </dl>
     <p class="help" id="help"></p>
-    <span class="version">v1.0.0</span>
-    <p class="visits" id="visits" hidden aria-live="polite"><span data-icon="users"></span><span id="visitsN"></span></p>
+    <span class="version">v2.0.0</span>
   </div>
 
-  <!-- Multijugador: lista de servidores -->
+  <!-- Lista de mundos -->
   <div id="lobby" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="lobbyTitle">
     <div class="panel lobby-panel">
       <div class="head">
         <div>
           <p class="kicker">Multijugador</p>
-          <h2 id="lobbyTitle">Servidores públicos</h2>
+          <h2 id="lobbyTitle">Mundos públicos</h2>
         </div>
-        <button id="lobbyClose" class="btn" aria-label="Cerrar multijugador" data-icon="x"></button>
+        <button id="lobbyClose" class="btn" aria-label="Cerrar lista de mundos" data-icon="x"></button>
       </div>
       <div class="lobby-body">
         <p id="lobbyStatus" class="lobby-status" role="status" aria-live="polite"></p>
-        <ul id="roomsList" class="servers" aria-label="Servidores"></ul>
+        <ul id="roomsList" class="servers" aria-label="Mundos"></ul>
       </div>
     </div>
   </div>
 
-  <!-- Elegir soldado -->
+  <!-- Elegir personaje -->
   <div id="charSelect" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="csTitle">
     <div class="panel cs-panel">
       <div class="cs-head">
@@ -167,12 +162,12 @@
     </div>
   </div>
 
-  <!-- Denunciar a un jugador -->
+  <!-- Denunciar -->
   <div id="reportDlg" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="reportTitle">
     <div class="panel menu-panel">
       <p class="kicker danger">Moderación</p>
       <h2 id="reportTitle">Denunciar a <span id="reportName"></span></h2>
-      <p class="help">La denuncia es anónima. Con suficientes denuncias, se le retira del servidor.</p>
+      <p class="help">La denuncia es anónima. Con suficientes denuncias, se le retira del mundo.</p>
       <button class="ghost" data-reason="conducta"><span data-icon="flag"></span> Denunciar mala conducta</button>
       <button id="reportCancel" class="ghost"><span data-icon="x"></span> Cancelar</button>
     </div>
@@ -194,8 +189,8 @@
         <input id="setSens" type="range" min="0.3" max="2" step="0.05" value="1" />
       </div>
       <div class="opt">
-        <span>Temblor de cámara</span>
-        <button id="setShake" class="switch" role="switch" aria-checked="true" aria-label="Temblor de cámara"><span></span></button>
+        <span>Movimiento de cámara al andar</span>
+        <button id="setShake" class="switch" role="switch" aria-checked="true" aria-label="Movimiento de cámara al andar"><span></span></button>
       </div>
       <div class="opt col">
         <span>Calidad gráfica</span>
