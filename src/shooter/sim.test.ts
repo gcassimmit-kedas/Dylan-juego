@@ -740,3 +740,107 @@ test('escudero: el escudo se rompe tras aguantar daño y gira despacio', () => {
   step(w2, null as unknown as Input, 1 / 60);
   assert.ok(Math.abs(Math.cos(e2.face)) > 0.9 && Math.cos(e2.face) < 0, 'sigue mirando hacia donde estaba');
 });
+
+// ---------- Bloques (primera persona) ----------
+import { shopFor, MAP_COIN_EVERY, MAP_COIN_MAX, MAP_COIN_VALUE } from './sim.ts';
+
+/** Mundo de Bloques vacío en plena oleada. */
+function bloques(rand = seq([0.99])) {
+  const w = newWorld(rand, false, [{ id: 'p1', name: 'Tú' }], 'bloques');
+  w.wave = 1; w.toSpawn = 1; w.spawnTimer = 999;
+  return w;
+}
+
+test('en Bloques se empieza a puñetazos y en Shooter con pistola', () => {
+  assert.deepEqual(bloques().player.owned, ['puno']);
+  assert.equal(bloques().player.weapon, 'puno');
+  assert.deepEqual(newWorld(seq([0.5]), false).player.owned, ['pistola']);
+});
+
+test('el palo y el martillo solo se venden en Bloques', () => {
+  const ids = (g: 'shooter' | 'bloques') => shopFor(g).map((s) => s.id);
+  assert.ok(ids('bloques').includes('palo') && ids('bloques').includes('martillo'));
+  assert.ok(!ids('shooter').includes('palo') && !ids('shooter').includes('martillo'));
+  const s = newWorld(seq([0.5]), false); s.coins = 999;
+  assert.equal(cannotBuy(s, 'palo'), 'No existe');
+  assert.equal(buy(s, 'martillo'), false);
+});
+
+test('en Bloques se compra el palo y queda equipado', () => {
+  const w = bloques(); w.coins = 100;
+  assert.equal(buy(w, 'palo'), true);
+  assert.equal(w.player.weapon, 'palo');
+  assert.equal(w.coins, 100 - shopFor('bloques').find((s) => s.id === 'palo')!.price);
+});
+
+test('el equipo de campo (torretas, minas...) no está en la tienda de Bloques', () => {
+  assert.ok(shopFor('bloques').every((s) => s.kind !== 'equipo'));
+  assert.ok(shopFor('shooter').some((s) => s.kind === 'equipo'));
+});
+
+test('el golpe solo alcanza de cerca', () => {
+  const w = bloques();
+  const near = spawnEnemy(w, 'tank', 0, 2.2); near.speed = 0;
+  const far = spawnEnemy(w, 'tank', 0, 6); far.speed = 0;
+  run(w, { ...idle, aimZ: 1, fire: true }, 30);
+  assert.ok(near.hp < near.maxHp, 'el de cerca recibe el golpe');
+  assert.equal(far.hp, far.maxHp, 'el de lejos no');
+});
+
+test('el martillo golpea en área a varios robots juntos', () => {
+  const w = bloques(); w.coins = 999; buy(w, 'martillo');
+  const a = spawnEnemy(w, 'tank', -0.5, 2.3); a.speed = 0;
+  const b = spawnEnemy(w, 'tank', 0.6, 2.6); b.speed = 0;
+  run(w, { ...idle, aimZ: 1, fire: true }, 12);
+  assert.ok(a.hp < a.maxHp && b.hp < b.maxHp);
+});
+
+test('en Bloques aparecen monedas por el mapa durante la oleada, con un tope', () => {
+  const w = bloques(seq([0.3, 0.7, 0.1, 0.9, 0.5]));
+  run(w, idle, Math.ceil(MAP_COIN_EVERY * 60) + 2);
+  assert.equal(w.pickups.filter((k) => k.type === 'coins').length, 1);
+  run(w, idle, Math.ceil(MAP_COIN_EVERY * 60 * (MAP_COIN_MAX + 4)));
+  assert.ok(w.pickups.filter((k) => k.type === 'coins').length <= MAP_COIN_MAX);
+});
+
+test('las monedas del mapa no salen dentro de una roca', () => {
+  const w = bloques(seq([0.5]));
+  w.obstacles.push({ id: 90, kind: 'rock', x: 0, z: 0, r: 2, hp: Infinity, rot: 0 }); // seq 0.5 apunta siempre al centro
+  run(w, idle, Math.ceil(MAP_COIN_EVERY * 60) + 2);
+  assert.equal(w.pickups.length, 0);
+});
+
+test('recoger una moneda del mapa suma su valor', () => {
+  const w = bloques();
+  w.pickups.push({ id: 91, type: 'coins', x: 0.5, z: 0, life: 20 });
+  step(w, idle, 1 / 60);
+  assert.equal(w.coins, MAP_COIN_VALUE);
+});
+
+test('en Shooter no aparecen monedas sueltas por el mapa', () => {
+  const w = arena();
+  run(w, idle, Math.ceil(MAP_COIN_EVERY * 60) * 3);
+  assert.equal(w.pickups.length, 0);
+});
+
+// ---------- Pausa en partida compartida ----------
+
+test('quien está en el menú de pausa no recibe daño ni lo persiguen', () => {
+  const w = arena();
+  const other = addPlayer(w, 'p2', 'Otro'); other.x = 20; other.z = 20; other.invuln = 0;
+  w.player.away = true;
+  const e = spawnEnemy(w, 'chaser', 0, 1.2);
+  run(w, idle, 60);
+  assert.equal(w.player.hp, w.player.maxHp);
+  assert.ok(Math.hypot(e.x - other.x, e.z - other.z) < Math.hypot(20, 20 - 1.2), 'el robot va a por el que sigue jugando');
+});
+
+test('al volver del menú vuelve a poder recibir daño', () => {
+  const w = arena();
+  w.player.away = true;
+  spawnEnemy(w, 'chaser', 0, 1);
+  run(w, idle, 10);
+  w.player.away = false;
+  run(w, idle, 30);
+  assert.ok(w.player.hp < w.player.maxHp);
+});

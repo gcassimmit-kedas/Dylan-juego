@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#141a0f" />
+  <title>Plano 3D</title>
+  <link rel="stylesheet" href="/src/ui/fonts.css" />
+  <link rel="stylesheet" href="/src/plano/style.css" />
+</head>
+<body>
+  <canvas id="scene" aria-label="Plano 3D. Muévete con el joystick, las teclas WASD o las flechas."></canvas>
+  <header class="hud">
+    <h1>Plano 3D</h1>
+    <div class="coords" aria-live="off"><span>X</span><b id="cx">0.0</b><span>Z</span><b id="cz">0.0</b></div>
+  </header>
+  <div id="joy" class="joy" role="application" aria-label="Joystick de movimiento"><div class="knob"></div></div>
+  <p class="hint">Arrastra el joystick o usa WASD</p>
+  <script type="module" src="/src/plano/main.ts"></script>
+</body>
+</html>

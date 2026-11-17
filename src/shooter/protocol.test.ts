@@ -50,3 +50,16 @@ test('una partida compartida solo se pausa si todos la pausan', async () => {
   assert.equal(roomPaused([true, true]), true);
   assert.equal(roomPaused([]), false);
 });
+
+import { newWorld as nw, buy as b2 } from './sim.ts';
+import { encode as enc, decode as dec } from './protocol.ts';
+test('la instantánea conserva el juego, la pausa del jugador y los golpes', () => {
+  const w = nw(() => 0.5, false, [{ id: 'a', name: 'A' }], 'bloques');
+  w.players[0].away = true;
+  w.bullets.push({ id: 5, kind: 'golpe', x: 1, z: 2, vx: 0, vz: 18, life: 0.1, maxLife: 0.13, enemy: false, dmg: 1, blast: 0, pierce: 0, hits: [], owner: 'a' });
+  const back = dec(JSON.parse(JSON.stringify(enc(w, 1, { ready: new Set(), shopLeft: 0, restartLeft: 0, events: [], withObstacles: true }))), null);
+  assert.equal(back.game, 'bloques');
+  assert.equal(back.players[0].away, true);
+  assert.equal(back.bullets[0].kind, 'golpe');
+  w.coins = 99; assert.ok(b2(w, 'palo'));
+});

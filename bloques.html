@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#1d2416" />
+  <meta name="description" content="Bloques: oleadas de robots en primera persona, solo o con amigos en servidores públicos." />
+  <link rel="icon" type="image/svg+xml" href="./icons/emblema.svg" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <title>Bloques</title>
+  <link rel="stylesheet" href="/src/shooter/style.css" />
+  <link rel="stylesheet" href="/src/bloques/style.css" />
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <!-- Pantalla de carga (se oculta al dibujar el primer fotograma) -->
+  <div id="loading" aria-live="polite">
+    <img src="./icons/emblema.svg" alt="" />
+    <div class="loadbar"><span></span></div>
+    <p>Construyendo el mundo</p>
+  </div>
+
+  <!-- HUD: solo visible durante la partida -->
+  <div id="hud">
+    <div class="left">
+      <div id="hp" class="hpbar" role="meter" aria-label="Vida" aria-valuemin="0">
+        <span class="hp-ic" data-icon="heart"></span>
+        <div class="track"><div class="fill" id="hpFill"></div></div>
+        <span class="val" id="hpVal">5/5</span>
+      </div>
+      <div id="roomChip" class="room-chip" hidden><span data-icon="globe"></span><span></span></div>
+      <ul id="playersHud" class="players-hud" hidden aria-label="Equipo"></ul>
+    </div>
+    <div class="center">
+      <div class="wave" id="wave" aria-live="polite">
+        <span class="lbl">Oleada</span><span class="n" id="waveN">1</span>
+      </div>
+      <div class="remaining" id="remaining" aria-label="Robots restantes"><span data-icon="crosshair"></span><span id="enemiesN">0</span></div>
+      <div id="bossBar" class="boss-bar" hidden role="meter" aria-label="Vida del jefe" aria-valuemin="0" aria-valuemax="100"><span class="lbl">Jefe</span><div class="track"><div class="fill" id="bossFill"></div></div></div>
+    </div>
+    <div class="right">
+      <div id="coins" class="stat" aria-label="Monedas"><span data-icon="coins"></span><span id="coinsN">0</span></div>
+      <div id="score" class="stat score" aria-label="Puntuación"><span data-icon="trophy"></span><span id="scoreN">0</span></div>
+      <button id="pauseBtn" class="btn" aria-label="Pausar" title="Pausar (P)"></button>
+      <button id="mute" class="btn" aria-label="Silenciar"></button>
+    </div>
+  </div>
+  <div id="rapid" hidden><span data-icon="zap"></span> Disparo rápido</div>
+  <div id="banner" aria-live="polite"><div class="kicker" id="bannerKicker"></div><div class="title" id="bannerTitle"></div><div class="sub" id="bannerSub"></div></div>
+  <div id="toast" aria-live="polite"></div>
+  <div id="toolbar"><div id="weaponName"></div><div id="weapons"></div></div>
+  <div id="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div id="hurtFlash" aria-hidden="true"></div>
+  <div id="lockHint" hidden><span data-icon="crosshair"></span> Haz clic para jugar</div>
+  <button id="fireBtn" class="touch-btn fire" aria-label="Atacar"><span data-icon="crosshair"></span></button>
+  <div class="stick" id="stickL"><div class="knob"></div></div>
+
+  <!-- Tienda entre oleadas -->
+  <div id="shop" class="screen" hidden>
+    <div class="panel">
+      <header class="shop-head">
+        <div>
+          <p class="kicker" id="shopTitle">Oleada superada</p>
+          <h2>Tienda</h2>
+          <p id="shopSub"></p>
+        </div>
+        <div class="wallets">
+          <div class="wallet" aria-label="Monedas disponibles"><span data-icon="coins"></span><span id="shopCoins">0</span></div>
+        </div>
+      </header>
+      <div id="shopBody"></div>
+      <footer class="shop-foot">
+        <p id="shopTimer" class="shop-timer" hidden aria-live="polite"></p>
+        <button id="nextWave" class="primary big">Siguiente oleada <span data-icon="chevronRight"></span></button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Pausa -->
+  <div id="pause" class="screen" hidden>
+    <div class="panel menu-panel">
+      <p class="kicker" id="pauseKicker">Partida en pausa</p>
+      <h2 id="pauseTitle">Pausa</h2>
+      <section id="pausePlayers" class="team" hidden aria-labelledby="teamTitle">
+        <h3 id="teamTitle">Jugadores en la sala</h3>
+        <ul id="playersList"></ul>
+      </section>
+      <button id="resume" class="primary big"><span data-icon="play"></span> Continuar</button>
+      <button id="pauseSettings" class="ghost"><span data-icon="settings"></span> Ajustes</button>
+      <button id="quit" class="ghost"><span data-icon="house"></span> Menú principal</button>
+      <p class="help" id="pauseHelp"></p>
+    </div>
+  </div>
+
+  <!-- Fin de partida -->
+  <div id="gameover" class="screen" hidden>
+    <div class="panel menu-panel result">
+      <p class="kicker danger">Partida terminada</p>
+      <h2>Has caído en la oleada <span id="goWave">1</span></h2>
+      <div class="newrecord" id="goRecord" hidden><span data-icon="trophy"></span> Nuevo récord</div>
+      <dl class="stats">
+        <div><dt>Puntuación</dt><dd id="goScore">0</dd></div>
+        <div><dt>Robots derribados</dt><dd id="goKills">0</dd></div>
+        <div><dt>Monedas ganadas</dt><dd id="goCoins">0</dd></div>
+        <div><dt id="goBestLabel">Récord</dt><dd id="goBest">0</dd></div>
+      </dl>
+      <p class="help" id="goAuto" hidden>Nueva partida en unos segundos</p>
+      <button id="retry" class="primary big"><span data-icon="rotateCcw"></span> Reintentar</button>
+      <button id="goMenu" class="ghost"><span data-icon="house"></span> Menú principal</button>
+    </div>
+  </div>
+
+  <!-- Pantalla de título -->
+  <div id="overlay" class="screen title">
+    <div class="brand">
+      <div class="logo-blocks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <h1 aria-label="Bloques"><span class="l1" aria-hidden="true">Bloques</span><span class="l2" aria-hidden="true">Oleadas</span></h1>
+      <p class="tagline">Recoge monedas, compra armas y aguanta las oleadas con tus amigos.</p>
+    </div>
+    <div class="menu">
+      <button id="play" class="primary big"><span data-icon="play"></span> Jugar</button>
+      <button id="multiBtn" class="ghost"><span data-icon="users"></span> Multijugador</button>
+      <button id="menuSettings" class="ghost"><span data-icon="settings"></span> Ajustes</button>
+      <a href="./creditos.html" class="ghost"><span data-icon="info"></span> Créditos</a>
+      <a href="./juegos.html" class="ghost"><span data-icon="grid"></span> Otros juegos</a>
+    </div>
+    <dl class="records" id="records">
+      <div><dt>Mejor puntuación</dt><dd id="bestScore">0</dd></div>
+      <div><dt>Mejor oleada</dt><dd id="bestWave">0</dd></div>
+    </dl>
+    <p class="help" id="help"></p>
+    <span class="version">v1.0.0</span>
+    <p class="visits" id="visits" hidden aria-live="polite"><span data-icon="users"></span><span id="visitsN"></span></p>
+  </div>
+
+  <!-- Multijugador: lista de servidores -->
+  <div id="lobby" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="lobbyTitle">
+    <div class="panel lobby-panel">
+      <div class="head">
+        <div>
+          <p class="kicker">Multijugador</p>
+          <h2 id="lobbyTitle">Servidores públicos</h2>
+        </div>
+        <button id="lobbyClose" class="btn" aria-label="Cerrar multijugador" data-icon="x"></button>
+      </div>
+      <div class="lobby-body">
+        <p id="lobbyStatus" class="lobby-status" role="status" aria-live="polite"></p>
+        <ul id="roomsList" class="servers" aria-label="Servidores"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Elegir soldado -->
+  <div id="charSelect" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="csTitle">
+    <div class="panel cs-panel">
+      <div class="cs-head">
+        <p class="kicker" id="csKicker">Tu personaje</p>
+        <h2 id="csTitle">Elige tu personaje</h2>
+      </div>
+      <div id="csGrid" class="cs-grid" role="radiogroup" aria-labelledby="csTitle"></div>
+      <div class="cs-foot">
+        <button id="csBack" class="ghost"><span data-icon="arrowLeft"></span> Volver</button>
+        <button id="csGo" class="primary big"><span data-icon="check"></span> Elegir</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Denunciar a un jugador -->
+  <div id="reportDlg" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="reportTitle">
+    <div class="panel menu-panel">
+      <p class="kicker danger">Moderación</p>
+      <h2 id="reportTitle">Denunciar a <span id="reportName"></span></h2>
+      <p class="help">La denuncia es anónima. Con suficientes denuncias, se le retira del servidor.</p>
+      <button class="ghost" data-reason="conducta"><span data-icon="flag"></span> Denunciar mala conducta</button>
+      <button id="reportCancel" class="ghost"><span data-icon="x"></span> Cancelar</button>
+    </div>
+  </div>
+
+  <!-- Ajustes -->
+  <div id="settings" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="panel">
+      <div class="head">
+        <h2 id="settingsTitle">Ajustes</h2>
+        <button id="settingsClose" class="btn" aria-label="Cerrar ajustes" data-icon="x"></button>
+      </div>
+      <div class="opt">
+        <span>Sonido</span>
+        <button id="setSound" class="switch" role="switch" aria-checked="true" aria-label="Sonido"><span></span></button>
+      </div>
+      <div class="opt col">
+        <label for="setSens">Sensibilidad de la mirada</label>
+        <input id="setSens" type="range" min="0.3" max="2" step="0.05" value="1" />
+      </div>
+      <div class="opt">
+        <span>Temblor de cámara</span>
+        <button id="setShake" class="switch" role="switch" aria-checked="true" aria-label="Temblor de cámara"><span></span></button>
+      </div>
+      <div class="opt col">
+        <span>Calidad gráfica</span>
+        <div class="seg" role="radiogroup" aria-label="Calidad gráfica">
+          <button role="radio" data-quality="auto" aria-checked="true">Automática</button>
+          <button role="radio" data-quality="alta" aria-checked="false">Alta</button>
+          <button role="radio" data-quality="baja" aria-checked="false">Baja</button>
+        </div>
+        <small>Automática baja la calidad si el dispositivo va lento.</small>
+      </div>
+      <nav class="links">
+        <a href="./privacidad.html"><span data-icon="fileText"></span> Política de privacidad</a>
+        <a href="./creditos.html"><span data-icon="info"></span> Créditos y licencias</a>
+      </nav>
+    </div>
+  </div>
+  <script type="module" src="/src/bloques/main.ts"></script>
+</body>
+</html>

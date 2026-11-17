@@ -52,6 +52,8 @@ import plus from 'lucide-static/icons/plus.svg?raw';
 import wifiOff from 'lucide-static/icons/wifi-off.svg?raw';
 import ban from 'lucide-static/icons/ban.svg?raw';
 import keyRound from 'lucide-static/icons/key-round.svg?raw';
+import handFist from 'lucide-static/icons/hand-fist.svg?raw';
+import blocks from 'lucide-static/icons/blocks.svg?raw';
 
 /** Extrae solo el contenido interior de un SVG de Lucide (sin comentario de licencia ni atributos). */
 const inner = (svg: string) => svg.replace(/<!--[\s\S]*?-->/g, '').replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '').trim();
@@ -84,6 +86,8 @@ const CUSTOM = {
   madera: '<circle cx="7" cy="16" r="3"/><circle cx="17" cy="16" r="3"/><circle cx="12" cy="9" r="3"/><circle cx="7" cy="16" r=".5"/><circle cx="17" cy="16" r=".5"/><circle cx="12" cy="9" r=".5"/>',
   // Pinchos: tabla con púas
   pinchos: '<path d="M3 19h18"/><path d="M4 19l2-9 2 9"/><path d="M9 19l3-13 3 13"/><path d="M16 19l2-9 2 9"/>',
+  // Palo de madera en diagonal, con un nudo y una rama corta
+  palo: '<path d="M5 20 19 4"/><path d="M10.5 13.8 8 11"/><circle cx="14.5" cy="9.5" r=".6"/>',
   // Menú hamburguesa (no usamos glifos de texto)
   menu: '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>',
 };
@@ -92,7 +96,7 @@ const LUCIDE = {
   pause, play, volumeOn, volumeOff, house, coins, heart, heartPulse, zap, flame, bomb, rocket,
   footprints, magnet, drone, shieldCheck, brickWall, settings, x, chevronRight, arrowLeft,
   trophy, check, fileText, info, crosshair, grid, rotateCcw, hammer, fence, castle, hospital, plane, zapOff, userRound, shieldOff,
-  globe, search, lock, users, flag, copy, refreshCw, logIn, logOut, plus, wifiOff, ban, keyRound,
+  globe, search, lock, users, flag, copy, refreshCw, logIn, logOut, plus, wifiOff, ban, keyRound, handFist, blocks,
 };
 
 export type IconName = keyof typeof LUCIDE | keyof typeof CUSTOM;
@@ -108,6 +112,7 @@ export function icon(name: IconName, cls = 'ic'): string {
 
 /** Icono de cada objeto de la tienda / arma / herramienta del shooter. */
 export const ITEM_ICON: Record<string, IconName> = {
+  puno: 'handFist', palo: 'palo', martillo: 'hammer',
   pistola: 'pistola', subfusil: 'subfusil', fusil: 'fusil', escopeta: 'escopeta', ametralladora: 'ametralladora', lanzallamas: 'flame',
   francotirador: 'francotirador', tesla: 'tesla',
   granadas: 'bomb', cohetes: 'rocket',

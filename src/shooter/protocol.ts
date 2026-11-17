@@ -2,7 +2,7 @@
 import { ENEMY_RADIUS } from './sim.ts';
 import type {
   World, Player, Enemy, Bullet, Pickup, Obstacle, Turret, Mine, Trap, Decoy, Strike, GameEvent, Input,
-  EnemyType, BulletKind, PickupType, ObstacleKind, WeaponId, ItemId, ToolId, BuildId, Phase,
+  EnemyType, BulletKind, PickupType, ObstacleKind, WeaponId, ItemId, ToolId, BuildId, Phase, GameId,
 } from './sim.ts';
 
 /** Jugadores como máximo en cada servidor. */
@@ -28,7 +28,7 @@ export function reportsToKick(players: number, isPublic: boolean): number {
 
 /** Un servidor de la lista: cuántos juegan ahora y si están en plena batalla. */
 export type RoomState = 'vacio' | 'empezando' | 'batalla' | 'tienda' | 'reiniciando';
-export interface RoomInfo { id: string; name: string; players: number; max: number; wave: number; state: RoomState }
+export interface RoomInfo { id: string; name: string; players: number; max: number; wave: number; state: RoomState; game: GameId }
 const NAME_NOUNS = ['Halcón', 'Lobo', 'Tigre', 'Cóndor', 'Jaguar', 'Puma', 'Zorro', 'Oso', 'Toro', 'Rayo', 'Trueno', 'Escorpión', 'Cuervo', 'Lince', 'Dragón', 'Coyote'];
 const NAME_ADJS = ['Rojo', 'Negro', 'Gris', 'Dorado', 'Plateado', 'Salvaje', 'Veloz', 'Feroz', 'Valiente', 'Sombrío', 'Blindado', 'Nocturno'];
 /** Nombre aleatorio para un servidor público ("Halcón Dorado 27"), distinto de los que ya existen. */
@@ -56,9 +56,9 @@ export function roomState(players: number, w: { wave: number; phase: Phase; over
 export type ReportReason = 'conducta';
 
 export type ClientMsg =
-  | { t: 'list' }
-  | { t: 'host'; character?: string }
-  | { t: 'join'; room: string; character?: string }
+  | { t: 'list'; game?: string }
+  | { t: 'host'; character?: string; game?: string }
+  | { t: 'join'; room: string; character?: string; game?: string }
   | { t: 'pause'; v: boolean }
   | { t: 'in'; i: [number, number, number, number, number] }
   | { t: 'buy'; id: ItemId } | { t: 'weapon'; id: WeaponId } | { t: 'tool'; id: ToolId } | { t: 'build'; id: BuildId }
@@ -74,7 +74,7 @@ export type ServerMsg =
   | { t: 'kicked'; msg: string };
 
 const ENEMY_T: EnemyType[] = ['chaser', 'tank', 'gunner', 'kamikaze', 'dron', 'jefe', 'enjambre', 'escudero', 'tirador', 'reparador'];
-const BULLET_K: BulletKind[] = ['bala', 'perdigon', 'fuego', 'rayo', 'tesla', 'granada', 'cohete', 'enemiga'];
+const BULLET_K: BulletKind[] = ['bala', 'perdigon', 'fuego', 'rayo', 'tesla', 'granada', 'cohete', 'enemiga', 'golpe'];
 const PICKUP_T: PickupType[] = ['health', 'rapid', 'coins'];
 const OBST_K: ObstacleKind[] = ['rock', 'tree', 'crate', 'sandbag', 'barricade', 'wall', 'tower', 'medic'];
 
@@ -85,6 +85,7 @@ const r1 = (v: number) => Math.round(v * 10) / 10;
 export type NetPlayer = Omit<Player, 'input' | 'cooldown' | 'regenT' | 'droneCd'> & { ready: boolean };
 
 export interface Snapshot {
+  game: GameId;
   tick: number; time: number; wave: number; phase: Phase; toSpawn: number; over: boolean; score: number;
   shopLeft: number; restartLeft: number;
   P: NetPlayer[];
@@ -98,7 +99,7 @@ export function encode(w: World, tick: number, extra: { ready: Set<string>; shop
     id: p.id, name: p.name, color: p.color, alive: p.alive, character: p.character, coins: p.coins, score: p.score, kills: p.kills, wood: p.wood,
     x: r2(p.x), z: r2(p.z), angle: r2(p.angle), hp: p.hp, maxHp: p.maxHp, invuln: r1(p.invuln), rapid: r1(p.rapid),
     weapon: p.weapon, owned: p.owned, tools: p.tools, speedLvl: p.speedLvl, armorLvl: p.armorLvl, dmgLvl: p.dmgLvl,
-    magnet: p.magnet, regen: p.regen, drones: p.drones, shield: r1(p.shield), moving: p.moving, ready: extra.ready.has(p.id),
+    magnet: p.magnet, regen: p.regen, drones: p.drones, shield: r1(p.shield), moving: p.moving, away: p.away, ready: extra.ready.has(p.id),
   }));
   const E: number[] = [];
   for (const e of w.enemies) E.push(e.id, ENEMY_T.indexOf(e.type), r2(e.x), r2(e.z), r1(e.hp), e.maxHp, e.flash > 0 ? 1 : 0, e.stun > 0 ? 1 : 0, e.charge > 0 ? 1 : 0, e.guard > 0 ? 1 : 0, r2(e.face));
@@ -117,7 +118,7 @@ export function encode(w: World, tick: number, extra: { ready: Set<string>; shop
   const S: number[] = [];
   for (const s of w.strikes) S.push(s.id, r2(s.x), r2(s.z), r2(s.t));
   const snap: Snapshot = {
-    tick, time: r2(w.time), wave: w.wave, phase: w.phase, toSpawn: w.toSpawn, over: w.over, score: w.score,
+    game: w.game, tick, time: r2(w.time), wave: w.wave, phase: w.phase, toSpawn: w.toSpawn, over: w.over, score: w.score,
     shopLeft: Math.ceil(extra.shopLeft), restartLeft: Math.ceil(extra.restartLeft), P, E, B, K, T, M, Tr, D, S, ev: extra.events,
   };
   if (extra.withObstacles) {
@@ -165,6 +166,7 @@ export function decode(s: Snapshot, prev: World | null): World {
       obstacles.push({ id: s.O[i], kind: OBST_K[s.O[i + 1]], x: s.O[i + 2], z: s.O[i + 3], r: s.O[i + 4], hp: s.O[i + 5] < 0 ? Infinity : s.O[i + 5], rot: s.O[i + 6], maxHp: s.O[i + 7] || undefined });
   }
   const w = {
+    game: s.game ?? 'shooter', coinTimer: 0,
     arena: 30, players, enemies, bullets, pickups, obstacles, turrets, mines, traps, decoys, strikes,
     phase: s.phase, wave: s.wave, toSpawn: s.toSpawn, spawnTimer: 0, score: s.score, over: s.over, time: s.time,
     events: s.ev, nextId: 0, rand: Math.random,

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {
   newWorld, step, buy, cannotBuy, owns, nextWave, useTool, selectWeapon, dronePos, build, cannotBuild, getPlayer,
   CHARACTERS, CHARACTER_ORDER, isCharacter, PLAYER_COLORS, type CharacterId,
-  SHOP, WEAPONS, WEAPON_ORDER, TOOL_ORDER, BUILDS,
+  SHOP, shopFor, WEAPONS, WEAPON_ORDER, TOOL_ORDER, BUILDS,
   type World, type Input, type Player, type Bullet, type Pickup, type EnemyType, type WeaponId, type ToolId, type ShopItem, type ShopKind, type BuildId, type BuildItem,
 } from './sim.ts';
 import { sfx, unlock, isMuted, setMuted } from './audio.ts';
@@ -657,7 +657,7 @@ function renderShop() {
   for (const sec of SECTIONS) {
     const h = document.createElement('h3'); h.textContent = sec.title;
     const grid = document.createElement('div'); grid.className = 'grid';
-    for (const item of SHOP) if (item.kind === sec.kind) grid.appendChild(card(item));
+    for (const item of shopFor(world.game)) if (item.kind === sec.kind) grid.appendChild(card(item));
     body.append(h, grid);
   }
   const h = document.createElement('h3'); h.textContent = 'Base (se paga con madera y se construye delante de ti)';

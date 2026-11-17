@@ -4,13 +4,17 @@
 
 export type EnemyType = 'chaser' | 'tank' | 'gunner' | 'kamikaze' | 'dron' | 'jefe' | 'enjambre' | 'escudero' | 'tirador' | 'reparador';
 export type PickupType = 'health' | 'rapid' | 'coins';
-export type WeaponId = 'pistola' | 'subfusil' | 'fusil' | 'escopeta' | 'ametralladora' | 'lanzallamas' | 'francotirador' | 'tesla' | 'granadas' | 'cohetes';
+export type WeaponId = 'puno' | 'palo' | 'martillo' | 'pistola' | 'subfusil' | 'fusil' | 'escopeta' | 'ametralladora' | 'lanzallamas' | 'francotirador' | 'tesla' | 'granadas' | 'cohetes';
 export type ToolId = 'torreta' | 'mina' | 'escudo' | 'barricada' | 'aereo' | 'emp' | 'senuelo';
 export type BuildId = 'muro' | 'pinchos' | 'torre' | 'medico';
-export type BulletKind = 'bala' | 'perdigon' | 'fuego' | 'rayo' | 'tesla' | 'granada' | 'cohete' | 'enemiga';
+export type BulletKind = 'golpe' | 'bala' | 'perdigon' | 'fuego' | 'rayo' | 'tesla' | 'granada' | 'cohete' | 'enemiga';
 export type ObstacleKind = 'rock' | 'tree' | 'crate' | 'sandbag' | 'barricade' | 'wall' | 'tower' | 'medic';
 export type ItemId = WeaponId | ToolId | 'armadura' | 'botas' | 'municion' | 'iman' | 'regeneracion' | 'dron';
 export type Phase = 'fight' | 'shop';
+/** Juego al que pertenece una partida: Shooter 2027 (vista cenital) o Bloques (primera persona). Cambian la tienda y algunas reglas. */
+export type GameId = 'shooter' | 'bloques';
+export const GAMES: GameId[] = ['shooter', 'bloques'];
+export const isGame = (v: unknown): v is GameId => typeof v === 'string' && (GAMES as string[]).includes(v);
 
 export interface Input { moveX: number; moveZ: number; aimX: number; aimZ: number; fire: boolean }
 /** Soldados para elegir: cada uno con su aspecto y una ventaja. */
@@ -36,6 +40,8 @@ export interface Player {
   weapon: WeaponId; owned: WeaponId[]; tools: Record<ToolId, number>;
   speedLvl: number; armorLvl: number; dmgLvl: number; magnet: number; regen: number; regenT: number; drones: number; droneCd: number;
   shield: number; moving: boolean; wood: number;
+  /** En el menú de pausa mientras los demás siguen: los robots lo ignoran y no recibe daño. */
+  away: boolean;
 }
 export interface Bullet {
   id: number; kind: BulletKind; x: number; z: number; vx: number; vz: number; life: number; maxLife: number;
@@ -69,6 +75,7 @@ export type GameEvent =
   | { kind: 'down'; pid: string } | { kind: 'join'; pid: string } | { kind: 'leave'; pid: string } | { kind: 'boss'; wave: number } | { kind: 'repair'; x: number; z: number } | { kind: 'guardBroken'; x: number; z: number };
 
 export interface World {
+  game: GameId;
   arena: number; // medio lado del campo cuadrado
   players: Player[];
   /** Atajo al primer jugador (modo un jugador y tests). */
@@ -79,6 +86,8 @@ export interface World {
   traps: Trap[]; decoys: Decoy[]; strikes: Strike[];
   phase: Phase;
   wave: number; toSpawn: number; spawnTimer: number;
+  /** Bloques: tiempo hasta que aparece otra moneda suelta por el mapa. */
+  coinTimer: number;
   score: number; over: boolean; time: number; // score = puntos del equipo
   events: GameEvent[];
   nextId: number;
@@ -96,6 +105,10 @@ export interface WeaponStats {
 const W = (name: string, cooldown: number, dmg: number, speed: number, life: number, o: Partial<WeaponStats> = {}): WeaponStats =>
   ({ name, cooldown, dmg, speed, life, pellets: 1, spread: 0.03, blast: 0, pierce: 0, kind: 'bala', ...o });
 export const WEAPONS: Record<WeaponId, WeaponStats> = {
+  // Cuerpo a cuerpo (Bloques): un golpe corto delante del jugador
+  puno: W('Puños', 0.38, 1, 18, 0.1, { spread: 0, kind: 'golpe' }),
+  palo: W('Palo', 0.42, 2.5, 18, 0.13, { spread: 0, pierce: 1, kind: 'golpe' }),
+  martillo: W('Martillo', 0.8, 6, 16, 0.14, { spread: 0, blast: 1.6, kind: 'golpe' }),
   pistola: W('Pistola', 0.28, 2, 30, 0.9),
   subfusil: W('Subfusil', 0.085, 1, 34, 0.8, { spread: 0.12 }),
   fusil: W('Fusil de asalto', 0.11, 1.6, 40, 0.85, { spread: 0.05 }),
@@ -107,7 +120,7 @@ export const WEAPONS: Record<WeaponId, WeaponStats> = {
   granadas: W('Lanzagranadas', 0.8, 5, 18, 0.75, { spread: 0, blast: 3.2, kind: 'granada' }),
   cohetes: W('Lanzacohetes', 1.15, 10, 24, 1.3, { spread: 0, blast: 4.5, kind: 'cohete' }),
 };
-export const WEAPON_ORDER: WeaponId[] = ['pistola', 'subfusil', 'fusil', 'escopeta', 'ametralladora', 'lanzallamas', 'francotirador', 'tesla', 'granadas', 'cohetes'];
+export const WEAPON_ORDER: WeaponId[] = ['puno', 'palo', 'martillo', 'pistola', 'subfusil', 'fusil', 'escopeta', 'ametralladora', 'lanzallamas', 'francotirador', 'tesla', 'granadas', 'cohetes'];
 export const TOOL_ORDER: ToolId[] = ['torreta', 'mina', 'escudo', 'barricada', 'aereo', 'emp', 'senuelo'];
 
 /** Armadura: cada nivel suma vida; al nivel máximo, probabilidad de bloquear un golpe por completo. */
@@ -128,8 +141,12 @@ const STRUCTURE_HP: Partial<Record<ObstacleKind, number>> = { wall: 40, tower: 3
 const SIEGE_DPS: Record<EnemyType, number> = { chaser: 3, gunner: 2, tank: 8, kamikaze: 0, dron: 0, jefe: 16, enjambre: 1, escudero: 5, tirador: 1, reparador: 1 }; // kamikaze explota; el dron vuela por encima
 
 export type ShopKind = 'arma' | 'mejora' | 'equipo';
-export interface ShopItem { id: ItemId; name: string; desc: string; price: number; max?: number; kind: ShopKind }
+export interface ShopItem { id: ItemId; name: string; desc: string; price: number; max?: number; kind: ShopKind;
+  /** Juegos en los que se vende (si falta, en todos). */
+  games?: GameId[] }
 export const SHOP: ShopItem[] = [
+  { id: 'palo', name: 'Palo', desc: 'Golpe rápido que alcanza a 2 robots', price: 20, kind: 'arma', games: ['bloques'] },
+  { id: 'martillo', name: 'Martillo', desc: 'Golpe lento que aplasta en área', price: 60, kind: 'arma', games: ['bloques'] },
   { id: 'subfusil', name: 'Subfusil', desc: 'Dispara muy rápido', price: 60, kind: 'arma' },
   { id: 'fusil', name: 'Fusil de asalto', desc: 'Preciso, potente y automático', price: 100, kind: 'arma' },
   { id: 'escopeta', name: 'Escopeta', desc: '6 perdigones, corto alcance', price: 90, kind: 'arma' },
@@ -145,13 +162,13 @@ export const SHOP: ShopItem[] = [
   { id: 'iman', name: 'Imán', desc: 'Atrae monedas y objetos', price: 40, max: 1, kind: 'mejora' },
   { id: 'regeneracion', name: 'Regeneración', desc: '+1 de vida cada 15 s', price: 80, max: 1, kind: 'mejora' },
   { id: 'dron', name: 'Dron escolta', desc: 'Te sigue y dispara solo', price: 90, max: 2, kind: 'mejora' },
-  { id: 'torreta', name: 'Torreta', desc: 'Dispara sola durante 30 s', price: 50, max: 3, kind: 'equipo' },
-  { id: 'mina', name: 'Mina', desc: 'Explota cuando pasa un robot', price: 25, max: 5, kind: 'equipo' },
-  { id: 'escudo', name: 'Escudo', desc: '5 s sin recibir daño', price: 45, max: 3, kind: 'equipo' },
-  { id: 'barricada', name: 'Barricada', desc: 'Muro de sacos que para balas', price: 30, max: 3, kind: 'equipo' },
-  { id: 'aereo', name: 'Ataque aéreo', desc: 'Bombardeo en línea delante de ti', price: 80, max: 2, kind: 'equipo' },
-  { id: 'emp', name: 'Pulso EMP', desc: 'Paraliza 3 s a los robots cercanos', price: 60, max: 2, kind: 'equipo' },
-  { id: 'senuelo', name: 'Señuelo', desc: 'Los robots lo atacan a él durante 8 s', price: 35, max: 3, kind: 'equipo' },
+  { id: 'torreta', name: 'Torreta', desc: 'Dispara sola durante 30 s', price: 50, max: 3, kind: 'equipo', games: ['shooter'] },
+  { id: 'mina', name: 'Mina', desc: 'Explota cuando pasa un robot', price: 25, max: 5, kind: 'equipo', games: ['shooter'] },
+  { id: 'escudo', name: 'Escudo', desc: '5 s sin recibir daño', price: 45, max: 3, kind: 'equipo', games: ['shooter'] },
+  { id: 'barricada', name: 'Barricada', desc: 'Muro de sacos que para balas', price: 30, max: 3, kind: 'equipo', games: ['shooter'] },
+  { id: 'aereo', name: 'Ataque aéreo', desc: 'Bombardeo en línea delante de ti', price: 80, max: 2, kind: 'equipo', games: ['shooter'] },
+  { id: 'emp', name: 'Pulso EMP', desc: 'Paraliza 3 s a los robots cercanos', price: 60, max: 2, kind: 'equipo', games: ['shooter'] },
+  { id: 'senuelo', name: 'Señuelo', desc: 'Los robots lo atacan a él durante 8 s', price: 35, max: 3, kind: 'equipo', games: ['shooter'] },
 ];
 
 const STATS: Record<EnemyType, { hp: number; speed: number; r: number; score: number; coins: number }> = {
@@ -168,10 +185,18 @@ const STATS: Record<EnemyType, { hp: number; speed: number; r: number; score: nu
 };
 
 export const PLAYER_COLORS = [0x5d7a3e, 0x3e6ea8, 0xb5532f, 0x8a4fae, 0x2f9a8f, 0xc9a227, 0xb03a6a, 0x6b6b6b];
+/** Artículos que se venden en un juego. */
+export const shopFor = (game: GameId) => SHOP.filter((s) => !s.games || s.games.includes(game));
+/** Bloques: monedas sueltas por el mapa (cada cuánto aparece una y cuántas puede haber a la vez). */
+export const MAP_COIN_EVERY = 3.5;
+export const MAP_COIN_MAX = 8;
+export const MAP_COIN_VALUE = 5;
+
 export const IDLE: Input = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false };
 
-export function newWorld(rand: () => number = Math.random, withObstacles = true, players: { id: string; name: string; character?: CharacterId }[] = [{ id: 'p1', name: 'Tú' }]): World {
+export function newWorld(rand: () => number = Math.random, withObstacles = true, players: { id: string; name: string; character?: CharacterId }[] = [{ id: 'p1', name: 'Tú' }], game: GameId = 'shooter'): World {
   const w = {
+    game, coinTimer: MAP_COIN_EVERY,
     arena: 30, players: [] as Player[],
     bullets: [], enemies: [], pickups: [], obstacles: [], turrets: [], mines: [], traps: [], decoys: [], strikes: [],
     phase: 'fight', wave: 0, toSpawn: 0, spawnTimer: 1.5,
@@ -200,8 +225,8 @@ export function addPlayer(w: World, id: string, name: string, character: Charact
   const p: Player = {
     id, name, color, alive: true, character: isCharacter(character) ? character : 'sargento', coins: 0, score: 0, kills: 0, input: { ...IDLE },
     x, z, angle: Math.PI, hp: 5 + ch.hp, maxHp: 5 + ch.hp, cooldown: 0, invuln: w.players.length ? 2 : 0, rapid: 0,
-    weapon: 'pistola', owned: ['pistola'], tools: { torreta: 0, mina: 0, escudo: ch.startShield, barricada: 0, aereo: 0, emp: 0, senuelo: 0 }, wood: ch.startWood,
-    speedLvl: 0, armorLvl: 0, dmgLvl: 0, magnet: 0, regen: 0, regenT: 0, drones: 0, droneCd: 0, shield: 0, moving: false,
+    weapon: w.game === 'bloques' ? 'puno' : 'pistola', owned: [w.game === 'bloques' ? 'puno' : 'pistola'], tools: { torreta: 0, mina: 0, escudo: ch.startShield, barricada: 0, aereo: 0, emp: 0, senuelo: 0 }, wood: ch.startWood,
+    speedLvl: 0, armorLvl: 0, dmgLvl: 0, magnet: 0, regen: 0, regenT: 0, drones: 0, droneCd: 0, shield: 0, moving: false, away: false,
   };
   w.players.push(p);
   w.events.push({ kind: 'join', pid: id });
@@ -215,6 +240,8 @@ export function removePlayer(w: World, id: string) {
 
 export const getPlayer = (w: World, pid?: string): Player => (pid ? w.players.find((p) => p.id === pid) : undefined) ?? w.players[0];
 const alivePlayers = (w: World) => w.players.filter((p) => p.alive);
+/** Jugadores a los que pueden atacar los robots: vivos y no en el menú de pausa. */
+const targetable = (w: World) => w.players.filter((p) => p.alive && !p.away);
 
 /** Campo de batalla: rocas, árboles, cajas (destructibles) y muros de sacos terreros. */
 export function generateObstacles(w: World) {
@@ -322,7 +349,7 @@ export function owns(w: World, id: ItemId, pid?: string): number {
 /** Por qué no se puede comprar (o null si se puede). */
 export function cannotBuy(w: World, id: ItemId, pid?: string): string | null {
   const p = getPlayer(w, pid);
-  const item = SHOP.find((s) => s.id === id);
+  const item = shopFor(w.game).find((s) => s.id === id);
   if (!item) return 'No existe';
   const n = owns(w, id, p.id);
   if (item.kind === 'arma' && n) return 'Comprada';
@@ -657,8 +684,25 @@ export function step(w: World, input: Input | null, dt: number): void {
     w.spawnTimer = Math.max(0.3, 1.2 - w.wave * 0.08);
   }
 
+  // --- Bloques: monedas sueltas que aparecen por el mapa durante la oleada ---
+  if (w.game === 'bloques' && w.wave > 0) {
+    w.coinTimer -= dt;
+    if (w.coinTimer <= 0) {
+      w.coinTimer = MAP_COIN_EVERY;
+      if (w.pickups.filter((k) => k.type === 'coins').length < MAP_COIN_MAX) {
+        const lim = w.arena - 2;
+        for (let t = 0; t < 12; t++) {
+          const x = (w.rand() * 2 - 1) * lim, z = (w.rand() * 2 - 1) * lim;
+          if (w.obstacles.some((o) => Math.hypot(o.x - x, o.z - z) < o.r + 0.8)) continue;
+          w.pickups.push({ id: w.nextId++, type: 'coins', x, z, life: 25 });
+          break;
+        }
+      }
+    }
+  }
+
   // --- Enemigos: cada robot va a por el jugador vivo más cercano (o un señuelo) ---
-  const living = alivePlayers(w);
+  const living = targetable(w);
   for (const e of w.enemies) {
     e.flash -= dt;
     if (e.stun > 0) { e.stun -= dt; continue; } // paralizado por el pulso EMP: ni anda ni dispara
@@ -868,7 +912,7 @@ export function step(w: World, input: Input | null, dt: number): void {
         k.life = 0;
         if (k.type === 'health') p.hp = Math.min(p.maxHp, p.hp + 1);
         else if (k.type === 'rapid') p.rapid = 6;
-        else p.coins += 15;
+        else p.coins += w.game === 'bloques' ? MAP_COIN_VALUE : 15;
         w.events.push({ kind: 'pickup', pid: p.id, type: k.type });
       }
     }
@@ -912,7 +956,7 @@ function chainLightning(w: World, first: Enemy, dmg: number, owner: string | nul
 }
 
 function hurt(w: World, p: Player) {
-  if (!p.alive || p.invuln > 0 || p.shield > 0 || w.over) return;
+  if (!p.alive || p.away || p.invuln > 0 || p.shield > 0 || w.over) return;
   if (p.armorLvl >= ARMOR_MAX && w.rand() < ARMOR_BLOCK_CHANCE) {
     p.invuln = 0.4; // breve margen para que un mismo choque no cuente varias veces
     w.events.push({ kind: 'armorBlock', pid: p.id });
@@ -931,7 +975,7 @@ function hurt(w: World, p: Player) {
 function detonate(w: World, e: Enemy) {
   e.hp = 0;
   w.events.push({ kind: 'explosion', x: e.x, z: e.z, r: KAMIKAZE_BLAST });
-  for (const p of w.players) if (p.alive && Math.hypot(p.x - e.x, p.z - e.z) < KAMIKAZE_BLAST + PLAYER_R) hurt(w, p);
+  for (const p of w.players) if (p.alive && Math.hypot(p.x - e.x, p.z - e.z) < KAMIKAZE_BLAST + PLAYER_R) hurt(w, p); // hurt ignora a los que están en pausa
   for (const o of w.obstacles) if (isStructure(o) && Math.hypot(o.x - e.x, o.z - e.z) < KAMIKAZE_BLAST + o.r) hitObstacle(w, o, 8);
   for (const dc of w.decoys) if (Math.hypot(dc.x - e.x, dc.z - e.z) < KAMIKAZE_BLAST + 0.7) dc.hp -= 2;
 }

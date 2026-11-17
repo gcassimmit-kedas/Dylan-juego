@@ -17,7 +17,7 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import {
-  newWorld, step, addPlayer, removePlayer, buy, selectWeapon, useTool, nextWave, build, IDLE, isCharacter, CHARACTERS, type CharacterId,
+  newWorld, step, addPlayer, removePlayer, buy, selectWeapon, useTool, nextWave, build, IDLE, isCharacter, isGame, CHARACTERS, type CharacterId, type GameId,
   SHOP, WEAPON_ORDER, TOOL_ORDER, BUILDS, type World, type GameEvent,
 } from '../src/shooter/sim.ts';
 import {
@@ -37,6 +37,8 @@ const VISITS_FILE = resolve(process.env.VISITS_FILE || join(import.meta.dirname,
 interface Client { ws: WebSocket; pid: string; name: string; character: CharacterId; room: Room | null; msgs: number; lastInput: number; paused: boolean }
 interface Room {
   id: string; name: string;
+  /** Juego de la sala: Shooter 2027 y Bloques tienen listas de servidores separadas. */
+  game: GameId;
   world: World; clients: Map<string, Client>; ready: Set<string>;
   tick: number; events: GameEvent[]; shopLeft: number; restartLeft: number;
   obstacleSig: string; lastObstacleSend: number;
@@ -50,18 +52,20 @@ const makeId = () => randomBytes(6).toString('hex');
 const MAX_ROOMS = 300;
 
 /** Nuevo servidor público con nombre aleatorio. */
-function createRoom(): Room {
+function createRoom(game: GameId): Room {
   const name = randomServerName(Math.random, new Set([...rooms.values()].map((r) => r.name)));
   const room: Room = {
-    id: makeId(), name, world: newWorld(Math.random, true, []), clients: new Map(), ready: new Set(),
+    id: makeId(), name, game, world: newWorld(Math.random, true, [], game), clients: new Map(), ready: new Set(),
     tick: 0, events: [], shopLeft: 0, restartLeft: 0, obstacleSig: '', lastObstacleSend: 0, reports: new Map(),
   };
   rooms.set(room.id, room);
   return room;
 }
 
-const roomInfo = (r: Room): RoomInfo => ({ id: r.id, name: r.name, players: r.clients.size, max: MAX_PLAYERS, wave: r.world.wave, state: roomState(r.clients.size, r.world) });
-const serverList = () => [...rooms.values()].filter((r) => r.clients.size > 0).map(roomInfo).sort((a, b) => b.players - a.players);
+const roomInfo = (r: Room): RoomInfo => ({ id: r.id, name: r.name, players: r.clients.size, max: MAX_PLAYERS, wave: r.world.wave, state: roomState(r.clients.size, r.world), game: r.game });
+const serverList = (game: GameId) => [...rooms.values()].filter((r) => r.clients.size > 0 && r.game === game).map(roomInfo).sort((a, b) => b.players - a.players);
+/** Juego que pide el cliente (los clientes antiguos no lo mandan: Shooter 2027). */
+const gameOf = (v: unknown): GameId => (isGame(v) ? v : 'shooter');
 
 /** Nombre automático: el soldado y el primer número libre en la sala ("Coloso 2"). */
 function autoName(room: Room, character: CharacterId): string {
@@ -101,7 +105,7 @@ function leaveRoom(c: Client) {
 
 function resetRoom(room: Room) {
   const keep = [...room.clients.values()].map((c) => ({ id: c.pid, name: c.name, character: c.character }));
-  room.world = newWorld(Math.random, true, keep);
+  room.world = newWorld(Math.random, true, keep, room.game);
   room.ready.clear();
   room.shopLeft = 0; room.restartLeft = 0;
   room.obstacleSig = '';
@@ -164,6 +168,11 @@ function tickRoom(room: Room) {
     const allReady = [...room.clients.keys()].every((id) => room.ready.has(id));
     if (room.shopLeft <= 0 || allReady) startWave(room);
   } else {
+    // Quien está en el menú de pausa (o fuera de la app) no recibe daño ni lo persiguen los robots.
+    for (const c of room.clients.values()) {
+      const p = w.players.find((q) => q.id === c.pid);
+      if (p) p.away = c.paused;
+    }
     // Quien lleva >1 s sin mandar nada (pestaña oculta, red caída) se queda quieto y sin disparar.
     const now = Date.now();
     for (const c of room.clients.values()) if (now - c.lastInput > 1000) {
@@ -208,11 +217,11 @@ function onMessage(c: Client, raw: string) {
   if (!m || typeof m !== 'object') return;
   const room = c.room, w = room?.world;
   switch (m.t) {
-    case 'list': return send(c, { t: 'rooms', rooms: serverList() });
+    case 'list': return send(c, { t: 'rooms', rooms: serverList(gameOf(m.game)) });
     case 'host': {
       c.character = isCharacter(m.character) ? m.character : 'sargento'; // nunca confiar en el cliente
       if (rooms.size >= MAX_ROOMS) return send(c, { t: 'error', msg: 'No hay sitio para más servidores ahora.' });
-      return joinRoom(c, createRoom());
+      return joinRoom(c, createRoom(gameOf(m.game)));
     }
     case 'pause': c.paused = !!m.v; return;
     case 'join': {
@@ -220,6 +229,7 @@ function onMessage(c: Client, raw: string) {
       const target = rooms.get(String(m.room));
       if (!target) return send(c, { t: 'error', msg: 'Esa partida ya ha terminado. Elige otra de la lista.' });
       if (c.room === target) return;
+      if (m.game !== undefined && target.game !== gameOf(m.game)) return send(c, { t: 'error', msg: 'Ese servidor es de otro juego. Elige otro de la lista.' });
       return joinRoom(c, target);
     }
     case 'leave': return leaveRoom(c);

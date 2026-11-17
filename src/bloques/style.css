@@ -1,0 +1,54 @@
+/* Bloques: lo propio de la primera persona. El resto del sistema visual viene de src/shooter/style.css. */
+
+/* Logotipo: cuatro bloques en escalera (oliva, dorado, tierra, piedra) */
+.logo-blocks { display: grid; grid-template-columns: repeat(2, 34px); grid-template-rows: repeat(2, 34px); gap: 4px; filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.6)); }
+.logo-blocks i { display: block; box-shadow: inset -5px -5px 0 rgba(0, 0, 0, 0.28), inset 5px 5px 0 rgba(255, 255, 255, 0.16); }
+.logo-blocks i:nth-child(1) { background: #6e9e3a; }
+.logo-blocks i:nth-child(2) { background: var(--accent); }
+.logo-blocks i:nth-child(3) { background: #7a5a3c; }
+.logo-blocks i:nth-child(4) { background: #8a8c8e; }
+
+/* Mira en el centro */
+#crosshair { position: fixed; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; pointer-events: none; visibility: hidden; }
+body.playing #crosshair { visibility: visible; }
+#crosshair i { position: absolute; background: rgba(255, 255, 255, 0.92); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55); }
+#crosshair i:nth-child(1) { left: 12px; top: 0; width: 2px; height: 8px; }
+#crosshair i:nth-child(2) { left: 12px; bottom: 0; width: 2px; height: 8px; }
+#crosshair i:nth-child(3) { top: 12px; left: 0; width: 8px; height: 2px; }
+#crosshair i:nth-child(4) { top: 12px; right: 0; width: 8px; height: 2px; }
+#crosshair.hit i { background: var(--danger); }
+
+/* Golpe recibido: borde rojo que se desvanece */
+#hurtFlash { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.35s;
+  box-shadow: inset 0 0 120px 30px rgba(229, 72, 77, 0.75); }
+#hurtFlash.on { opacity: 1; transition: none; }
+
+/* Escritorio: hay que hacer clic para capturar el ratón */
+#lockHint { position: fixed; left: 50%; top: 62%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 10px;
+  background: var(--panel); border: 1px solid var(--line); padding: 12px 20px; font-family: var(--display); font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase; pointer-events: none;
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)); }
+#lockHint[hidden] { display: none; }
+#lockHint .ic { color: var(--accent); }
+
+/* Botón de atacar (pantallas táctiles) */
+.touch-btn { position: fixed; display: none; align-items: center; justify-content: center; border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%; color: #241a00; touch-action: none; cursor: pointer; }
+.touch-btn .ic { width: 38px; height: 38px; }
+.touch-btn.fire { right: calc(env(safe-area-inset-right) + 26px); bottom: calc(env(safe-area-inset-bottom) + 96px); width: 92px; height: 92px;
+  background: rgba(255, 200, 61, 0.82); }
+.touch-btn.fire.on { background: var(--accent); transform: scale(0.94); }
+body.touch.playing .touch-btn { display: flex; }
+body.touch #weaponName { display: none; }
+
+/* El joystick de moverse aparece donde se apoya el pulgar izquierdo */
+#stickL .knob { background: rgba(255, 255, 255, 0.7); }
+
+/* Ajustes: sensibilidad */
+#settings input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .touch-btn.fire { width: 78px; height: 78px; bottom: calc(env(safe-area-inset-bottom) + 64px); }
+  .logo-blocks { grid-template-columns: repeat(2, 22px); grid-template-rows: repeat(2, 22px); gap: 3px; }
+}
+@media (prefers-reduced-motion: reduce) { #hurtFlash { transition: none; } }
