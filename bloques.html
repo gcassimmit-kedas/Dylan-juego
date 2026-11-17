@@ -32,6 +32,7 @@
     </div>
     <div class="right">
       <button id="inviteBtn" class="btn" aria-label="Invitar a tus amigos" hidden></button>
+      <button id="verityBtn" class="btn" aria-label="Hablar con Verity"></button>
       <button id="invBtn" class="btn" aria-label="Inventario y crafteo"></button>
       <button id="pauseBtn" class="btn" aria-label="Pausar"></button>
       <button id="mute" class="btn" aria-label="Silenciar"></button>
@@ -43,7 +44,7 @@
   <div id="banner" aria-live="polite"><div class="kicker" id="bannerKicker"></div><div class="title" id="bannerTitle"></div><div class="sub" id="bannerSub"></div></div>
   <div id="lockHint" hidden><span data-icon="crosshair"></span> Haz clic para jugar</div>
   <div id="bottom">
-    <div id="hearts" role="meter" aria-label="Vida" aria-valuemin="0" aria-valuemax="20"></div>
+    <div class="bars"><div id="hearts" role="meter" aria-label="Vida" aria-valuemin="0" aria-valuemax="20"></div><div id="food" role="meter" aria-label="Hambre" aria-valuemin="0" aria-valuemax="20" hidden></div></div>
     <div id="hotbar" role="toolbar" aria-label="Barra rápida"></div>
     <div id="heldName" aria-live="polite"></div>
   </div>
@@ -76,6 +77,58 @@
           <div id="recipes"></div>
         </section>
       </div>
+    </div>
+  </div>
+
+  <!-- Verity -->
+  <div id="verity" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="verityTitle">
+    <div class="panel verity-panel">
+      <div class="head">
+        <div>
+          <p class="kicker" id="verityKicker">Tu ayudante</p>
+          <h2 id="verityTitle">Verity</h2>
+        </div>
+        <button id="verityClose" class="btn" aria-label="Cerrar Verity" data-icon="x"></button>
+      </div>
+      <ol id="verityLog" class="verity-log" aria-live="polite"></ol>
+      <form id="verityForm" class="verity-form">
+        <label for="verityInput" class="sr-only">Escribe a Verity</label>
+        <input id="verityInput" type="text" maxlength="200" autocomplete="off" placeholder="Pídeme algo: dame 10 tablas" />
+        <button id="veritySend" class="primary" type="submit" aria-label="Enviar"><span data-icon="send"></span></button>
+      </form>
+      <p class="help" id="verityNote">Lo que escribes se queda en tu dispositivo: solo se usa para entender lo que pides.</p>
+    </div>
+  </div>
+
+  <!-- Mods -->
+  <div id="mods" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="modsTitle">
+    <div class="panel mods-panel">
+      <div class="head">
+        <div>
+          <p class="kicker">Mundo nuevo</p>
+          <h2 id="modsTitle">Mods</h2>
+        </div>
+      </div>
+      <p class="help mods-help">Elige cómo quieres que sea tu mundo. Puedes juntar varios. Si invitas a tus amigos, juegan con los mismos mods.</p>
+      <div id="modsList" class="mods-list" role="group" aria-labelledby="modsTitle"></div>
+      <div class="cs-foot">
+        <button id="modsBack" class="ghost"><span data-icon="arrowLeft"></span> Volver</button>
+        <button id="modsGo" class="primary big"><span data-icon="play"></span> Crear mundo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Otros juegos -->
+  <div id="games" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="gamesTitle">
+    <div class="panel games-panel">
+      <div class="head">
+        <div>
+          <p class="kicker">Más diversión</p>
+          <h2 id="gamesTitle">Otros juegos</h2>
+        </div>
+        <button id="gamesClose" class="btn" aria-label="Cerrar otros juegos" data-icon="x"></button>
+      </div>
+      <ul id="gamesList" class="games-list"></ul>
     </div>
   </div>
 
@@ -124,7 +177,7 @@
       <button id="multiBtn" class="ghost"><span data-icon="users"></span> Mundos de otros</button>
       <button id="menuSettings" class="ghost"><span data-icon="settings"></span> Ajustes</button>
       <a href="./creditos.html" class="ghost"><span data-icon="info"></span> Créditos</a>
-      <a href="./juegos.html" class="ghost"><span data-icon="grid"></span> Otros juegos</a>
+      <button id="gamesBtn" class="ghost"><span data-icon="grid"></span> Otros juegos</button>
     </div>
     <p class="help" id="help"></p>
     <span class="version">v2.0.0</span>

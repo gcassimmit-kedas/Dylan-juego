@@ -4,7 +4,10 @@ import { B, BLOCKS } from './voxel.ts';
 
 export const I = {
   Palo: 100, Carbon: 101, LingoteHierro: 102, LingoteOro: 103, Diamante: 104,
+  Manzana: 105, CarnePodrida: 106, CarneAsada: 107,
 } as const;
+/** Comida: cuánto quita el hambre (en medios muslos, de 20). */
+export const FOOD: Partial<Record<number, number>> = { 105: 4, 106: 2, 107: 8 };
 export type ToolType = 'pico' | 'hacha' | 'pala' | 'espada';
 export const TOOL_TYPES: ToolType[] = ['pico', 'hacha', 'pala', 'espada'];
 export const TIERS = ['madera', 'piedra', 'hierro', 'diamante'] as const;
@@ -18,7 +21,8 @@ const TYPE_NAME: Record<ToolType, string> = { pico: 'Pico', hacha: 'Hacha', pala
 
 export const ITEMS = new Map<number, ItemDef>();
 BLOCKS.forEach((b, id) => { if (id !== B.Aire && id !== B.RocaBase) ITEMS.set(id, { id, name: b.name, stack: 64, block: id }); });
-for (const [id, name] of [[I.Palo, 'Palo'], [I.Carbon, 'Carbón'], [I.LingoteHierro, 'Lingote de hierro'], [I.LingoteOro, 'Lingote de oro'], [I.Diamante, 'Diamante']] as const)
+for (const [id, name] of [[I.Palo, 'Palo'], [I.Carbon, 'Carbón'], [I.LingoteHierro, 'Lingote de hierro'], [I.LingoteOro, 'Lingote de oro'], [I.Diamante, 'Diamante'],
+  [I.Manzana, 'Manzana'], [I.CarnePodrida, 'Carne podrida'], [I.CarneAsada, 'Carne asada']] as const)
   ITEMS.set(id, { id, name, stack: 64 });
 for (const type of TOOL_TYPES) for (const tier of TIERS) {
   const id = toolId(type, tier);
@@ -71,6 +75,7 @@ export const RECIPES: Recipe[] = [
   ...TIERS.flatMap((tier) => TOOL_TYPES.map((type) => R(`${type}-${tier}`, toolId(type, tier), 1, [[TIER_MAT[tier], TOOL_COST[type]], [I.Palo, TOOL_STICKS[type]]], 'mesa'))),
   R('lingote-hierro', I.LingoteHierro, 1, [[B.Hierro, 1], [I.Carbon, 1]], 'horno'),
   R('lingote-oro', I.LingoteOro, 1, [[B.Oro, 1], [I.Carbon, 1]], 'horno'),
+  R('carne-asada', I.CarneAsada, 1, [[I.CarnePodrida, 1], [I.Carbon, 1]], 'horno'),
 ];
 export const recipeById = new Map(RECIPES.map((r) => [r.id, r]));
 

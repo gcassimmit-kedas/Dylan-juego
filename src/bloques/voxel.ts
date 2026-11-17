@@ -230,11 +230,11 @@ export const bodyBlocked = blocked;
  * Mueve un cuerpo: `wishX/wishZ` es la velocidad horizontal deseada (bloques/s), `jump` salta si está en el suelo.
  * Cada eje se resuelve por separado para deslizar por las paredes. Devuelve los bloques de caída al aterrizar.
  */
-export function moveBody(wd: World, b: Body, wishX: number, wishZ: number, jump: boolean, dt: number, hw = 0.3, h = 1.8): number {
+export function moveBody(wd: World, b: Body, wishX: number, wishZ: number, jump: boolean, dt: number, hw = 0.3, h = 1.8, jumpSpeed = JUMP_SPEED): number {
   // Aceleración horizontal rápida en el suelo, más lenta en el aire
   const k = Math.min(1, dt * (b.onGround ? 20 : 6));
   b.vx += (wishX - b.vx) * k; b.vz += (wishZ - b.vz) * k;
-  if (jump && b.onGround) { b.vy = JUMP_SPEED; b.onGround = false; }
+  if (jump && b.onGround) { b.vy = jumpSpeed; b.onGround = false; }
   b.vy = Math.max(-40, b.vy - GRAVITY * dt);
   let landed = 0;
   const steps = Math.max(1, Math.ceil(Math.max(Math.abs(b.vx), Math.abs(b.vy), Math.abs(b.vz)) * dt / 0.25));

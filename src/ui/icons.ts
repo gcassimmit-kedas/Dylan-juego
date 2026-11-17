@@ -61,6 +61,13 @@ import backpack from 'lucide-static/icons/backpack.svg?raw';
 import userPlus from 'lucide-static/icons/user-plus.svg?raw';
 import sun from 'lucide-static/icons/sun.svg?raw';
 import moon from 'lucide-static/icons/moon.svg?raw';
+import skull from 'lucide-static/icons/skull.svg?raw';
+import drumstick from 'lucide-static/icons/drumstick.svg?raw';
+import sparkles from 'lucide-static/icons/sparkles.svg?raw';
+import send from 'lucide-static/icons/send.svg?raw';
+import externalLink from 'lucide-static/icons/external-link.svg?raw';
+import puzzle from 'lucide-static/icons/puzzle.svg?raw';
+import tentTree from 'lucide-static/icons/tent-tree.svg?raw';
 
 /** Extrae solo el contenido interior de un SVG de Lucide (sin comentario de licencia ni atributos). */
 const inner = (svg: string) => svg.replace(/<!--[\s\S]*?-->/g, '').replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '').trim();
@@ -105,6 +112,7 @@ const LUCIDE = {
   trophy, check, fileText, info, crosshair, grid, rotateCcw, hammer, fence, castle, hospital, plane, zapOff, userRound, shieldOff,
   globe, search, lock, users, flag, copy, refreshCw, logIn, logOut, plus, wifiOff, ban, keyRound, handFist, blocks,
   pickaxe, box, chevronUp, backpack, userPlus, sun, moon,
+  skull, drumstick, sparkles, send, externalLink, puzzle, tentTree,
 };
 
 export type IconName = keyof typeof LUCIDE | keyof typeof CUSTOM;

@@ -8,9 +8,11 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { World, generate, surfaceHeight, raycast, moveBody, BLOCKS, B, W, type Tex, type Body } from './voxel.ts';
-import { newGame, addPlayer, step, place, craft, selectSlot, moveSlot, respawn, lookDir, sunLight, isNight, dayPhase, stationsNear,
-  MAX_HP, EYE, REACH, WALK, type Game, type GEvent, type Look, type MobKind } from './game.ts';
+import { newGame, addPlayer, step, place, craft, selectSlot, moveSlot, respawn, lookDir, sunLight, isNight, dayPhase, stationsNear, verityCommand,
+  walkSpeed, jumpSpeed, MODS, MOD_INFO, MAX_HP, MAX_FOOD, EYE, REACH, type Game, type GEvent, type Look, type MobKind, type ModId, type VerityCmd } from './game.ts';
+import { verity } from './verity.ts';
 import { ITEMS, RECIPES, HOTBAR, SLOTS, count, cannotCraft, itemName, toolId, type Slot, type Station, type Recipe } from './items.ts';
+import type { IconName } from '../ui/icons.ts';
 import { MOB_KINDS, type NetP, type WorldInfo } from './protocol.ts';
 import { WorldNet } from './net.ts';
 import { meshChunk, CHUNK, type MeshData } from './mesher.ts';
@@ -196,8 +198,11 @@ let myId = 'p1';
 let yaw = Math.PI, pitch = 0;
 let playing = false, paused = false;
 /** Mi estado (en solo, el de la partida; en línea, mi predicción local y lo que dice el servidor). */
-let me: { body: Body; hp: number; alive: boolean; inv: Slot[]; sel: number; mine: [number, number, number, number] | null } =
-  { body: { x: 48, y: 40, z: 48, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: 40 }, hp: MAX_HP, alive: true, inv: [], sel: 0, mine: null };
+let me: { body: Body; hp: number; alive: boolean; inv: Slot[]; sel: number; mine: [number, number, number, number] | null; food: number } =
+  { body: { x: 48, y: 40, z: 48, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: 40 }, hp: MAX_HP, alive: true, inv: [], sel: 0, mine: null, food: MAX_FOOD };
+/** Mods del mundo en el que se juega. */
+let worldMods = new Set<ModId>();
+const hasMod = (m: ModId) => worldMods.has(m);
 let others: NetP[] = [];
 let mobs: { id: number; kind: MobKind; x: number; y: number; z: number; yaw: number; hit: boolean }[] = [];
 let arrows: number[] = [];
@@ -223,16 +228,18 @@ function lockPointer() {
   lockTried = true;
   try { const r = canvas.requestPointerLock?.() as unknown as Promise<void> | undefined; r?.catch?.(() => { /* sin captura: se mira arrastrando */ }); } catch { /* sin captura */ }
 }
-const inMenu = () => !$('inventory').hidden || !$('death').hidden || paused;
+const inMenu = () => !$('inventory').hidden || !$('death').hidden || !$('verity').hidden || paused;
 
 addEventListener('keydown', (e) => {
   if (!playing) return;
+  if (!$('verity').hidden) { if (e.code === 'Escape') closeVerity(); return; } // se está escribiendo a Verity
   if (e.code === 'Escape' || e.code === 'KeyP') {
     if (!$('inventory').hidden) { closeInventory(); return; }
     if ($('death').hidden) setPaused(!paused);
     return;
   }
   if (e.code === 'KeyE' || e.code === 'KeyI') { if (!paused && $('death').hidden) toggleInventory(); return; }
+  if ((e.code === 'KeyT' || e.code === 'Enter') && !inMenu()) { e.preventDefault(); openVerity(); return; }
   if (inMenu()) return;
   keys.add(e.code);
   if (e.code === 'Space') e.preventDefault();
@@ -393,6 +400,8 @@ function showHeldName() {
   heldNameEl.classList.toggle('show', !!s);
   clearTimeout(heldTimer); heldTimer = window.setTimeout(() => heldNameEl.classList.remove('show'), 1600);
 }
+const foodEl = $('food');
+for (let i = 0; i < MAX_FOOD / 2; i++) { const f = document.createElement('span'); f.className = 'f'; f.innerHTML = icon('drumstick'); foodEl.appendChild(f); }
 const heartSvg = icon('heart');
 for (let i = 0; i < MAX_HP / 2; i++) {
   const h = document.createElement('span'); h.className = 'h';
@@ -404,7 +413,7 @@ function slotHtml(s: Slot, key?: number) {
 }
 let hudKey = '';
 function hud() {
-  const key = `${me.hp}|${me.sel}|${me.inv.map((s) => (s ? `${s.id}:${s.n}` : '')).join(',')}`;
+  const key = `${me.hp}|${me.food}|${hasMod('supervivencia')}|${me.sel}|${me.inv.map((s) => (s ? `${s.id}:${s.n}` : '')).join(',')}`;
   if (key === hudKey) return;
   hudKey = key;
   [...heartsEl.children].forEach((h, i) => {
@@ -414,6 +423,10 @@ function hud() {
   heartsEl.classList.toggle('low', me.hp > 0 && me.hp <= 6);
   heartsEl.setAttribute('aria-valuenow', String(me.hp));
   heartsEl.setAttribute('aria-label', `Vida: ${me.hp / 2} de 10 corazones`);
+  foodEl.hidden = !hasMod('supervivencia');
+  [...foodEl.children].forEach((f, i) => { const v = me.food - i * 2; f.className = `f${v >= 2 ? '' : v === 1 ? ' half' : ' empty'}`; });
+  foodEl.setAttribute('aria-valuenow', String(me.food));
+  foodEl.setAttribute('aria-label', `Hambre: ${me.food / 2} de 10`);
   hotbarEl.innerHTML = '';
   for (let i = 0; i < HOTBAR; i++) {
     const s = me.inv[i] ?? null, b = document.createElement('button');
@@ -565,6 +578,12 @@ function mobFor(id: number, kind: MobKind, x: number, y: number, z: number) {
   if (!v) {
     v = { kind, px: x, pz: z };
     const root = kind === 'arana' ? (v.s = makeSpider()).root : (v.p = makePerson(MOB_LOOKS[kind])).root;
+    if (kind === 'sombra') {
+      // Más alta y con ojos que brillan en la oscuridad
+      root.scale.set(1, 1.25, 1);
+      const glow = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      for (const sx of [-0.12, 0.12]) { const e = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.02), glow); e.position.set(sx, 0.3, 0.26); v.p!.head.add(e); }
+    }
     root.position.set(x, y, z);
     scene.add(root);
     mobViews.set(id, v);
@@ -636,6 +655,12 @@ function flushEvents(evs: GEvent[]) {
       case 'mobHurt': sfx.hit(); break;
       case 'mobDie': fx.debris(ev.x, ev.y + 0.8, ev.z, ev.mob === 'zombi' ? 0x5f8c4e : ev.mob === 'esqueleto' ? 0xd9d4c4 : 0x2b2420, 12, 5, 0.18); fx.smoke(ev.x, ev.y + 0.5, ev.z, 4, 0x6b6b6b, 0.9, 1); sfx.kill(); break;
       case 'shoot': sfx.enemyShoot(); break;
+      case 'eat': if (mine) { sfx.pickup(); toast(`Te has comido: ${itemName(ev.item).toLowerCase()}`); } break;
+      case 'vanish':
+        if (ev.near) { sfx.gameover(); hurtFlash.classList.add('on'); setTimeout(() => hurtFlash.classList.remove('on'), 200); shake = Math.max(shake, 0.5); banner('...', '', 'Estaba justo detrás de ti'); }
+        else sfx.hit();
+        fx.smoke(ev.x, ev.y + 1, ev.z, 6, 0x0a0a0c, 1.2, 0.6);
+        break;
       case 'join': if (ev.pid !== myId && mode === 'multi') toast(`${names.get(ev.pid) ?? 'Alguien'} ha entrado en el mundo`); break;
       case 'leave': if (mode === 'multi') toast(`${names.get(ev.pid) ?? 'Alguien'} ha salido`); break;
     }
@@ -669,23 +694,26 @@ function beginPlaying() {
   lockPointer();
   hud(); showHeldName();
 }
-function startSolo() {
+function startSolo(mods: ModId[] = chosenMods()) {
   leaveMulti();
   clearScene();
   mode = 'solo'; myId = 'p1';
   myLook = savedLook();
-  game = newGame(Math.floor(Math.random() * 2 ** 31));
+  game = newGame(Math.floor(Math.random() * 2 ** 31), Math.random, mods);
+  worldMods = new Set(game.mods);
+  document.body.classList.toggle('terror', hasMod('terror'));
   addPlayer(game, myId, 'Tú', myLook);
+  verityLog.innerHTML = '';
   game.events.length = 0;
   loadWorld(game.world);
   syncSolo();
   beginPlaying();
-  banner('Bloques', 'Mundo nuevo', 'Rompe un tronco para empezar. Mantén pulsado: cada bloque tarda su tiempo.');
+  banner('Bloques', mods.length ? `Mods: ${mods.map((m) => MOD_INFO[m].name).join(', ')}` : 'Mundo nuevo', 'Rompe un tronco para empezar. Mantén pulsado: cada bloque tarda su tiempo.');
 }
 /** Copia el estado de la partida local a lo que se dibuja. */
 function syncSolo() {
   const g = game!, p = g.players[0];
-  me = { body: p.body, hp: p.hp, alive: p.alive, inv: p.inv, sel: p.sel, mine: p.mine && Number.isFinite(p.mine.need) ? [p.mine.x, p.mine.y, p.mine.z, Math.min(1, p.mine.t / p.mine.need)] : null };
+  me = { body: p.body, hp: p.hp, alive: p.alive, inv: p.inv, sel: p.sel, food: p.food, mine: p.mine && Number.isFinite(p.mine.need) ? [p.mine.x, p.mine.y, p.mine.z, Math.min(1, p.mine.t / p.mine.need)] : null };
   others = [];
   mobs = g.mobs.map((m) => ({ id: m.id, kind: m.kind, x: m.body.x, y: m.body.y, z: m.body.z, yaw: m.yaw, hit: m.flash > 0 }));
   arrows = g.arrows.flatMap((a) => [a.x, a.y, a.z, a.vx, a.vy, a.vz]);
@@ -696,7 +724,8 @@ function toTitle() {
   game = null;
   playing = false; paused = false;
   if (locked()) document.exitPointerLock();
-  document.body.classList.remove('playing', 'multi');
+  document.body.classList.remove('playing', 'multi', 'terror');
+  closeVerity(false);
   for (const id of ['pause', 'inventory', 'death']) $(id).hidden = true;
   clearScene();
   overlay.hidden = false;
@@ -726,7 +755,7 @@ async function play() {
   }
   hosting = !invitedWorld;
   if (invitedWorld) net.send({ t: 'mjoin', world: invitedWorld, look: savedLook() });
-  else net.send({ t: 'mhost', look: savedLook() });
+  else net.send({ t: 'mhost', look: savedLook(), mods: chosenMods() });
 }
 net.onJoined = () => {
   const w = net.world!;
@@ -734,10 +763,13 @@ net.onJoined = () => {
   mode = 'multi'; myId = net.you; myLook = savedLook();
   joinedWorld = { id: w.id, name: w.name };
   game = null;
+  worldMods = new Set(w.mods ?? []);
+  document.body.classList.toggle('terror', hasMod('terror'));
+  verityLog.innerHTML = '';
   const wd = generate(w.seed);
   for (let i = 0; i < net.edits.length; i += 2) wd.blocks[net.edits[i]] = net.edits[i + 1];
   loadWorld(wd);
-  me = { body: { x: W / 2 + 0.5, y: wd.top(W / 2, W / 2) + 1.01, z: W / 2 + 0.5, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: 0 }, hp: MAX_HP, alive: true, inv: [], sel: 0, mine: null };
+  me = { body: { x: W / 2 + 0.5, y: wd.top(W / 2, W / 2) + 1.01, z: W / 2 + 0.5, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: 0 }, hp: MAX_HP, alive: true, inv: [], sel: 0, mine: null, food: MAX_FOOD };
   firstSnap = true;
   document.body.classList.add('multi');
   $<HTMLInputElement>('inviteLink').value = inviteLink();
@@ -748,7 +780,7 @@ net.onJoined = () => {
   teamKey = '';
   if (invitedWorld) history.replaceState(null, '', location.pathname); // al recargar no vuelve a entrar sin querer
   beginPlaying();
-  banner(w.name, 'Mundo público', hosting ? 'Invita a tus amigos: botón de invitar, copia el enlace y mándaselo' : 'Has entrado en el mundo de tus amigos');
+  banner(w.name, worldMods.size ? `Mods: ${[...worldMods].map((m) => MOD_INFO[m].name).join(', ')}` : 'Mundo público', hosting ? 'Invita a tus amigos: botón de invitar, copia el enlace y mándaselo' : 'Has entrado en el mundo de tus amigos');
   hosting = false;
 };
 function inviteLink() { return `${location.origin}${location.pathname}?mundo=${joinedWorld?.id ?? ''}`; }
@@ -788,7 +820,7 @@ function multiFrame(dt: number, inp: Inp) {
     if (!me.alive && mine.alive) $('death').hidden = true;
     me.alive = mine.alive;
   }
-  me.inv = s.me.inv;
+  me.inv = s.me.inv; me.food = s.me.food ?? MAX_FOOD;
   if (s.me.sel !== me.sel && performance.now() - lastSlotChange > 400) me.sel = s.me.sel;
   others = s.P.filter((p) => p.id !== myId);
   mobs = [];
@@ -798,7 +830,8 @@ function multiFrame(dt: number, inp: Inp) {
   // Mi movimiento: predicción local con la misma física, y corrección suave hacia lo que dice el servidor
   const active = playing && !inMenu() && me.alive && !document.hidden;
   const i = active ? inp : { mx: 0, mz: 0, jump: false, attack: false, yaw, pitch };
-  if (me.alive) moveBody(world, me.body, i.mx * WALK, i.mz * WALK, i.jump, dt);
+  const ws = walkSpeed(worldMods);
+  if (me.alive) moveBody(world, me.body, i.mx * ws, i.mz * ws, i.jump, dt, 0.3, 1.8, jumpSpeed(worldMods));
   if (mine && me.alive) {
     const k = Math.min(1, dt * 1.2);
     me.body.x += (mine.x - me.body.x) * k; me.body.z += (mine.z - me.body.z) * k;
@@ -835,7 +868,8 @@ function renderRooms(rooms: WorldInfo[] | null) {
     }
     const full = r.players >= r.max;
     b.disabled = full; b.classList.toggle('full', full); b.classList.toggle('busy', r.players > 0);
-    b.querySelector('.sv-state')!.textContent = full ? 'Mundo lleno' : 'Mundo público · toca para entrar';
+    const mods = (r.mods ?? []).map((m) => MOD_INFO[m]?.name).filter(Boolean).join(', ');
+    b.querySelector('.sv-state')!.textContent = full ? 'Mundo lleno' : `${mods ? `Mods: ${mods}` : 'Sin mods'} · toca para entrar`;
     b.querySelector('.sv-n')!.textContent = `${r.players}/${r.max}`;
     b.querySelector('.sv-dots')!.innerHTML = Array.from({ length: r.max }, (_, k) => `<i class="${k < r.players ? 'on' : ''}"></i>`).join('');
     b.setAttribute('aria-label', `${r.name}: ${r.players} de ${r.max} jugadores${full ? ', lleno' : ''}`);
@@ -854,7 +888,7 @@ async function openLobby(message = '') {
 }
 net.onRooms = (r) => renderRooms(r);
 $('lobbyClose').addEventListener('click', () => { lobbyEl.hidden = true; clearInterval(listTimer); if (mode !== 'multi') { netClosing = true; net.close(); netClosing = false; } });
-$('play').addEventListener('click', () => openCharSelect(() => void play(), invitedWorld ? 'Te han invitado' : 'Tu personaje'));
+$('play').addEventListener('click', () => openCharSelect(() => (invitedWorld ? void play() : openMods(() => void play())), invitedWorld ? 'Te han invitado' : 'Tu personaje'));
 $('multiBtn').addEventListener('click', () => openCharSelect(() => void openLobby(), 'Mundos de otros'));
 
 // Equipo, bloquear y denunciar
@@ -1094,7 +1128,11 @@ function frame(now: number) {
   const dusk = Math.max(0, 1 - Math.abs(Math.sin(ang)) * 4);
   fogColor.copy(NIGHT_FOG).lerp(DAY_FOG, sl).lerp(DUSK, dusk * 0.3);
   skyU.top.value.copy(NIGHT_SKY).lerp(DAY_SKY, sl);
-  sun.intensity = 2.7 * sl; hemi.intensity = 0.22 + 0.85 * sl;
+  const fear = playing && hasMod('terror') ? 1 - sl : 0; // terror: la noche es mucho más oscura y con niebla
+  sun.intensity = 2.7 * sl; hemi.intensity = (0.22 + 0.85 * sl) * (1 - fear * 0.7);
+  if (fear) fogColor.lerp(tmpC.setRGB(0.01, 0.01, 0.015), fear * 0.8);
+  (scene.fog as THREE.Fog).near = 40 - fear * 32; (scene.fog as THREE.Fog).far = 110 - fear * 78;
+  (scene.fog as THREE.Fog).color.copy(fogColor); // la niebla guarda su propia copia del color
   sun.color.copy(tmpC.setRGB(1, 0.94 - dusk * 0.2, 0.84 - dusk * 0.35));
 
   // Otros jugadores
@@ -1128,6 +1166,7 @@ function frame(now: number) {
       animatePerson(v.p, Math.min(speed, 5), dt, now / 1000, false, reduceMotion.matches);
       if (m.kind === 'zombi') { v.p.armL.rotation.x = -1.45; v.p.armR.rotation.x = -1.45; } // brazos al frente
       if (m.kind === 'esqueleto') { v.p.armR.rotation.x = -1.5; v.p.armL.rotation.x = -1.3; v.p.armL.rotation.z = 0.4; }
+      if (m.kind === 'sombra') { v.p.armL.rotation.x = 0; v.p.armR.rotation.x = 0; v.p.body.position.y = 0; }
       for (const mat of v.p.mats) mat.emissive.setRGB(m.hit ? 0.7 : 0, 0, 0);
     } else animateSpider(v.s!, Math.min(speed, 5), dt, m.hit, reduceMotion.matches);
   }
@@ -1204,3 +1243,145 @@ Object.assign(window, {
   __mode: () => mode, __me: () => me, __game: () => game, __world: () => world, __look: (y: number, p: number) => { yaw = y; pitch = p; },
   __paused: () => paused, __others: () => others, __joined: () => joinedWorld, __time: () => time, __mobs: () => mobs,
 });
+
+
+// ---------- Mods ----------
+const MOD_ICON: Record<ModId, IconName> = { terror: 'skull', supervivencia: 'tentTree', heroes: 'zap' };
+let pickedMods = new Set<ModId>((() => { try { return (JSON.parse(readStr('bloques.mods') || '[]') as string[]).filter((m): m is ModId => (MODS as string[]).includes(m)); } catch { return []; } })());
+const chosenMods = () => [...pickedMods];
+let modsDone: () => void = () => {};
+function renderMods() {
+  const list = $('modsList');
+  list.innerHTML = '';
+  for (const m of MODS) {
+    const b = document.createElement('button');
+    b.className = `mod ${m}`;
+    b.setAttribute('aria-pressed', String(pickedMods.has(m)));
+    b.innerHTML = `${icon(MOD_ICON[m])}<span><span class="t"></span><span class="d"></span></span><span class="chk">${icon('check')}</span>`;
+    b.querySelector('.t')!.textContent = MOD_INFO[m].name;
+    b.querySelector('.d')!.textContent = MOD_INFO[m].desc;
+    b.setAttribute('aria-label', `Mod ${MOD_INFO[m].name}: ${MOD_INFO[m].desc}`);
+    b.addEventListener('click', () => { if (pickedMods.has(m)) pickedMods.delete(m); else pickedMods.add(m); renderMods(); (list.querySelector(`.mod.${m}`) as HTMLElement)?.focus(); });
+    list.appendChild(b);
+  }
+  $('modsGo').innerHTML = `${icon('play')} ${pickedMods.size ? 'Crear mundo con mods' : 'Crear mundo sin mods'}`;
+}
+function openMods(done: () => void) { modsDone = done; $('mods').hidden = false; renderMods(); ($('modsList').firstElementChild as HTMLElement | null)?.focus(); }
+$('modsGo').addEventListener('click', () => { writeStr('bloques.mods', JSON.stringify([...pickedMods])); $('mods').hidden = true; modsDone(); });
+$('modsBack').addEventListener('click', () => { $('mods').hidden = true; });
+
+// ---------- Verity ----------
+// Entiende lo que le pides en el propio dispositivo. En la versión Artifact, lo que no entiende se lo pregunta a Claude
+// (con permiso de quien juega). Al servidor solo llega la orden ("dar 10 tablas"), nunca el texto escrito.
+const verityLog = $('verityLog'), verityInput = $<HTMLInputElement>('verityInput');
+$('verityBtn').innerHTML = icon('sparkles');
+$('verityBtn').addEventListener('click', () => openVerity());
+function sayVerity(text: string, who: 'v' | 'u' | 'think' = 'v') {
+  const li = document.createElement('li');
+  li.className = who === 'think' ? 'v think' : who;
+  li.textContent = text;
+  verityLog.appendChild(li);
+  verityLog.scrollTop = verityLog.scrollHeight;
+  return li;
+}
+function openVerity() {
+  if (!playing || !me.alive) return;
+  releaseTouches(); keys.clear();
+  if (locked()) document.exitPointerLock();
+  $('verity').hidden = false;
+  $('verityKicker').textContent = hasMod('terror') ? 'Te está esperando' : 'Tu ayudante';
+  if (!verityLog.children.length) sayVerity(hasMod('terror') ? 'Hola. Te estaba esperando. ¿Qué quieres?' : 'Hola, soy Verity. Pídeme cosas o pregúntame. Por ejemplo: dame 10 tablas, ¿dónde hay hierro?, hazlo de día.');
+  verityInput.focus();
+}
+function closeVerity(relock = true) { $('verity').hidden = true; if (relock && playing) lockPointer(); }
+$('verityClose').addEventListener('click', () => closeVerity());
+function runCmd(c: VerityCmd) {
+  if (mode === 'solo' && game) { verityCommand(game, myId, c); flushEvents(game.events.splice(0)); syncSolo(); hudKey = ''; }
+  else net.send({ t: 'mcmd', c });
+}
+/** Comprueba una orden que llega de Claude antes de usarla (nunca confiar en lo que llega de fuera). */
+function safeCmd(c: unknown): VerityCmd | undefined {
+  if (!c || typeof c !== 'object') return undefined;
+  const o = c as Record<string, unknown>;
+  if (o.k === 'dar' && ITEMS.has(Number(o.id))) return { k: 'dar', id: Number(o.id), n: Math.max(1, Math.min(64, Math.floor(Number(o.n)) || 1)) };
+  if (o.k === 'curar' || o.k === 'comer' || o.k === 'dia' || o.k === 'noche' || o.k === 'superficie') return { k: o.k };
+  return undefined;
+}
+type Sample = { json: <T>(input: string | { role: 'user' | 'assistant'; content: string }[], o?: object) => Promise<T> };
+let samplePromise: Promise<Sample | null> | null = null;
+const getSample = () => (samplePromise ??= (async () => {
+  const c = (window as unknown as { claude?: { use?: (n: string) => Promise<unknown> } }).claude;
+  if (!ARTEFACTO || !c?.use) return null;
+  try { return (await c.use('sample')) as Sample | null; } catch { return null; }
+})());
+const aiTurns: { role: 'user' | 'assistant'; content: string }[] = [];
+async function askClaude(text: string) {
+  const sample = await getSample();
+  if (!sample) return false;
+  const thinking = sayVerity('Pensando…', 'think');
+  const items = [...ITEMS.values()].map((d) => `${d.id}=${d.name}`).join(', ');
+  const rules = `Eres Verity, un personaje dentro de "Bloques", un juego de supervivencia de bloques en primera persona para niños.
+Hablas en español, con frases cortas y amables${hasMod('terror') ? ', pero con un tono misterioso e inquietante (sin nada violento ni desagradable)' : ''}.
+Puedes responder cualquier pregunta apta para niños y puedes hacer UNA acción del juego si el jugador la pide.
+Estado: ${me.hp / 2} corazones${hasMod('supervivencia') ? `, hambre ${me.food / 2}/10` : ''}, ${isNight({ time }) ? 'es de noche' : 'es de día'}, mods: ${[...worldMods].map((m) => MOD_INFO[m].name).join(', ') || 'ninguno'}.
+Objetos (id=nombre): ${items}.
+Responde SOLO con JSON: {"texto": "tu respuesta", "accion": null o una de {"k":"dar","id":número,"n":1-64} {"k":"curar"} {"k":"comer"} {"k":"dia"} {"k":"noche"} {"k":"superficie"}}`;
+  aiTurns.push({ role: 'user', content: text });
+  while (aiTurns.length > 8) aiTurns.shift();
+  try {
+    const r = await sample.json<{ texto?: unknown; accion?: unknown }>([{ role: 'user', content: rules }, ...aiTurns], { modelTier: 'quick', cache: false });
+    const reply = typeof r?.texto === 'string' && r.texto.trim() ? r.texto.trim().slice(0, 600) : 'No sé qué decir.';
+    thinking.className = 'v'; thinking.textContent = reply;
+    aiTurns.push({ role: 'assistant', content: reply });
+    const c = safeCmd(r?.accion);
+    if (c) runCmd(c);
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    thinking.className = 'v';
+    thinking.textContent = code === 'not_granted' ? 'Para responder a cualquier pregunta necesito tu permiso. Mientras, puedo ayudarte con cosas del juego: escribe ayuda.'
+      : code === 'rate_limited' ? 'Ahora mismo no puedo pensar más. Prueba dentro de un rato.' : 'No he podido responder. Prueba otra vez.';
+    aiTurns.pop();
+  }
+  return true;
+}
+$('verityForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const text = verityInput.value.trim();
+  if (!text) return;
+  verityInput.value = '';
+  sayVerity(text, 'u');
+  const r = verity(text, { world, x: me.body.x, y: me.body.y, z: me.body.z, yaw, time, terror: hasMod('terror') });
+  if (r.understood) { sayVerity(r.text); if (r.cmd) runCmd(r.cmd); return; }
+  void askClaude(text).then((done) => { if (!done) sayVerity(r.text); });
+});
+
+// ---------- Otros juegos ----------
+// En la web, enlaces a las demás páginas del juego. En la versión Artifact, a la web pública (se abre en otra pestaña).
+const WEB = ARTEFACTO ? 'https://shooter-2027.onrender.com/' : './';
+const GAMES: { name: string; desc: string; href: string; ic: IconName; here?: boolean }[] = [
+  { name: 'Bloques', desc: 'Supervivencia en un mundo de bloques: mina, craftea y juega con tus amigos.', href: 'bloques.html', ic: 'blocks', here: true },
+  { name: 'Shooter 2027', desc: 'Shooter de oleadas contra robots, con tienda de armas y equipo.', href: 'index.html', ic: 'crosshair' },
+  { name: 'Tres en Raya 3D', desc: 'Alinea 4 en un cubo, contra la CPU o un amigo.', href: 'tres-en-raya.html', ic: 'grid' },
+  { name: 'Brasas', desc: 'Sobrevive 99 noches en el bosque: mantén vivo el fuego.', href: 'brasas/index.html', ic: 'flame' },
+];
+function openGames() {
+  const ul = $('gamesList');
+  ul.innerHTML = '';
+  for (const g of GAMES) {
+    const li = document.createElement('li');
+    if (g.here) li.className = 'here';
+    const a = document.createElement('a');
+    a.href = g.here && !ARTEFACTO ? '#' : WEB + g.href;
+    if (ARTEFACTO) { a.target = '_blank'; a.rel = 'noopener'; }
+    a.innerHTML = `${icon(g.ic)}<span><strong></strong><span class="d"></span></span><span class="go">${icon(g.here ? 'check' : ARTEFACTO ? 'externalLink' : 'chevronRight')}</span>`;
+    a.querySelector('strong')!.textContent = g.name;
+    a.querySelector('.d')!.textContent = g.here ? 'Estás jugando a este.' : g.desc;
+    if (g.here) a.addEventListener('click', (e) => { e.preventDefault(); $('games').hidden = true; });
+    li.appendChild(a);
+    ul.appendChild(li);
+  }
+  $('games').hidden = false;
+  ($('gamesClose') as HTMLElement).focus();
+}
+$('gamesBtn').addEventListener('click', openGames);
+$('gamesClose').addEventListener('click', () => { $('games').hidden = true; $('gamesBtn').focus(); });

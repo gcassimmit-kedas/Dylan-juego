@@ -3,7 +3,7 @@
 // Un mundo vacío se guarda 10 minutos en memoria por si alguien vuelve con el enlace; después desaparece.
 import { WebSocket } from 'ws';
 import { randomBytes } from 'node:crypto';
-import { newGame, addPlayer, removePlayer, step, place, craft, selectSlot, moveSlot, respawn, getPlayer, type Game, type Look } from '../src/bloques/game.ts';
+import { newGame, addPlayer, removePlayer, step, place, craft, selectSlot, moveSlot, respawn, getPlayer, verityCommand, isMod, type Game, type Look, type ModId, type VerityCmd } from '../src/bloques/game.ts';
 import { encodeSnapshot, clampMInput, isLook, MAX_PLAYERS, TICK_HZ, type MClientMsg, type MServerMsg, type WorldInfo } from '../src/bloques/protocol.ts';
 import { randomServerName, roomPaused, reportsToKick } from '../src/shooter/protocol.ts';
 
@@ -16,12 +16,12 @@ const KEEP_EMPTY_MS = 10 * 60 * 1000;
 const LOOK_NAME: Record<Look, string> = { coloso: 'Grande', halcon: 'Rápido' };
 
 function send(c: MClient, m: MServerMsg) { if (c.ws.readyState === WebSocket.OPEN) c.ws.send(JSON.stringify(m)); }
-const info = (r: WorldRoom): WorldInfo => ({ id: r.id, name: r.name, players: r.clients.size, max: MAX_PLAYERS });
+const info = (r: WorldRoom): WorldInfo => ({ id: r.id, name: r.name, players: r.clients.size, max: MAX_PLAYERS, mods: [...r.game.mods] });
 export const worldList = () => [...worlds.values()].filter((r) => r.clients.size > 0).map(info).sort((a, b) => b.players - a.players);
 
-function createWorld(): WorldRoom {
+function createWorld(mods: ModId[]): WorldRoom {
   const taken = new Set([...worlds.values()].map((r) => r.name));
-  const r: WorldRoom = { id: randomBytes(5).toString('hex'), name: randomServerName(Math.random, taken), game: newGame(Math.floor(Math.random() * 2 ** 31)), clients: new Map(), tick: 0, emptySince: 0, reports: new Map() };
+  const r: WorldRoom = { id: randomBytes(5).toString('hex'), name: randomServerName(Math.random, taken), game: newGame(Math.floor(Math.random() * 2 ** 31), Math.random, mods), clients: new Map(), tick: 0, emptySince: 0, reports: new Map() };
   worlds.set(r.id, r);
   return r;
 }
@@ -35,7 +35,7 @@ function join(c: MClient, r: WorldRoom) {
   r.clients.set(c.pid, c); c.world = r; c.paused = false; c.lastInput = Date.now();
   addPlayer(r.game, c.pid, c.name, c.look);
   r.emptySince = 0;
-  send(c, { t: 'mjoined', you: c.pid, world: { id: r.id, name: r.name, seed: r.game.seed }, edits: [...r.game.edits].flat() });
+  send(c, { t: 'mjoined', you: c.pid, world: { id: r.id, name: r.name, seed: r.game.seed, mods: [...r.game.mods] }, edits: [...r.game.edits].flat() });
 }
 
 export function leave(c: MClient) {
@@ -95,7 +95,7 @@ export function onWorldMessage(c: MClient, m: MClientMsg, save: (entry: object) 
     case 'mhost':
       c.look = isLook(m.look) ? m.look : 'coloso';
       if (worlds.size >= MAX_WORLDS) { send(c, { t: 'error', msg: 'No hay sitio para más mundos ahora. Únete a uno de la lista.' }); return true; }
-      join(c, createWorld()); return true;
+      join(c, createWorld(Array.isArray(m.mods) ? [...new Set(m.mods.filter(isMod))] : [])); return true;
     case 'mjoin': {
       c.look = isLook(m.look) ? m.look : 'coloso';
       const target = worlds.get(String(m.world));
@@ -111,6 +111,7 @@ export function onWorldMessage(c: MClient, m: MClientMsg, save: (entry: object) 
     case 'mrespawn': if (g) respawn(g, c.pid); return true;
     case 'mpause': c.paused = !!m.v; return true;
     case 'mleave': leave(c); return true;
+    case 'mcmd': if (g && m.c && typeof m.c === 'object') verityCommand(g, c.pid, m.c as VerityCmd); return true;
     case 'mreport': if (typeof m.pid === 'string') report(c, m.pid, save); return true;
   }
   return false;

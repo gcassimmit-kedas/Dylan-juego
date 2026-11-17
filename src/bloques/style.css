@@ -141,3 +141,61 @@ body.playing #crosshair, body.playing #bottom { visibility: visible; }
   .touch-btn.jump { width: 54px; height: 54px; bottom: calc(env(safe-area-inset-bottom) + 158px); }
   .slot { width: 38px; height: 38px; }
 }
+
+/* ---------- Hambre ---------- */
+#bottom .bars { display: flex; justify-content: space-between; align-self: stretch; gap: 10px; }
+#food { display: flex; gap: 2px; flex-direction: row-reverse; }
+#food[hidden] { display: none; }
+#food .f { width: 20px; height: 20px; color: #6b3d16; }
+#food .f.empty { opacity: 0.25; }
+#food .f.half { opacity: 0.6; }
+#food .ic { width: 20px; height: 20px; fill: #c8783a; }
+@media (max-width: 560px) { #food .f, #food .ic { width: 16px; height: 16px; } }
+
+/* ---------- Verity ---------- */
+.verity-panel { width: min(100%, 560px); max-height: 100%; display: flex; flex-direction: column; padding-bottom: 14px; }
+.verity-panel .head, .mods-panel .head, .games-panel .head { display: flex; justify-content: space-between; align-items: flex-start; padding: 16px 20px 8px; }
+.verity-panel h2, .mods-panel h2, .games-panel h2 { margin: 2px 0 0; font-size: 1.8rem; }
+.verity-log { list-style: none; margin: 0; padding: 4px 20px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 160px; max-height: 50vh; }
+.verity-log li { max-width: 85%; padding: 8px 12px; line-height: 1.4; font-size: 0.95rem; }
+.verity-log li.v { align-self: flex-start; background: rgba(255, 200, 61, 0.12); border: 1px solid rgba(255, 200, 61, 0.35); }
+.verity-log li.u { align-self: flex-end; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); }
+.verity-log li.think { color: var(--muted); font-style: italic; }
+body.terror .verity-log li.v { background: rgba(120, 10, 14, 0.25); border-color: rgba(229, 72, 77, 0.45); }
+.verity-form { display: flex; gap: 6px; padding: 10px 20px 4px; }
+.verity-form input { flex: 1; min-width: 0; background: rgba(0, 0, 0, 0.4); color: var(--text); border: 1px solid var(--line); padding: 10px 12px; font: inherit; user-select: text; -webkit-user-select: text; }
+.verity-form .primary { padding: 10px 14px; }
+.verity-panel > .help { padding: 4px 20px 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- Mods ---------- */
+.mods-panel { width: min(100%, 620px); max-height: 100%; display: flex; flex-direction: column; overflow-y: auto; }
+.mods-help { padding: 0 20px 10px; }
+.mods-list { display: grid; gap: 8px; padding: 0 20px 12px; }
+.mod { display: grid; grid-template-columns: 44px 1fr auto; gap: 12px; align-items: center; text-align: left; cursor: pointer; color: var(--text);
+  background: rgba(0, 0, 0, 0.25); border: 1px solid var(--line); padding: 12px; font: inherit; }
+.mod .ic { width: 34px; height: 34px; color: var(--muted); }
+.mod .t { font-family: var(--display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 1.1rem; display: block; }
+.mod .d { color: var(--muted); font-size: 0.85rem; line-height: 1.35; }
+.mod .chk { width: 26px; height: 26px; border: 2px solid var(--line-strong); display: flex; align-items: center; justify-content: center; }
+.mod .chk .ic { width: 18px; height: 18px; color: #241a00; visibility: hidden; }
+.mod[aria-pressed="true"] { border-color: var(--accent); background: rgba(255, 200, 61, 0.1); }
+.mod[aria-pressed="true"] > .ic { color: var(--accent); }
+.mod[aria-pressed="true"] .chk { background: var(--accent); border-color: var(--accent); }
+.mod[aria-pressed="true"] .chk .ic { visibility: visible; }
+.mod.terror[aria-pressed="true"] > .ic { color: var(--danger); }
+.mods-panel .cs-foot { padding: 12px 20px 18px; }
+.mod-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+.mod-tags span { font-family: var(--display); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); border: 1px solid rgba(255, 200, 61, 0.4); padding: 1px 6px; }
+
+/* ---------- Otros juegos ---------- */
+.games-panel { width: min(100%, 520px); max-height: 100%; display: flex; flex-direction: column; overflow-y: auto; }
+.games-list { list-style: none; margin: 0; padding: 0 20px 18px; display: grid; gap: 8px; }
+.games-list a { display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; text-decoration: none; color: inherit;
+  background: rgba(0, 0, 0, 0.25); border: 1px solid var(--line); padding: 12px 14px; }
+.games-list a .ic { width: 32px; height: 32px; color: var(--accent); }
+.games-list a .go .ic { width: 20px; height: 20px; color: var(--muted); }
+.games-list strong { display: block; font-family: var(--display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 1.15rem; }
+.games-list span.d { color: var(--muted); font-size: 0.88rem; }
+.games-list li.here a { border-color: var(--accent); }
+#games, #mods, #verity, #charSelect, #lobby { z-index: 8; }

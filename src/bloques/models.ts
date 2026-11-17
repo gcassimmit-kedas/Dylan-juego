@@ -32,7 +32,7 @@ const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
 /** Aspecto de cada personaje de Bloques. */
 export interface Look { skin: number; hair: number; shirt: number; pants: number; shoes: number; curly: boolean; stripes: boolean; sleeves: boolean; collar: boolean; wide: number;
   /** Cara: persona, zombi o calavera. */
-  face?: 'persona' | 'zombi' | 'calavera'; torn?: boolean }
+  face?: 'persona' | 'zombi' | 'calavera' | 'sombra'; torn?: boolean }
 /** Los dos personajes de Bloques: el Coloso (camiseta negra de rayas, sin mangas) y el Halcón (polo blanco, pelo rizado). */
 export const LOOKS: Partial<Record<CharacterId, Look>> = {
   coloso: { skin: 0xa86a46, hair: 0x1d140d, shirt: 0x141518, pants: 0x2c3442, shoes: 0x23262b, curly: false, stripes: true, sleeves: false, collar: false, wide: 1.18 },
@@ -40,7 +40,8 @@ export const LOOKS: Partial<Record<CharacterId, Look>> = {
 };
 export const lookFor = (c: CharacterId) => LOOKS[c] ?? LOOKS.coloso!;
 /** Monstruos con forma de persona (diseños propios del juego). */
-export const MOB_LOOKS: Record<'zombi' | 'esqueleto', Look> = {
+export const MOB_LOOKS: Record<'zombi' | 'esqueleto' | 'sombra', Look> = {
+  sombra: { skin: 0x0b0b0e, hair: 0x0b0b0e, shirt: 0x0e0e12, pants: 0x0b0b0e, shoes: 0x08080a, curly: false, stripes: false, sleeves: false, collar: false, wide: 0.8, face: 'sombra' },
   zombi: { skin: 0x5f8c4e, hair: 0x2f4a26, shirt: 0x3a6d74, pants: 0x4a3f78, shoes: 0x2c2c34, curly: false, stripes: false, sleeves: true, collar: false, wide: 1.05, face: 'zombi', torn: true },
   esqueleto: { skin: 0xd9d4c4, hair: 0xd9d4c4, shirt: 0xd9d4c4, pants: 0xcfcab8, shoes: 0xbdb8a6, curly: false, stripes: false, sleeves: false, collar: false, wide: 0.7, face: 'calavera' },
 };
@@ -52,6 +53,10 @@ function faceTex(l: Look) {
     g.fillStyle = '#101810'; g.fillRect(1, 3, 2, 2); g.fillRect(5, 3, 2, 2); // ojos hundidos
     g.fillStyle = '#c8302a'; g.fillRect(2, 4, 1, 1); g.fillRect(5, 4, 1, 1);
     g.fillStyle = '#2a3a22'; g.fillRect(2, 6, 4, 1); g.fillRect(1, 7, 1, 1); g.fillRect(6, 7, 1, 1); // boca torcida
+  });
+  if (l.face === 'sombra') return pixelTex(8, 8, (g) => {
+    g.fillStyle = hex(l.skin); g.fillRect(0, 0, 8, 8);
+    g.fillStyle = '#f4f4f4'; g.fillRect(1, 3, 2, 1); g.fillRect(5, 3, 2, 1); // solo dos ojos blancos
   });
   if (l.face === 'calavera') return pixelTex(8, 8, (g) => {
     g.fillStyle = hex(l.skin); g.fillRect(0, 0, 8, 8);
