@@ -38,7 +38,17 @@ $('help').textContent = isTouch
   : 'WASD: moverte · Espacio: saltar · Ratón: mirar · Clic izquierdo (mantener): romper · Clic derecho: colocar · E: inventario · 1-9: barra.';
 const readStr = (k: string) => { try { return localStorage.getItem(k) ?? ''; } catch { return ''; } };
 const writeStr = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
-const invitedWorld = new URLSearchParams(location.search).get('mundo');
+/** Versión publicada como Artifact de claude.ai: solo un jugador (allí no se puede conectar con el servidor). */
+const ARTEFACTO = import.meta.env.VITE_ARTEFACTO === '1';
+if (ARTEFACTO) {
+  for (const el of document.querySelectorAll<HTMLElement>('#multiBtn, a[href="./creditos.html"], a[href="./juegos.html"], #settings .links')) { el.hidden = true; el.style.display = 'none'; }
+  document.querySelector('.tagline')!.textContent = 'Explora, mina, craftea y sobrevive.';
+  const credits = document.createElement('p');
+  credits.className = 'help';
+  credits.textContent = 'Versión de un jugador. Hecho con Three.js (MIT), iconos Lucide (ISC) y fuentes Oswald e Inter (SIL OFL 1.1).';
+  $('help').after(credits);
+}
+const invitedWorld = ARTEFACTO ? null : new URLSearchParams(location.search).get('mundo');
 if (invitedWorld) $('invited').hidden = false;
 
 // ---------- Render ----------
@@ -705,6 +715,7 @@ async function connectQuick(): Promise<boolean> {
 /** Jugar: con conexión se crea un mundo público (o se entra al de la invitación); sin conexión, se juega solo. */
 async function play() {
   unlock();
+  if (ARTEFACTO) { startSolo(); return; }
   const pb = $<HTMLButtonElement>('play');
   pb.disabled = true;
   const online = await connectQuick();
