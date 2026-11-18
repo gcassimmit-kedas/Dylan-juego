@@ -1,5 +1,5 @@
 // Protocolo de los mundos compartidos de Bloques. Lo comparten servidor y cliente: tipos y funciones puras.
-import type { Game, GEvent, Look, PInput, MobKind, ModId, VerityCmd } from './game.ts';
+import type { Game, GEvent, Look, PInput, MobKind, ModId, VerityCmd, Box } from './game.ts';
 import type { Slot } from './items.ts';
 
 export const MAX_PLAYERS = 7;
@@ -16,7 +16,9 @@ export type MClientMsg =
   | { t: 'mpause'; v: boolean } | { t: 'mleave' }
   | { t: 'mreport'; pid: string }
   /** Orden de Verity (ya entendida en el dispositivo: el texto escrito no se envía). */
-  | { t: 'mcmd'; c: VerityCmd };
+  | { t: 'mcmd'; c: VerityCmd }
+  /** Abrir o cerrar un horno o cofre, y mover objetos (op 'put' desde el inventario, 'take' desde el horno/cofre). */
+  | { t: 'mopen'; x: number; y: number; z: number } | { t: 'mclose' } | { t: 'mbox'; x: number; y: number; z: number; op: 'put' | 'take'; i: number };
 
 /** Jugador tal como viaja por la red. */
 export interface NetP { id: string; name: string; look: Look; x: number; y: number; z: number; yaw: number; pitch: number; hp: number; alive: boolean; held: number | null; away: boolean; mine: [number, number, number, number] | null }
@@ -32,6 +34,8 @@ export interface MSnapshot {
   ev: GEvent[];
   /** Lo tuyo: inventario y casilla elegida. */
   me: { inv: Slot[]; sel: number; food: number };
+  /** El horno o cofre que tienes abierto. */
+  box?: { x: number; y: number; z: number } & Box;
 }
 
 export type MServerMsg =
@@ -43,7 +47,7 @@ export type MServerMsg =
 export const MOB_KINDS: MobKind[] = ['zombi', 'esqueleto', 'arana', 'sombra'];
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
-export function encodeSnapshot(g: Game, tick: number, pid: string, events: GEvent[], changes: [number, number][]): MSnapshot {
+export function encodeSnapshot(g: Game, tick: number, pid: string, events: GEvent[], changes: [number, number][], box?: { x: number; y: number; z: number } & Box): MSnapshot {
   const me = g.players.find((p) => p.id === pid);
   return {
     tick, time: r2(g.time),
@@ -57,6 +61,7 @@ export function encodeSnapshot(g: Game, tick: number, pid: string, events: GEven
     ch: changes.flat(),
     ev: events,
     me: { inv: me ? me.inv.map((s) => (s ? { ...s } : null)) : [], sel: me?.sel ?? 0, food: me?.food ?? 20 },
+    ...(box ? { box: { ...box, slots: box.slots.map((s) => (s ? { ...s } : null)), burn: r2(box.burn), prog: r2(box.prog) } } : {}),
   };
 }
 

@@ -1,7 +1,7 @@
 // Convierte un trozo del mundo (16 x 16 columnas) en mallas: solo las caras que se ven, con sombra en las
 // esquinas (oclusión ambiental) y luz: a cielo abierto, a oscuras bajo tierra, o iluminado por antorchas.
 // Lógica pura: devuelve listas de números que el cliente convierte en geometría.
-import { World, B, BLOCKS, H, isSee, type Tex } from './voxel.ts';
+import { World, B, BLOCKS, H, isSee, lightOf, type Tex } from './voxel.ts';
 
 export const CHUNK = 16;
 export type UV = (t: Tex) => [number, number, number, number];
@@ -22,11 +22,11 @@ const AO = [0.5, 0.68, 0.84, 1];
 export const DARK = 0.16;
 
 /** Luz de las antorchas en un punto (0 a 1): baja con la distancia y no atraviesa la piedra en esta versión simple. */
-function torchLight(torches: [number, number, number][], x: number, y: number, z: number) {
+function torchLight(torches: [number, number, number, number][], x: number, y: number, z: number) {
   let l = 0;
-  for (const [tx, ty, tz] of torches) {
+  for (const [tx, ty, tz, k] of torches) {
     const d = Math.abs(tx - x) + Math.abs(ty - y) + Math.abs(tz - z);
-    if (d < 9) l = Math.max(l, 1 - d / 9);
+    if (d < 9) l = Math.max(l, (1 - d / 9) * k);
   }
   return l;
 }
@@ -42,9 +42,9 @@ export function meshChunk(w: World, cx: number, cz: number, uvOf: UV): { solid: 
     if (t === undefined) { t = -1; for (let y = H - 1; y >= 0; y--) { const b = w.get(x, y, z); if (b !== B.Aire && b !== B.Antorcha) { t = y; break; } } topOf.set(k, t); }
     return t;
   };
-  const torches: [number, number, number][] = [];
+  const torches: [number, number, number, number][] = [];
   for (let x = x0 - 8; x < x0 + CHUNK + 8; x++) for (let z = z0 - 8; z < z0 + CHUNK + 8; z++) for (let y = 0; y < H; y++)
-    if (w.get(x, y, z) === B.Antorcha) torches.push([x + 0.5, y + 0.5, z + 0.5]);
+    { const k = lightOf(w.get(x, y, z)); if (k) torches.push([x + 0.5, y + 0.5, z + 0.5, k]); }
   const light = (x: number, y: number, z: number) => Math.max(y > top(x, z) ? 1 : DARK, torchLight(torches, x + 0.5, y + 0.5, z + 0.5));
   const opaque = (x: number, y: number, z: number) => { const b = w.get(x, y, z); return b !== B.Aire && !isSee(b); };
 

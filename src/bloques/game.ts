@@ -1,8 +1,8 @@
 // Supervivencia de Bloques: jugadores (moverse, saltar, minar con su tiempo, colocar, luchar), 10 corazones,
 // daño por caída, regeneración, día y noche, monstruos y muerte. Lógica pura: la ejecutan el navegador
 // (un jugador, sin conexión) y el servidor (mundos compartidos, donde manda el servidor).
-import { generate, spawnPoint, raycast, moveBody, bodyBlocked, isSolid, World, B, W, H, BLOCKS, type Body } from './voxel.ts';
-import { newInventory, addItem, removeItem, breakTime, dropOf, attackDamage, recipeById, craft as craftInv, cannotCraft, ITEMS, HOTBAR, swapSlots, FOOD, I, type Slot, type Station } from './items.ts';
+import { generate, spawnPoint, raycast, moveBody, bodyBlocked, isSolid, World, B, W, H, BLOCKS, USABLE, lightOf, type Body } from './voxel.ts';
+import { newInventory, addItem, removeItem, breakTime, dropOf, attackDamage, recipeById, craft as craftInv, cannotCraft, ITEMS, HOTBAR, swapSlots, FOOD, I, SMELT, FUEL, SMELT_SECONDS, type Slot, type Station } from './items.ts';
 import { JUMP_SPEED } from './voxel.ts';
 
 export const MAX_HP = 20; // 10 corazones
@@ -53,6 +53,7 @@ export type GEvent =
   | { kind: 'mobHurt'; id: number } | { kind: 'mobDie'; id: number; x: number; y: number; z: number; mob: MobKind }
   | { kind: 'swing'; pid: string } | { kind: 'craft'; pid: string; item: number } | { kind: 'shoot'; x: number; y: number; z: number }
   | { kind: 'pickup'; pid: string; item: number; n: number } | { kind: 'join'; pid: string } | { kind: 'leave'; pid: string }
+  | { kind: 'smelt'; x: number; y: number; z: number; item: number } | { kind: 'open'; pid: string; what: 'mesa' | 'horno' | 'cofre' }
   | { kind: 'eat'; pid: string; item: number } | { kind: 'vanish'; x: number; y: number; z: number; near: boolean } | { kind: 'verity'; pid: string; what: string };
 
 const MOB: Record<MobKind, { hp: number; speed: number; dmg: number; hw: number; h: number; range: number }> = {
@@ -71,10 +72,17 @@ export interface Game {
   changes: [number, number][];
   events: GEvent[]; nextId: number; rand: () => number; spawnT: number;
   mods: Set<ModId>;
+  /** Hornos y cofres colocados (por índice del bloque): lo que tienen dentro. */
+  boxes: Map<number, Box>;
 }
+/** Contenido de un horno (entrada, combustible, resultado) o un cofre (27 casillas). */
+export interface Box { kind: 'horno' | 'cofre'; slots: Slot[]; burn: number; burnMax: number; prog: number }
+export const CHEST_SLOTS = 27;
+export const FURNACE = { IN: 0, FUEL: 1, OUT: 2 } as const;
+const newBox = (b: number): Box => ({ kind: b === B.Cofre ? 'cofre' : 'horno', slots: Array.from({ length: b === B.Cofre ? CHEST_SLOTS : 3 }, () => null), burn: 0, burnMax: 0, prog: 0 });
 
 export function newGame(seed: number, rand: () => number = Math.random, mods: ModId[] = []): Game {
-  return { world: generate(seed), seed, time: DAY_SECONDS * 0.05, players: [], mobs: [], arrows: [], edits: new Map(), changes: [], events: [], nextId: 1, rand, spawnT: 3, mods: new Set(mods.filter(isMod)) };
+  return { world: generate(seed), seed, time: DAY_SECONDS * 0.05, players: [], mobs: [], arrows: [], edits: new Map(), changes: [], events: [], nextId: 1, rand, spawnT: 3, mods: new Set(mods.filter(isMod)), boxes: new Map() };
 }
 
 /** De 0 a 1 a lo largo del día: 0 amanece, 0,25 mediodía, 0,5 anochece, 0,75 medianoche. */
@@ -185,6 +193,7 @@ export function place(g: Game, pid: string): boolean {
   const d = lookDir(p.input.yaw, Math.max(-1.55, Math.min(1.55, p.input.pitch))); // la mirada más reciente
   const hit = raycast(g.world, p.body.x, p.body.y + EYE, p.body.z, d[0], d[1], d[2], REACH);
   if (!hit || !g.world.inside(hit.px, hit.py, hit.pz) || g.world.get(hit.px, hit.py, hit.pz) !== B.Aire) return false;
+  if (USABLE.has(g.world.get(hit.x, hit.y, hit.z))) return false; // se usa, no se construye encima
   const b = def.block;
   if (b === B.Antorcha && !isSolid(g.world.get(hit.px, hit.py - 1, hit.pz)) && !isSolid(g.world.get(hit.x, hit.y, hit.z))) return false;
   if (BLOCKS[b].solid) {
@@ -196,6 +205,7 @@ export function place(g: Game, pid: string): boolean {
   }
   removeItem(p.inv, b, 1);
   setBlock(g, hit.px, hit.py, hit.pz, b);
+  if (b === B.Horno || b === B.Cofre) g.boxes.set(World.index(hit.px, hit.py, hit.pz), newBox(b));
   g.events.push({ kind: 'place', pid, x: hit.px, y: hit.py, z: hit.pz, b });
   return true;
 }
@@ -297,6 +307,8 @@ function stepPlayer(g: Game, p: Player, dt: number) {
   if (p.mine.t >= p.mine.need) {
     const drop = dropOf(b, held(p));
     setBlock(g, hit.x, hit.y, hit.z, B.Aire);
+    const bi = World.index(hit.x, hit.y, hit.z), box = g.boxes.get(bi);
+    if (box) { for (const s of box.slots) if (s) addItem(p.inv, s.id, s.n); g.boxes.delete(bi); }
     // Una antorcha sin apoyo cae con el bloque
     if (g.world.get(hit.x, hit.y + 1, hit.z) === B.Antorcha) { setBlock(g, hit.x, hit.y + 1, hit.z, B.Aire); addItem(p.inv, B.Antorcha, 1); }
     if (drop !== null) { addItem(p.inv, drop, 1); g.events.push({ kind: 'pickup', pid: p.id, item: drop, n: 1 }); }
@@ -310,7 +322,7 @@ function stepPlayer(g: Game, p: Player, dt: number) {
 function dark(g: Game, x: number, y: number, z: number): boolean {
   const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
   for (let dx = -5; dx <= 5; dx++) for (let dy = -3; dy <= 3; dy++) for (let dz = -5; dz <= 5; dz++)
-    if (g.world.get(xi + dx, yi + dy, zi + dz) === B.Antorcha) return false;
+    if (lightOf(g.world.get(xi + dx, yi + dy, zi + dz))) return false;
   const covered = g.world.top(xi, zi) > yi;
   return covered || isNight(g);
 }
@@ -426,6 +438,7 @@ function stepMob(g: Game, m: Mob, dt: number) {
 /** Avanza el mundo `dt` segundos. */
 export function step(g: Game, dt: number) {
   g.time += dt;
+  stepFurnaces(g, dt);
   for (const p of g.players) stepPlayer(g, p, dt);
   g.spawnT -= dt;
   if (g.spawnT <= 0) { g.spawnT = g.mods.has('terror') ? 1.2 : 2; trySpawn(g); }
@@ -478,4 +491,97 @@ export function verityCommand(g: Game, pid: string, c: VerityCmd): boolean {
   }
   g.events.push({ kind: 'verity', pid, what: c.k });
   return true;
+}
+
+// ---------- Hornos y cofres ----------
+
+/** Busca el horno o cofre de esa casilla (lo crea si hace falta, p. ej. en un mundo antiguo). */
+function boxAt(g: Game, x: number, y: number, z: number): Box | null {
+  const b = g.world.get(x, y, z);
+  if (b !== B.Horno && b !== B.HornoEncendido && b !== B.Cofre) return null;
+  const i = World.index(x, y, z);
+  let box = g.boxes.get(i);
+  if (!box) g.boxes.set(i, (box = newBox(b === B.HornoEncendido ? B.Horno : b)));
+  return box;
+}
+export const getBox = boxAt;
+
+/** ¿Llega el jugador a esa casilla? (el servidor lo comprueba siempre) */
+function reaches(p: Player, x: number, y: number, z: number) {
+  return Math.hypot(x + 0.5 - p.body.x, y + 0.5 - (p.body.y + EYE), z + 0.5 - p.body.z) <= REACH + 1;
+}
+
+/** Qué se abre al usar el bloque que el jugador tiene delante (mesa, horno o cofre), o null. */
+export function useTarget(g: Game, p: Player, yaw = p.input.yaw, pitch = p.input.pitch): { what: 'mesa' | 'horno' | 'cofre'; x: number; y: number; z: number } | null {
+  const d = lookDir(yaw, Math.max(-1.55, Math.min(1.55, pitch)));
+  const hit = raycast(g.world, p.body.x, p.body.y + EYE, p.body.z, d[0], d[1], d[2], REACH);
+  if (!hit) return null;
+  const b = g.world.get(hit.x, hit.y, hit.z);
+  if (!USABLE.has(b)) return null;
+  return { what: b === B.Mesa ? 'mesa' : b === B.Cofre ? 'cofre' : 'horno', x: hit.x, y: hit.y, z: hit.z };
+}
+
+/**
+ * Mover objetos entre el inventario y un horno o cofre.
+ * - 'put': de la casilla `inv` del inventario al horno/cofre (en el horno va solo a entrada o combustible, según lo que sea).
+ * - 'take': de la casilla `slot` del horno/cofre al inventario.
+ */
+export function boxMove(g: Game, pid: string, x: number, y: number, z: number, op: 'put' | 'take', index: number): boolean {
+  const p = getPlayer(g, pid);
+  if (!p || !p.alive || !Number.isInteger(index) || !reaches(p, x, y, z)) return false;
+  const box = boxAt(g, x, y, z);
+  if (!box) return false;
+  if (op === 'take') {
+    const s = box.slots[index];
+    if (!s) return false;
+    const left = addItem(p.inv, s.id, s.n);
+    box.slots[index] = left ? { id: s.id, n: left } : null;
+    return left < s.n;
+  }
+  const s = p.inv[index];
+  if (!s) return false;
+  let to: number[];
+  if (box.kind === 'horno') {
+    if (SMELT[s.id] !== undefined) to = [FURNACE.IN];
+    else if (FUEL[s.id] !== undefined) to = [FURNACE.FUEL];
+    else return false; // ni se funde ni arde
+  } else to = box.slots.map((_, i) => i);
+  const max = ITEMS.get(s.id)?.stack ?? 64;
+  let n = s.n;
+  for (const i of to) { const t = box.slots[i]; if (t && t.id === s.id && t.n < max) { const k = Math.min(n, max - t.n); t.n += k; n -= k; } }
+  for (const i of to) if (n > 0 && !box.slots[i]) { box.slots[i] = { id: s.id, n }; n = 0; }
+  if (n === s.n) return false;
+  p.inv[index] = n ? { id: s.id, n } : null;
+  return true;
+}
+
+/** Los hornos funden solos con el tiempo, aunque nadie los mire. Encendidos, dan luz. */
+function stepFurnaces(g: Game, dt: number) {
+  for (const [i, box] of g.boxes) {
+    if (box.kind !== 'horno') continue;
+    const x = i % W, z = Math.floor(i / W) % W, y = Math.floor(i / (W * W));
+    const input = box.slots[FURNACE.IN], out = box.slots[FURNACE.OUT];
+    const result = input ? SMELT[input.id] : undefined;
+    const canSmelt = result !== undefined && (!out || (out.id === result && out.n < (ITEMS.get(result)?.stack ?? 64)));
+    if (box.burn > 0) box.burn = Math.max(0, box.burn - dt);
+    if (canSmelt && box.burn <= 0) {
+      const fuel = box.slots[FURNACE.FUEL];
+      if (fuel && FUEL[fuel.id]) {
+        box.burn = box.burnMax = FUEL[fuel.id]!;
+        fuel.n--; if (!fuel.n) box.slots[FURNACE.FUEL] = null;
+      }
+    }
+    if (canSmelt && box.burn > 0) {
+      box.prog += dt;
+      if (box.prog >= SMELT_SECONDS) {
+        box.prog = 0;
+        input!.n--; if (!input!.n) box.slots[FURNACE.IN] = null;
+        if (out) out.n++; else box.slots[FURNACE.OUT] = { id: result!, n: 1 };
+        g.events.push({ kind: 'smelt', x, y, z, item: result! });
+      }
+    } else box.prog = 0;
+    // Cambia el aspecto del horno: encendido mientras arde
+    const want = box.burn > 0 ? B.HornoEncendido : B.Horno;
+    if (g.world.get(x, y, z) !== want) setBlock(g, x, y, z, want);
+  }
 }

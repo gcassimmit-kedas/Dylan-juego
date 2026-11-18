@@ -20,7 +20,7 @@ const TIER_NAME: Record<Tier, string> = { madera: 'de madera', piedra: 'de piedr
 const TYPE_NAME: Record<ToolType, string> = { pico: 'Pico', hacha: 'Hacha', pala: 'Pala', espada: 'Espada' };
 
 export const ITEMS = new Map<number, ItemDef>();
-BLOCKS.forEach((b, id) => { if (id !== B.Aire && id !== B.RocaBase) ITEMS.set(id, { id, name: b.name, stack: 64, block: id }); });
+BLOCKS.forEach((b, id) => { if (id !== B.Aire && id !== B.RocaBase && id !== B.HornoEncendido) ITEMS.set(id, { id, name: b.name, stack: 64, block: id }); });
 for (const [id, name] of [[I.Palo, 'Palo'], [I.Carbon, 'Carbón'], [I.LingoteHierro, 'Lingote de hierro'], [I.LingoteOro, 'Lingote de oro'], [I.Diamante, 'Diamante'],
   [I.Manzana, 'Manzana'], [I.CarnePodrida, 'Carne podrida'], [I.CarneAsada, 'Carne asada']] as const)
   ITEMS.set(id, { id, name, stack: 64 });
@@ -73,11 +73,21 @@ export const RECIPES: Recipe[] = [
   R('antorchas', B.Antorcha, 4, [[I.Carbon, 1], [I.Palo, 1]]),
   R('horno', B.Horno, 1, [[B.Adoquin, 8]], 'mesa'),
   ...TIERS.flatMap((tier) => TOOL_TYPES.map((type) => R(`${type}-${tier}`, toolId(type, tier), 1, [[TIER_MAT[tier], TOOL_COST[type]], [I.Palo, TOOL_STICKS[type]]], 'mesa'))),
-  R('lingote-hierro', I.LingoteHierro, 1, [[B.Hierro, 1], [I.Carbon, 1]], 'horno'),
-  R('lingote-oro', I.LingoteOro, 1, [[B.Oro, 1], [I.Carbon, 1]], 'horno'),
-  R('carne-asada', I.CarneAsada, 1, [[I.CarnePodrida, 1], [I.Carbon, 1]], 'horno'),
+  R('cofre', B.Cofre, 1, [[B.Tablas, 8]], 'mesa'),
 ];
 export const recipeById = new Map(RECIPES.map((r) => [r.id, r]));
+
+// ---------- Horno ----------
+
+/** Lo que se funde en el horno: entrada -> resultado. */
+export const SMELT: Partial<Record<number, number>> = {
+  [B.Hierro]: I.LingoteHierro, [B.Oro]: I.LingoteOro, [I.CarnePodrida]: I.CarneAsada, [B.Adoquin]: B.Piedra, [B.Tronco]: I.Carbon,
+};
+/** Combustible: segundos que arde cada unidad. */
+export const FUEL: Partial<Record<number, number>> = {
+  [I.Carbon]: 80, [B.Tronco]: 15, [B.Tablas]: 15, [B.Mesa]: 15, [B.Cofre]: 15, [I.Palo]: 5,
+};
+export const SMELT_SECONDS = 8;
 
 // ---------- Inventario ----------
 

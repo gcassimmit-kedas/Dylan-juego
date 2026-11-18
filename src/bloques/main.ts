@@ -7,11 +7,11 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { World, generate, surfaceHeight, raycast, moveBody, BLOCKS, B, W, type Tex, type Body } from './voxel.ts';
-import { newGame, addPlayer, step, place, craft, selectSlot, moveSlot, respawn, lookDir, sunLight, isNight, dayPhase, stationsNear, verityCommand,
+import { World, generate, surfaceHeight, raycast, moveBody, BLOCKS, B, W, USABLE, lightOf, type Tex, type Body } from './voxel.ts';
+import { newGame, addPlayer, step, place, craft, selectSlot, moveSlot, respawn, lookDir, sunLight, isNight, dayPhase, stationsNear, verityCommand, boxMove, getBox, FURNACE, type Box,
   walkSpeed, jumpSpeed, MODS, MOD_INFO, MAX_HP, MAX_FOOD, EYE, REACH, type Game, type GEvent, type Look, type MobKind, type ModId, type VerityCmd } from './game.ts';
 import { verity } from './verity.ts';
-import { ITEMS, RECIPES, HOTBAR, SLOTS, count, cannotCraft, itemName, toolId, type Slot, type Station, type Recipe } from './items.ts';
+import { ITEMS, RECIPES, HOTBAR, SLOTS, count, cannotCraft, itemName, toolId, SMELT, FUEL, SMELT_SECONDS, type Slot, type Station, type Recipe } from './items.ts';
 import type { IconName } from '../ui/icons.ts';
 import { MOB_KINDS, type NetP, type WorldInfo } from './protocol.ts';
 import { WorldNet } from './net.ts';
@@ -36,8 +36,8 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 if (isTouch) document.body.classList.add('touch');
 hydrateIcons();
 $('help').textContent = isTouch
-  ? 'Pulgar izquierdo: moverte · Arrastra a la derecha: mirar · Botón dorado: romper (mantén) · Botones: colocar y saltar.'
-  : 'WASD: moverte · Espacio: saltar · Ratón: mirar · Clic izquierdo (mantener): romper · Clic derecho: colocar · E: inventario · 1-9: barra.';
+  ? 'Pulgar izquierdo: moverte · Arrastra a la derecha: mirar · Botón dorado: romper (mantén) · Botón blanco: colocar, o usar mesa, horno y cofre.'
+  : 'WASD: moverte · Espacio: saltar · Clic izquierdo (mantener): romper · Clic derecho: colocar o usar mesa, horno y cofre · E: inventario · T: Verity.';
 const readStr = (k: string) => { try { return localStorage.getItem(k) ?? ''; } catch { return ''; } };
 const writeStr = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
 /** Versión publicada como Artifact de claude.ai: solo un jugador (allí no se puede conectar con el servidor). */
@@ -160,7 +160,7 @@ function applyChange(i: number, b: number) {
   const x = i % W, z = Math.floor(i / W) % W, y = Math.floor(i / (W * W));
   const was = world.get(x, y, z);
   world.set(x, y, z, b);
-  markDirty(x, z, was === B.Antorcha || b === B.Antorcha ? 9 : 1); // la luz de una antorcha llega lejos
+  markDirty(x, z, lightOf(was) || lightOf(b) ? 9 : 1); // la luz de una antorcha o un horno llega lejos
 }
 /** Carga un mundo entero (semilla + cambios) y prepara sus mallas y el paisaje del fondo. */
 function loadWorld(w: World) {
@@ -228,13 +228,14 @@ function lockPointer() {
   lockTried = true;
   try { const r = canvas.requestPointerLock?.() as unknown as Promise<void> | undefined; r?.catch?.(() => { /* sin captura: se mira arrastrando */ }); } catch { /* sin captura */ }
 }
-const inMenu = () => !$('inventory').hidden || !$('death').hidden || !$('verity').hidden || paused;
+const inMenu = () => !$('inventory').hidden || !$('death').hidden || !$('verity').hidden || !$('box').hidden || paused;
 
 addEventListener('keydown', (e) => {
   if (!playing) return;
   if (!$('verity').hidden) { if (e.code === 'Escape') closeVerity(); return; } // se está escribiendo a Verity
   if (e.code === 'Escape' || e.code === 'KeyP') {
     if (!$('inventory').hidden) { closeInventory(); return; }
+    if (!$('box').hidden) { closeBox(); return; }
     if ($('death').hidden) setPaused(!paused);
     return;
   }
@@ -359,8 +360,20 @@ function chooseSlot(i: number) {
   hudKey = '';
   showHeldName();
 }
+/** Bloque usable (mesa, horno, cofre) que tienes delante, mirado con el mundo propio. */
+function usableAhead(): { what: 'mesa' | 'horno' | 'cofre'; x: number; y: number; z: number } | null {
+  const d = lookDir(yaw, pitch);
+  const hit = raycast(world, me.body.x, me.body.y + EYE, me.body.z, d[0], d[1], d[2], REACH);
+  if (!hit) return null;
+  const b = world.get(hit.x, hit.y, hit.z);
+  if (!USABLE.has(b)) return null;
+  return { what: b === B.Mesa ? 'mesa' : b === B.Cofre ? 'cofre' : 'horno', x: hit.x, y: hit.y, z: hit.z };
+}
 function doPlace() {
   if (!playing || inMenu() || !me.alive) return;
+  // Usar una mesa, un horno o un cofre en vez de colocar algo
+  const use = usableAhead();
+  if (use) { placeSwing = 1; sfx.pickup(); if (use.what === 'mesa') openInventory(true); else openBox(use.what, use.x, use.y, use.z); return; }
   if (mode === 'solo' && game) {
     const p = game.players[0];
     p.input = { ...p.input, yaw, pitch };
@@ -464,6 +477,7 @@ renderMute();
 $('mute').addEventListener('click', () => { setMuted(!isMuted()); renderMute(); renderSettings(); });
 $('invBtn').innerHTML = icon('backpack');
 $('invBtn').addEventListener('click', () => toggleInventory());
+$('placeBtn').setAttribute('aria-label', 'Colocar bloque o usar mesa, horno y cofre');
 $('inviteBtn').innerHTML = icon('userPlus');
 $('inviteBtn').addEventListener('click', () => { setPaused(true); $<HTMLInputElement>('inviteLink').select(); });
 
@@ -512,8 +526,12 @@ function renderInventory() {
   }
 }
 function toggleInventory() { if ($('inventory').hidden) openInventory(); else closeInventory(); }
-function openInventory() {
+let atTable = false;
+function openInventory(table = false) {
   if (!playing || !me.alive) return;
+  atTable = table;
+  $('invKicker').textContent = table ? 'Usando' : 'Mochila';
+  $('invTitle').textContent = table ? 'Mesa de crafteo' : 'Inventario';
   picked = null;
   releaseTouches(); keys.clear();
   if (locked()) document.exitPointerLock();
@@ -630,7 +648,7 @@ function setViewModel(item: number | null) {
 // ---------- Eventos ----------
 const BLOCK_COLOR: Partial<Record<number, number>> = { [B.Hierba]: 0x6e9e3a, [B.Tierra]: 0x7a5a3c, [B.Piedra]: 0x8a8c8e, [B.Adoquin]: 0x7c7e80, [B.Tronco]: 0x6b4c2e,
   [B.Hojas]: 0x3f7a2e, [B.Tablas]: 0xa8834e, [B.Arena]: 0xdccb98, [B.Grava]: 0x7a7470, [B.Carbon]: 0x3a3a3c, [B.Hierro]: 0xd8a880, [B.Oro]: 0xfcde50, [B.Diamante]: 0x60e8e2,
-  [B.Mesa]: 0x9a6a3a, [B.Antorcha]: 0xffc85a, [B.Horno]: 0x6a6a6c };
+  [B.Mesa]: 0x9a6a3a, [B.Antorcha]: 0xffc85a, [B.Horno]: 0x6a6a6c, [B.HornoEncendido]: 0x6a6a6c, [B.Cofre]: 0x8a6236 };
 let shake = 0;
 function flushEvents(evs: GEvent[]) {
   for (const ev of evs) {
@@ -655,6 +673,7 @@ function flushEvents(evs: GEvent[]) {
       case 'mobHurt': sfx.hit(); break;
       case 'mobDie': fx.debris(ev.x, ev.y + 0.8, ev.z, ev.mob === 'zombi' ? 0x5f8c4e : ev.mob === 'esqueleto' ? 0xd9d4c4 : 0x2b2420, 12, 5, 0.18); fx.smoke(ev.x, ev.y + 0.5, ev.z, 4, 0x6b6b6b, 0.9, 1); sfx.kill(); break;
       case 'shoot': sfx.enemyShoot(); break;
+      case 'smelt': if (Math.hypot(ev.x - me.body.x, ev.z - me.body.z) < 8) sfx.pickup(); if (!$('box').hidden) renderBox(); break;
       case 'eat': if (mine) { sfx.pickup(); toast(`Te has comido: ${itemName(ev.item).toLowerCase()}`); } break;
       case 'vanish':
         if (ev.near) { sfx.gameover(); hurtFlash.classList.add('on'); setTimeout(() => hurtFlash.classList.remove('on'), 200); shake = Math.max(shake, 0.5); banner('...', '', 'Estaba justo detrás de ti'); }
@@ -669,7 +688,7 @@ function flushEvents(evs: GEvent[]) {
 function showDeath() {
   releaseTouches(); keys.clear();
   if (locked()) document.exitPointerLock();
-  $('inventory').hidden = true;
+  $('inventory').hidden = true; closeBox(false);
   setTimeout(() => { if (!me.alive && playing) { $('death').hidden = false; $('respawnBtn').focus(); } }, 700);
 }
 $('respawnBtn').addEventListener('click', () => {
@@ -725,6 +744,7 @@ function toTitle() {
   playing = false; paused = false;
   if (locked()) document.exitPointerLock();
   document.body.classList.remove('playing', 'multi', 'terror');
+  $('box').hidden = true; openAt = null;
   closeVerity(false);
   for (const id of ['pause', 'inventory', 'death']) $(id).hidden = true;
   clearScene();
@@ -1221,6 +1241,9 @@ function frame(now: number) {
     viewArm.rotation.set(0.12 - sw * 1.0, 0.18 + sw * 0.5, -sw * 0.4);
   }
   crosshair.classList.toggle('hit', !!hit);
+  if (!$('box').hidden) { boxRefreshT -= dt; if (boxRefreshT <= 0) { boxRefreshT = 0.25; renderBox(); } }
+  const usable = !!hit && USABLE.has(world.get(hit.x, hit.y, hit.z));
+  if (usable !== placeShowsUse) { placeShowsUse = usable; $('placeBtn').innerHTML = icon(usable ? 'pointer' : 'box'); }
   fx.update(dt);
 
   const cx = playing ? me.body.x : W / 2, cz = playing ? me.body.z : W / 2;
@@ -1241,7 +1264,7 @@ requestAnimationFrame(frame);
 // Para pruebas automatizadas
 Object.assign(window, {
   __mode: () => mode, __me: () => me, __game: () => game, __world: () => world, __look: (y: number, p: number) => { yaw = y; pitch = p; },
-  __paused: () => paused, __others: () => others, __joined: () => joinedWorld, __time: () => time, __mobs: () => mobs,
+  __paused: () => paused, __net: () => net, __use: () => doPlace(), __ahead: () => usableAhead(), __inMenu: () => inMenu(), __playing: () => playing, __others: () => others, __joined: () => joinedWorld, __time: () => time, __mobs: () => mobs,
 });
 
 
@@ -1385,3 +1408,83 @@ function openGames() {
 }
 $('gamesBtn').addEventListener('click', openGames);
 $('gamesClose').addEventListener('click', () => { $('games').hidden = true; $('gamesBtn').focus(); });
+
+
+// ---------- Horno y cofre ----------
+let openAt: { what: 'horno' | 'cofre'; x: number; y: number; z: number } | null = null;
+let boxRefreshT = 0, placeShowsUse = false, boxOpenedAt = 0;
+/** Lo que hay dentro del horno o cofre abierto (en solo, de la partida; en línea, lo que manda el servidor). */
+function openBoxData(): Box | null {
+  if (!openAt) return null;
+  if (mode === 'solo' && game) return getBox(game, openAt.x, openAt.y, openAt.z);
+  const b = net.snap?.box;
+  return b && b.x === openAt.x && b.y === openAt.y && b.z === openAt.z ? b : null;
+}
+function openBox(what: 'horno' | 'cofre', x: number, y: number, z: number) {
+  openAt = { what, x, y, z };
+  boxOpenedAt = performance.now();
+  releaseTouches(); keys.clear();
+  if (locked()) document.exitPointerLock();
+  if (mode === 'multi') net.send({ t: 'mopen', x, y, z });
+  $('boxKicker').textContent = 'Usando';
+  $('boxTitle').textContent = what === 'horno' ? 'Horno' : 'Cofre';
+  $('boxHelp').textContent = what === 'horno'
+    ? 'Pon arriba lo que quieras fundir (mineral de hierro u oro, adoquín, troncos, carne) y abajo combustible (carbón o madera). Funde solo, aunque cierres.'
+    : 'Guarda aquí lo que no quieras llevar encima. Lo ven todos los del mundo.';
+  $('furnaceUi').hidden = what !== 'horno';
+  $('chestUi').hidden = what !== 'cofre';
+  $('box').hidden = false;
+  renderBox();
+  $('boxClose').focus({ preventScroll: true });
+}
+function closeBox(relock = true) {
+  if ($('box').hidden) return;
+  $('box').hidden = true;
+  if (mode === 'multi') net.send({ t: 'mclose' });
+  openAt = null;
+  if (relock && playing) lockPointer();
+}
+$('boxClose').addEventListener('click', () => closeBox());
+function moveBox(op: 'put' | 'take', i: number) {
+  if (!openAt) return;
+  const { x, y, z } = openAt;
+  if (mode === 'solo' && game) { if (boxMove(game, myId, x, y, z, op, i)) { sfx.pickup(); hudKey = ''; } else sfx.hit(); renderBox(); return; }
+  net.send({ t: 'mbox', x, y, z, op, i });
+  sfx.pickup();
+}
+function slotButton(s: Slot, label: string, onClick: () => void, dim = false) {
+  const b = document.createElement('button');
+  b.className = `slot${dim ? ' dim' : ''}`;
+  b.innerHTML = slotHtml(s);
+  b.setAttribute('aria-label', `${label}: ${s ? `${itemName(s.id)}${s.n > 1 ? `, ${s.n}` : ''}` : 'vacía'}`);
+  b.addEventListener('click', onClick);
+  return b;
+}
+function renderBox() {
+  const box = openBoxData();
+  if (!openAt) return;
+  if (!box) {
+    // En línea, lo de dentro tarda un momento en llegar del servidor; si no llega, es que alguien lo ha roto
+    if (mode === 'solo' || performance.now() - boxOpenedAt > 2000) { closeBox(); toast('Ya no está'); }
+    return;
+  }
+  if (box.kind === 'horno') {
+    const put = (host: string, i: number, label: string) => { const h = $(host); h.innerHTML = ''; h.appendChild(slotButton(box.slots[i], label, () => moveBox('take', i))); };
+    put('fIn', FURNACE.IN, 'Entrada'); put('fFuel', FURNACE.FUEL, 'Combustible'); put('fOut', FURNACE.OUT, 'Resultado');
+    const burn = box.burnMax ? box.burn / box.burnMax : 0, prog = box.prog / SMELT_SECONDS;
+    $('fBurn').style.transform = `scaleX(${burn})`; $('fProg').style.transform = `scaleX(${prog})`;
+    $('fBurn').parentElement!.parentElement!.setAttribute('aria-valuenow', String(Math.round(burn * 100)));
+    $('fProg').parentElement!.parentElement!.setAttribute('aria-valuenow', String(Math.round(prog * 100)));
+  } else {
+    const g = $('chestUi'); g.innerHTML = '';
+    box.slots.forEach((s, i) => g.appendChild(slotButton(s, `Cofre ${i + 1}`, () => moveBox('take', i))));
+  }
+  const inv = $('boxInv'), hot = $('boxHot');
+  inv.innerHTML = ''; hot.innerHTML = '';
+  for (let i = 0; i < SLOTS; i++) {
+    const s = me.inv[i] ?? null;
+    // En el horno, lo que no se funde ni arde se ve apagado
+    const dim = box.kind === 'horno' && !!s && SMELT[s.id] === undefined && FUEL[s.id] === undefined;
+    (i < HOTBAR ? hot : inv).appendChild(slotButton(s, i < HOTBAR ? `Barra rápida ${i + 1}` : `Mochila ${i - HOTBAR + 1}`, () => { if (s && !dim) moveBox('put', i); else if (dim) toast('Eso no se funde ni sirve de combustible'); }, dim));
+  }
+}

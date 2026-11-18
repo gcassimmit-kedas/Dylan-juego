@@ -5,7 +5,8 @@ import * as THREE from 'three';
 export type TexName =
   | 'grass' | 'grassSide' | 'dirt' | 'stone' | 'cobble' | 'planks' | 'log' | 'logTop' | 'leaves'
   | 'sand' | 'crate' | 'metal' | 'metalDark' | 'gold' | 'brick' | 'glow'
-  | 'gravel' | 'oreCoal' | 'oreIron' | 'oreGold' | 'oreDiamond' | 'bedrock' | 'tableTop' | 'tableSide' | 'torch' | 'furnace' | 'furnaceTop';
+  | 'gravel' | 'oreCoal' | 'oreIron' | 'oreGold' | 'oreDiamond' | 'bedrock' | 'tableTop' | 'tableSide' | 'torch' | 'furnace' | 'furnaceTop'
+  | 'furnaceOn' | 'chest' | 'chestTop';
 
 const N = 16;
 type RGB = [number, number, number];
@@ -155,6 +156,23 @@ const PAINT: Record<TexName, Painter> = {
     return p;
   },
   furnaceTop: (x, y, r) => PAINT.stone(x, y, r),
+  furnaceOn: (x, y, r) => {
+    const mouth = x >= 4 && x <= 11 && y >= 8 && y <= 12;
+    if (mouth) { const hot = (x * 7 + y * 3) % 5; return { c: y >= 10 ? [255, 190 + hot * 10, 60] : [255, 120 + hot * 15, 30], h: 0 }; }
+    return PAINT.cobble(x, y, r);
+  },
+  chest: (x, y, r) => {
+    const rim = x === 0 || x === 15 || y === 0 || y === 15 || y === 6;
+    const latch = x >= 7 && x <= 8 && y >= 5 && y <= 8;
+    if (latch) return { c: y === 7 ? [60, 60, 64] : [196, 196, 204], h: 1 };
+    const p = PAINT.planks(x, y, r);
+    return rim ? { c: shade([96, 66, 34], 0.9), h: 1 } : { c: shade(p.c, 0.9), h: p.h };
+  },
+  chestTop: (x, y, r) => {
+    const rim = x === 0 || x === 15 || y === 0 || y === 15;
+    const p = PAINT.planks(x, y, r);
+    return rim ? { c: shade([96, 66, 34], 0.9), h: 1 } : { c: shade(p.c, 0.9), h: p.h };
+  },
 };
 /** Mineral: piedra con manchas de color. */
 function ore(x: number, y: number, r: () => number, color: RGB, k: number): Px {
@@ -208,6 +226,7 @@ const SEED: Record<TexName, number> = {
   grass: 11, grassSide: 12, dirt: 13, stone: 14, cobble: 15, planks: 16, log: 17, logTop: 18, leaves: 19,
   sand: 20, crate: 21, metal: 22, metalDark: 23, gold: 24, brick: 25, glow: 26,
   gravel: 27, oreCoal: 28, oreIron: 29, oreGold: 30, oreDiamond: 31, bedrock: 32, tableTop: 33, tableSide: 34, torch: 35, furnace: 36, furnaceTop: 37,
+  furnaceOn: 38, chest: 39, chestTop: 40,
 };
 const RELIEF: Partial<Record<TexName, number>> = {
   oreCoal: 2, oreIron: 2, oreGold: 2, oreDiamond: 2, gravel: 1.6, bedrock: 1.4, furnace: 1.8, cobble: 2.2, brick: 2, planks: 1.6, crate: 1.8, metal: 1.6, metalDark: 1.6, stone: 1.4, log: 1.6 };

@@ -114,16 +114,6 @@ test('crafteo: tablas y palos a mano; el pico necesita una mesa de crafteo cerca
   assert.equal(count(p.inv, B.Tablas), 8 - 2 - 3);
 });
 
-test('el lingote de hierro se hace en el horno con mineral y carbón', () => {
-  const { g, p } = flatGame();
-  addItem(p.inv, B.Hierro, 1); addItem(p.inv, I.Carbon, 1);
-  g.world.set(22, 11, 20, B.Mesa);
-  assert.equal(craft(g, 'p1', 'lingote-hierro'), false);
-  g.world.set(22, 11, 21, B.Horno);
-  assert.ok(craft(g, 'p1', 'lingote-hierro'));
-  assert.equal(count(p.inv, I.LingoteHierro), 1);
-});
-
 test('todas las recetas dan objetos que existen', () => {
   for (const r of RECIPES) assert.ok(r.n > 0 && r.needs.length > 0, r.id);
 });
@@ -267,4 +257,74 @@ test('Verity da objetos, cura y cambia la hora; no da objetos que no existen', (
   p.hp = 3; verityCommand(g, 'p1', { k: 'curar' }); assert.equal(p.hp, MAX_HP);
   verityCommand(g, 'p1', { k: 'noche' }); assert.ok(isNight(g));
   verityCommand(g, 'p1', { k: 'dia' }); assert.ok(!isNight(g));
+});
+
+// ---------- Mesa, horno y cofre ----------
+import { useTarget, boxMove, getBox, FURNACE, CHEST_SLOTS } from './game.ts';
+import { SMELT_SECONDS } from './items.ts';
+
+function withBlock(b: number) {
+  const r = flatGame();
+  addItem(r.p.inv, b, 1);
+  lookAt(r.p, 22, 10, 20, false);
+  assert.ok(place(r.g, 'p1'));
+  return r;
+}
+
+test('mirar una mesa de crafteo y usarla la abre (y no se coloca nada encima)', () => {
+  const { g, p } = withBlock(B.Mesa);
+  lookAt(p, 22, 11, 20, false);
+  assert.equal(useTarget(g, p)?.what, 'mesa');
+  addItem(p.inv, B.Tierra, 1);
+  p.sel = p.inv.findIndex((s) => s?.id === B.Tierra);
+  assert.equal(place(g, 'p1'), false);
+  assert.equal(g.world.get(22, 12, 20), B.Aire);
+});
+
+test('el horno funde mineral de hierro con carbón con el tiempo, y se enciende mientras arde', () => {
+  const { g, p } = withBlock(B.Horno);
+  addItem(p.inv, B.Hierro, 2); addItem(p.inv, I.Carbon, 1);
+  const at = (id: number) => p.inv.findIndex((s) => s?.id === id);
+  assert.ok(boxMove(g, 'p1', 22, 11, 20, 'put', at(B.Hierro)));
+  assert.ok(boxMove(g, 'p1', 22, 11, 20, 'put', at(I.Carbon)));
+  const box = getBox(g, 22, 11, 20)!;
+  assert.equal(box.slots[FURNACE.IN]?.n, 2);
+  run(g, 1);
+  assert.equal(g.world.get(22, 11, 20), B.HornoEncendido);
+  run(g, SMELT_SECONDS);
+  assert.equal(box.slots[FURNACE.OUT]?.id, I.LingoteHierro);
+  run(g, SMELT_SECONDS);
+  assert.equal(box.slots[FURNACE.OUT]?.n, 2);
+  assert.ok(boxMove(g, 'p1', 22, 11, 20, 'take', FURNACE.OUT));
+  assert.equal(count(p.inv, I.LingoteHierro), 2);
+  run(g, 90);
+  assert.equal(g.world.get(22, 11, 20), B.Horno, 'sin combustible se apaga');
+});
+
+test('al horno solo entran cosas que se funden o que arden, cada una en su sitio', () => {
+  const { g, p } = withBlock(B.Horno);
+  addItem(p.inv, B.Tierra, 1); addItem(p.inv, B.Tablas, 4);
+  assert.equal(boxMove(g, 'p1', 22, 11, 20, 'put', p.inv.findIndex((s) => s?.id === B.Tierra)), false);
+  assert.ok(boxMove(g, 'p1', 22, 11, 20, 'put', p.inv.findIndex((s) => s?.id === B.Tablas)));
+  assert.equal(getBox(g, 22, 11, 20)!.slots[FURNACE.FUEL]?.id, B.Tablas);
+});
+
+test('el cofre guarda cosas y al romperlo te devuelve todo', () => {
+  const { g, p } = withBlock(B.Cofre);
+  assert.equal(getBox(g, 22, 11, 20)!.slots.length, CHEST_SLOTS);
+  addItem(p.inv, B.Tablas, 30);
+  assert.ok(boxMove(g, 'p1', 22, 11, 20, 'put', p.inv.findIndex((s) => s?.id === B.Tablas)));
+  assert.equal(count(p.inv, B.Tablas), 0);
+  addItem(p.inv, toolId('hacha', 'piedra'), 1); p.sel = p.inv.findIndex((s) => s !== null);
+  lookAt(p, 22, 11, 20); run(g, 3);
+  assert.equal(g.world.get(22, 11, 20), B.Aire);
+  assert.equal(count(p.inv, B.Tablas), 30);
+  assert.equal(count(p.inv, B.Cofre), 1);
+});
+
+test('no se puede usar un horno desde lejos (lo comprueba el servidor)', () => {
+  const { g, p } = withBlock(B.Horno);
+  addItem(p.inv, B.Hierro, 1);
+  p.body.x = 40;
+  assert.equal(boxMove(g, 'p1', 22, 11, 20, 'put', p.inv.findIndex((s) => s?.id === B.Hierro)), false);
 });

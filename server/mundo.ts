@@ -3,11 +3,13 @@
 // Un mundo vacío se guarda 10 minutos en memoria por si alguien vuelve con el enlace; después desaparece.
 import { WebSocket } from 'ws';
 import { randomBytes } from 'node:crypto';
-import { newGame, addPlayer, removePlayer, step, place, craft, selectSlot, moveSlot, respawn, getPlayer, verityCommand, isMod, type Game, type Look, type ModId, type VerityCmd } from '../src/bloques/game.ts';
+import { newGame, addPlayer, removePlayer, step, place, craft, selectSlot, moveSlot, respawn, getPlayer, verityCommand, isMod, boxMove, getBox, type Game, type Look, type ModId, type VerityCmd } from '../src/bloques/game.ts';
 import { encodeSnapshot, clampMInput, isLook, MAX_PLAYERS, TICK_HZ, type MClientMsg, type MServerMsg, type WorldInfo } from '../src/bloques/protocol.ts';
 import { randomServerName, roomPaused, reportsToKick } from '../src/shooter/protocol.ts';
 
-export interface MClient { ws: WebSocket; pid: string; name: string; look: Look; world: WorldRoom | null; paused: boolean; lastInput: number }
+export interface MClient { ws: WebSocket; pid: string; name: string; look: Look; world: WorldRoom | null; paused: boolean; lastInput: number;
+  /** Horno o cofre que tiene abierto (para mandarle lo que hay dentro). */
+  open?: [number, number, number] | null }
 export interface WorldRoom { id: string; name: string; game: Game; clients: Map<string, MClient>; tick: number; emptySince: number; reports: Map<string, Set<string>> }
 
 const worlds = new Map<string, WorldRoom>();
@@ -43,7 +45,7 @@ export function leave(c: MClient) {
   if (!r) return;
   r.clients.delete(c.pid);
   removePlayer(r.game, c.pid);
-  c.world = null; c.paused = false;
+  c.world = null; c.paused = false; c.open = null;
   if (r.clients.size === 0) { r.emptySince = Date.now(); r.game.events.length = 0; r.game.changes.length = 0; }
 }
 
@@ -65,9 +67,19 @@ function tick(r: WorldRoom) {
   const events = g.events.splice(0), changes = g.changes.splice(0);
   for (const c of r.clients.values())
     if (c.ws.readyState === WebSocket.OPEN && c.ws.bufferedAmount < 512 * 1024)
-      c.ws.send(JSON.stringify({ t: 'ms', s: encodeSnapshot(g, r.tick, c.pid, events, changes) } satisfies MServerMsg));
+      c.ws.send(JSON.stringify({ t: 'ms', s: encodeSnapshot(g, r.tick, c.pid, events, changes, openBox(c)) } satisfies MServerMsg));
 }
 setInterval(() => { for (const r of worlds.values()) tick(r); }, 1000 / TICK_HZ);
+
+/** El horno o cofre que tiene abierto el jugador, si sigue existiendo. */
+function openBox(c: MClient) {
+  const g = c.world?.game;
+  if (!g || !c.open) return undefined;
+  const [x, y, z] = c.open;
+  const box = getBox(g, x, y, z);
+  if (!box) { c.open = null; return undefined; }
+  return { x, y, z, ...box };
+}
 
 /** Denuncias: se guarda lo mínimo (nombre denunciado, mundo, fecha). Con varias de jugadores distintos, se le retira. */
 function report(c: MClient, targetPid: string, save: (entry: object) => void) {
@@ -112,6 +124,13 @@ export function onWorldMessage(c: MClient, m: MClientMsg, save: (entry: object) 
     case 'mpause': c.paused = !!m.v; return true;
     case 'mleave': leave(c); return true;
     case 'mcmd': if (g && m.c && typeof m.c === 'object') verityCommand(g, c.pid, m.c as VerityCmd); return true;
+    case 'mopen': {
+      const [x, y, z] = [m.x, m.y, m.z].map((v) => Math.floor(Number(v)));
+      c.open = g && [x, y, z].every(Number.isFinite) && getBox(g, x, y, z) ? [x, y, z] : null;
+      return true;
+    }
+    case 'mclose': c.open = null; return true;
+    case 'mbox': if (g && (m.op === 'put' || m.op === 'take')) boxMove(g, c.pid, Math.floor(Number(m.x)), Math.floor(Number(m.y)), Math.floor(Number(m.z)), m.op, Math.floor(Number(m.i))); return true;
     case 'mreport': if (typeof m.pid === 'string') report(c, m.pid, save); return true;
   }
   return false;

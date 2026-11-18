@@ -3,7 +3,7 @@
 // Todo se entiende en el propio dispositivo: el texto no sale de él. Al servidor solo llega la orden.
 // Lógica pura y testeable.
 import { World, B, BLOCKS, W, H } from './voxel.ts';
-import { ITEMS, RECIPES, I, toolId, itemName, TIERS, type ToolType, type Tier } from './items.ts';
+import { ITEMS, RECIPES, I, toolId, itemName, TIERS, SMELT, type ToolType, type Tier } from './items.ts';
 import { DAY_SECONDS, dayPhase, isNight, type VerityCmd } from './game.ts';
 
 export interface VerityCtx { world: World; x: number; y: number; z: number; yaw: number; time: number; terror: boolean }
@@ -22,7 +22,7 @@ const NAMES: [string, number][] = [
   ['tabla', B.Tablas], ['madera', B.Tablas], ['tronco', B.Tronco], ['palo', I.Palo], ['piedra', B.Adoquin], ['adoquin', B.Adoquin], ['roca', B.Adoquin],
   ['tierra', B.Tierra], ['arena', B.Arena], ['grava', B.Grava], ['hoja', B.Hojas], ['hierba', B.Hierba], ['cesped', B.Hierba],
   ['carbon', I.Carbon], ['lingote de hierro', I.LingoteHierro], ['hierro', I.LingoteHierro], ['lingote de oro', I.LingoteOro], ['oro', I.LingoteOro],
-  ['diamante', I.Diamante], ['mesa de crafteo', B.Mesa], ['mesa', B.Mesa], ['horno', B.Horno], ['antorcha', B.Antorcha],
+  ['diamante', I.Diamante], ['mesa de crafteo', B.Mesa], ['mesa', B.Mesa], ['horno', B.Horno], ['antorcha', B.Antorcha], ['cofre', B.Cofre], ['baul', B.Cofre],
   ['manzana', I.Manzana], ['carne asada', I.CarneAsada], ['carne', I.CarneAsada], ['comida', I.CarneAsada],
 ];
 const TOOL_WORDS: [string, ToolType][] = [['pico', 'pico'], ['hacha', 'hacha'], ['pala', 'pala'], ['espada', 'espada']];
@@ -97,6 +97,8 @@ export function verity(text: string, ctx: VerityCtx, rand: () => number = Math.r
       const where = rec.station === 'mano' ? 'Puedes hacerlo en cualquier sitio' : rec.station === 'mesa' ? 'Necesitas una mesa de crafteo cerca' : 'Necesitas un horno cerca';
       return r(`${itemName(rec.out)}: ${needs}. ${where}. Abre el inventario y pulsa Fabricar.`);
     }
+    const from = id !== null ? Object.entries(SMELT).find(([, out]) => out === id) : undefined;
+    if (from) return r(`${itemName(id!)}: pon ${itemName(Number(from[0])).toLowerCase()} en un horno con combustible (carbón o madera) y espera. Usa el horno para abrirlo.`);
     if (id !== null && ITEMS.get(id)?.block !== undefined) return r(`${itemName(id)} no se fabrica: se consigue rompiendo bloques en el mundo.`);
     if (id === I.Diamante) return r('Los diamantes se sacan del mineral de diamante, muy abajo, con un pico de hierro.');
   }

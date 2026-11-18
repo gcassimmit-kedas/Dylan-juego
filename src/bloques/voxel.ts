@@ -6,11 +6,12 @@
 
 export const B = {
   Aire: 0, Hierba: 1, Tierra: 2, Piedra: 3, Adoquin: 4, Tronco: 5, Hojas: 6, Tablas: 7, Arena: 8, Grava: 9,
-  Carbon: 10, Hierro: 11, Oro: 12, Diamante: 13, RocaBase: 14, Mesa: 15, Antorcha: 16, Horno: 17,
+  Carbon: 10, Hierro: 11, Oro: 12, Diamante: 13, RocaBase: 14, Mesa: 15, Antorcha: 16, Horno: 17, Cofre: 18, HornoEncendido: 19,
 } as const;
 export type Tex =
   | 'grass' | 'grassSide' | 'dirt' | 'stone' | 'cobble' | 'planks' | 'log' | 'logTop' | 'leaves' | 'sand' | 'gravel'
-  | 'oreCoal' | 'oreIron' | 'oreGold' | 'oreDiamond' | 'bedrock' | 'tableTop' | 'tableSide' | 'torch' | 'furnace' | 'furnaceTop';
+  | 'oreCoal' | 'oreIron' | 'oreGold' | 'oreDiamond' | 'bedrock' | 'tableTop' | 'tableSide' | 'torch' | 'furnace' | 'furnaceTop'
+  | 'furnaceOn' | 'chest' | 'chestTop';
 /** Herramienta que va mejor para cada bloque. */
 export type ToolKind = 'pico' | 'hacha' | 'pala' | null;
 
@@ -53,7 +54,12 @@ export const BLOCKS: BlockDef[] = [
   D('Mesa de crafteo', 2.5, 'hacha', ['tableTop', 'tableSide', 'planks']),
   D('Antorcha', 0, null, 'torch', { solid: false, see: true, light: 1 }),
   D('Horno', 3.5, 'pico', ['furnaceTop', 'furnace', 'furnaceTop'], { needs: 1 }),
+  D('Cofre', 2.5, 'hacha', ['chestTop', 'chest', 'chestTop']),
+  D('Horno encendido', 3.5, 'pico', ['furnaceTop', 'furnaceOn', 'furnaceTop'], { needs: 1, drop: 17, light: 0.8 }),
 ];
+/** Bloques que se usan (se abren) en vez de colocar algo encima. */
+export const USABLE = new Set<number>([B.Mesa, B.Horno, B.HornoEncendido, B.Cofre]);
+export const lightOf = (b: number) => BLOCKS[b]?.light ?? 0;
 export const isSolid = (b: number) => BLOCKS[b]?.solid ?? false;
 export const isSee = (b: number) => BLOCKS[b]?.see ?? true;
 
