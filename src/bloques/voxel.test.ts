@@ -1,42 +1,88 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generate, spawnPoint, raycast, moveBody, World, B, W, H, BLOCKS, type Body } from './voxel.ts';
+import { generate, generateChunk, spawnPoint, raycast, moveBody, biomeAt, surfaceHeight, key, unkey, World, B, H, CHUNK, BLOCKS, type Body } from './voxel.ts';
 
 const world = generate(12345);
-const count = (b: number) => { let n = 0; for (const v of world.blocks) if (v === b) n++; return n; };
+/** Cuenta bloques en una zona de 8 x 8 trozos alrededor del origen. */
+function census(w: World, r = 4) {
+  const n = new Map<number, number>(), maxY = new Map<number, number>();
+  for (let x = -r * CHUNK; x < r * CHUNK; x++) for (let z = -r * CHUNK; z < r * CHUNK; z++) for (let y = 0; y < H; y++) {
+    const b = w.get(x, y, z);
+    n.set(b, (n.get(b) ?? 0) + 1);
+    maxY.set(b, Math.max(maxY.get(b) ?? -1, y));
+  }
+  return { n: (b: number) => n.get(b) ?? 0, maxY: (b: number) => maxY.get(b) ?? -1 };
+}
+const c = census(world);
 
-test('la misma semilla genera exactamente el mismo mundo', () => {
-  assert.deepEqual(generate(12345).blocks, world.blocks);
-  assert.notDeepEqual(generate(999).blocks, world.blocks);
+test('la misma semilla genera exactamente los mismos trozos (en el servidor y en cada dispositivo)', () => {
+  assert.deepEqual(generateChunk(12345, 3, -2), generateChunk(12345, 3, -2));
+  assert.notDeepEqual(generateChunk(999, 3, -2), generateChunk(12345, 3, -2));
 });
 
-test('el mundo tiene suelo de roca base, hierba arriba y piedra dentro', () => {
-  for (let x = 0; x < W; x += 13) for (let z = 0; z < W; z += 11) assert.equal(world.get(x, 0, z), B.RocaBase);
-  assert.ok(count(B.Hierba) > W * W * 0.5);
-  assert.ok(count(B.Piedra) > count(B.Tierra));
+test('no hay bordes: el mundo sigue muy lejos en todas direcciones, con suelo', () => {
+  for (const [x, z] of [[-5000, 0], [0, 8000], [12000, -12000], [-700, -900]]) {
+    const t = world.top(x, z);
+    assert.ok(t > 5 && t < H - 1, `suelo en ${x},${z}: ${t}`);
+    assert.equal(world.get(x, 0, z), B.RocaBase);
+  }
 });
 
-test('hay cuevas, árboles y los cuatro minerales, más raros cuanto más valiosos', () => {
-  let caveAir = 0;
-  for (let x = 0; x < W; x++) for (let z = 0; z < W; z++) { const t = world.top(x, z); for (let y = 1; y < t - 4; y++) if (world.get(x, y, z) === B.Aire) caveAir++; }
-  assert.ok(caveAir > 2000, `aire de cuevas: ${caveAir}`);
-  assert.ok(count(B.Tronco) > 20 && count(B.Hojas) > 100);
-  const c = count(B.Carbon), i = count(B.Hierro), g = count(B.Oro), d = count(B.Diamante);
-  assert.ok(c > i && i > g && g > 0 && d > 0, `carbón ${c}, hierro ${i}, oro ${g}, diamante ${d}`);
+test('se puede caminar más allá de donde antes estaba el borde', () => {
+  const w = World.empty(1);
+  for (let x = 80; x < 140; x++) for (let z = 40; z < 50; z++) w.set(x, 10, z, B.Piedra);
+  const b: Body = { x: 90.5, y: 11, z: 45.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 };
+  for (let i = 0; i < 240; i++) moveBody(w, b, 5, 0, false, 1 / 60);
+  assert.ok(b.x > 105, `x=${b.x}`);
 });
 
-test('los diamantes solo salen en lo profundo', () => {
-  for (let x = 0; x < W; x++) for (let z = 0; z < W; z++) for (let y = 15; y < H; y++) assert.notEqual(world.get(x, y, z), B.Diamante);
+test('el terreno no es plano: hay montañas altas, valles y distintos climas', () => {
+  let lo = H, hi = 0;
+  const seen = new Set<string>();
+  for (let x = -3000; x <= 3000; x += 37) for (let z = -3000; z <= 3000; z += 41) {
+    const h = surfaceHeight(x, z, 12345);
+    lo = Math.min(lo, h); hi = Math.max(hi, h);
+    seen.add(biomeAt(x, z, 12345));
+  }
+  assert.ok(hi - lo > 45, `de ${lo} a ${hi}`);
+  assert.ok(hi > 85, 'montañas altas');
+  for (const b of ['llanura', 'bosque', 'desierto', 'montana']) assert.ok(seen.has(b), b);
 });
 
-test('se aparece encima del suelo, no dentro de un bloque', () => {
+test('cuevas grandes bajo tierra, con más espacio en lo profundo', () => {
+  let shallow = 0, deep = 0;
+  for (let x = -64; x < 64; x++) for (let z = -64; z < 64; z++) {
+    const t = world.top(x, z);
+    for (let y = 3; y < t - 6; y++) if (world.get(x, y, z) === B.Aire) { if (y < 40) deep++; else shallow++; }
+  }
+  assert.ok(deep > 3000, `aire profundo: ${deep}`);
+});
+
+test('minerales por profundidad: diamante y esmeralda solo en lo más hondo', () => {
+  assert.ok(c.n(B.Carbon) > c.n(B.Hierro) && c.n(B.Hierro) > c.n(B.Oro), `carbón ${c.n(B.Carbon)}, hierro ${c.n(B.Hierro)}, oro ${c.n(B.Oro)}`);
+  assert.ok(c.n(B.Diamante) > 0 && c.n(B.Esmeralda) > 0, `diamante ${c.n(B.Diamante)}, esmeralda ${c.n(B.Esmeralda)}`);
+  assert.ok(c.maxY(B.Diamante) <= 17, `diamante hasta ${c.maxY(B.Diamante)}`);
+  assert.ok(c.maxY(B.Esmeralda) <= 23, `esmeralda hasta ${c.maxY(B.Esmeralda)}`);
+});
+
+test('hay árboles y se aparece sobre hierba, no dentro de un bloque', () => {
+  assert.ok(c.n(B.Tronco) > 20 && c.n(B.Hojas) > 100);
   const [x, y, z] = spawnPoint(world);
   assert.equal(world.get(Math.floor(x), Math.floor(y), Math.floor(z)), B.Aire);
   assert.ok(BLOCKS[world.get(Math.floor(x), Math.floor(y - 1), Math.floor(z))].solid);
 });
 
+test('los cambios se guardan aunque el trozo se olvide y se vuelva a generar', () => {
+  const w = generate(5);
+  w.set(400, 30, -300, B.Mesa);
+  w.unloadFar(0, 0, 2);
+  assert.equal(w.hasChunk(25, -19), false);
+  assert.equal(w.get(400, 30, -300), B.Mesa);
+  assert.deepEqual(unkey(key(-1234, 77, 4321)), [-1234, 77, 4321]);
+});
+
 /** Mundo plano de prueba: suelo de piedra a la altura 10. */
-function flat() { const w = new World(1); for (let x = 0; x < W; x++) for (let z = 0; z < W; z++) for (let y = 0; y <= 10; y++) w.set(x, y, z, B.Piedra); return w; }
+function flat() { const w = World.empty(1); for (let x = 0; x < 96; x++) for (let z = 0; z < 96; z++) for (let y = 0; y <= 10; y++) w.set(x, y, z, B.Piedra); return w; }
 const body = (x: number, y: number, z: number): Body => ({ x, y, z, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: y });
 const sim = (w: World, b: Body, wx: number, wz: number, jump: boolean, secs: number) => { let fall = 0; for (let i = 0; i < secs * 60; i++) fall = Math.max(fall, moveBody(w, b, wx, wz, jump && i === 0, 1 / 60)); return fall; };
 
@@ -62,7 +108,7 @@ test('saltar sube algo más de un bloque y se vuelve al suelo', () => {
 
 test('un muro de un bloque se pasa saltando; sin saltar, no', () => {
   const w = flat();
-  for (let z = 0; z < W; z++) w.set(25, 11, z, B.Piedra);
+  for (let z = 0; z < 96; z++) w.set(25, 11, z, B.Piedra);
   const a = body(23.5, 11, 20.5); a.onGround = true;
   sim(w, a, 4, 0, false, 2);
   assert.ok(a.x < 25 - 0.29, 'sin saltar se queda delante');
@@ -72,16 +118,18 @@ test('un muro de un bloque se pasa saltando; sin saltar, no', () => {
   assert.ok(j.x > 26, `saltando lo pasa: x=${j.x}`);
 });
 
-test('no se sale por el borde del mundo', () => {
-  const w = flat(), b = body(2, 11, 20.5); b.onGround = true;
-  sim(w, b, -5, 0, false, 3);
-  assert.ok(b.x >= 0.3 - 1e-9);
-});
-
 test('el rayo encuentra el bloque al que miras y el hueco delante para colocar', () => {
   const w = flat();
   const h = raycast(w, 20.5, 12.6, 20.5, 0, -1, 0.0001, 6)!;
   assert.deepEqual([h.x, h.y, h.z], [20, 10, 20]);
   assert.deepEqual([h.px, h.py, h.pz], [20, 11, 20]);
   assert.equal(raycast(w, 20.5, 12.6, 20.5, 0, 1, 0, 6), null);
+});
+
+test('el servidor olvida los trozos lejos de todos los jugadores, no los de cerca', () => {
+  const w = generate(3);
+  w.get(0, 10, 0); w.get(2000, 10, 0); w.get(-4000, 10, 300);
+  w.unloadAwayFrom([[0, 0], [2000, 0]], 2);
+  assert.ok(w.hasChunk(0, 0) && w.hasChunk(125, 0));
+  assert.equal(w.hasChunk(-250, 18), false);
 });

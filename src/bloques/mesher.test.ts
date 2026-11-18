@@ -7,7 +7,7 @@ const uv = () => [0, 0, 1, 1] as [number, number, number, number];
 const faces = (m: { idx: number[] }) => m.idx.length / 6;
 
 test('un bloque suelto tiene sus 6 caras; dos juntos ocultan las que se tocan', () => {
-  const w = new World(1);
+  const w = World.empty(1);
   w.set(5, 30, 5, B.Piedra);
   assert.equal(faces(meshChunk(w, 0, 0, uv).solid), 6);
   w.set(6, 30, 5, B.Piedra);
@@ -15,7 +15,7 @@ test('un bloque suelto tiene sus 6 caras; dos juntos ocultan las que se tocan', 
 });
 
 test('bajo tierra (en una cueva) las caras quedan a oscuras; al aire libre, iluminadas', () => {
-  const w = new World(1);
+  const w = World.empty(1);
   w.set(5, 30, 5, B.Piedra);
   const open = meshChunk(w, 0, 0, uv).solid;
   assert.ok(Math.max(...open.col) > 0.9);
@@ -32,7 +32,7 @@ test('bajo tierra (en una cueva) las caras quedan a oscuras; al aire libre, ilum
 });
 
 test('una antorcha ilumina la cueva', () => {
-  const w = new World(1);
+  const w = World.empty(1);
   w.set(5, 30, 5, B.Piedra);
   for (let x = 0; x < 12; x++) for (let z = 0; z < 12; z++) w.set(x, 40, z, B.Piedra);
   w.set(6, 31, 5, B.Antorcha);
@@ -45,7 +45,7 @@ test('el mundo generado se convierte en malla sin errores y en un tiempo razonab
   const w = generate(7);
   const t = performance.now();
   let n = 0;
-  for (let cx = 0; cx < 6; cx++) for (let cz = 0; cz < 6; cz++) n += faces(meshChunk(w, cx, cz, uv).solid);
+  for (let cx = -3; cx < 3; cx++) for (let cz = -3; cz < 3; cz++) n += faces(meshChunk(w, cx, cz, uv).solid);
   assert.ok(n > 10000);
   assert.ok(performance.now() - t < 20000);
 });

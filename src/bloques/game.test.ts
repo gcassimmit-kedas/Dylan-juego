@@ -1,13 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { newGame, addPlayer, step, place, craft, respawn, MAX_HP, EYE, IDLE, DAY_SECONDS, isNight, type Game, type Player } from './game.ts';
-import { World, B, W } from './voxel.ts';
+import { World, B } from './voxel.ts';
+const W = 96; // zona de pruebas
 import { addItem, count, breakTime, toolId, RECIPES, I } from './items.ts';
 
 /** Partida en un mundo plano: piedra hasta la altura 10, un bloque de tierra delante. Sin monstruos. */
 function flatGame(): { g: Game; p: Player } {
   const g = newGame(1, () => 0.5);
-  const w = new World(1);
+  const w = World.empty(1);
   for (let x = 0; x < W; x++) for (let z = 0; z < W; z++) for (let y = 0; y <= 10; y++) w.set(x, y, z, B.Piedra);
   g.world = w;
   g.spawnT = Infinity;
@@ -89,7 +90,7 @@ test('colocar un bloque gasta uno del inventario y queda registrado para los dem
   assert.ok(place(g, 'p1'));
   assert.equal(g.world.get(22, 11, 20), B.Tablas);
   assert.equal(count(p.inv, B.Tablas), 2);
-  assert.ok(g.changes.length > 0 && g.edits.size > 0);
+  assert.ok(g.changes.length > 0 && g.world.edits.size > 0);
 });
 
 test('no se puede colocar un bloque donde estás tú', () => {

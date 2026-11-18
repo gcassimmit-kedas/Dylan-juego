@@ -1,7 +1,7 @@
 // Supervivencia de Bloques: jugadores (moverse, saltar, minar con su tiempo, colocar, luchar), 10 corazones,
 // daño por caída, regeneración, día y noche, monstruos y muerte. Lógica pura: la ejecutan el navegador
 // (un jugador, sin conexión) y el servidor (mundos compartidos, donde manda el servidor).
-import { generate, spawnPoint, raycast, moveBody, bodyBlocked, isSolid, World, B, W, H, BLOCKS, USABLE, lightOf, type Body } from './voxel.ts';
+import { generate, spawnPoint, raycast, moveBody, bodyBlocked, isSolid, World, B, H, BLOCKS, USABLE, lightOf, key, unkey, type Body } from './voxel.ts';
 import { newInventory, addItem, removeItem, breakTime, dropOf, attackDamage, recipeById, craft as craftInv, cannotCraft, ITEMS, HOTBAR, swapSlots, FOOD, I, SMELT, FUEL, SMELT_SECONDS, type Slot, type Station } from './items.ts';
 import { JUMP_SPEED } from './voxel.ts';
 
@@ -66,8 +66,6 @@ export const MOB_SIZE = Object.fromEntries(Object.entries(MOB).map(([k, v]) => [
 
 export interface Game {
   world: World; seed: number; time: number; players: Player[]; mobs: Mob[]; arrows: Arrow[];
-  /** Cambios de bloques desde la generación (índice -> bloque): lo que se manda a quien entra. */
-  edits: Map<number, number>;
   /** Cambios pendientes de enviar en la próxima instantánea. */
   changes: [number, number][];
   events: GEvent[]; nextId: number; rand: () => number; spawnT: number;
@@ -82,7 +80,7 @@ export const FURNACE = { IN: 0, FUEL: 1, OUT: 2 } as const;
 const newBox = (b: number): Box => ({ kind: b === B.Cofre ? 'cofre' : 'horno', slots: Array.from({ length: b === B.Cofre ? CHEST_SLOTS : 3 }, () => null), burn: 0, burnMax: 0, prog: 0 });
 
 export function newGame(seed: number, rand: () => number = Math.random, mods: ModId[] = []): Game {
-  return { world: generate(seed), seed, time: DAY_SECONDS * 0.05, players: [], mobs: [], arrows: [], edits: new Map(), changes: [], events: [], nextId: 1, rand, spawnT: 3, mods: new Set(mods.filter(isMod)), boxes: new Map() };
+  return { world: generate(seed), seed, time: DAY_SECONDS * 0.05, players: [], mobs: [], arrows: [], changes: [], events: [], nextId: 1, rand, spawnT: 3, mods: new Set(mods.filter(isMod)), boxes: new Map() };
 }
 
 /** De 0 a 1 a lo largo del día: 0 amanece, 0,25 mediodía, 0,5 anochece, 0,75 medianoche. */
@@ -124,9 +122,8 @@ export function lookDir(yaw: number, pitch: number): [number, number, number] {
 }
 
 function setBlock(g: Game, x: number, y: number, z: number, b: number) {
-  g.world.set(x, y, z, b);
-  const i = World.index(x, y, z);
-  g.edits.set(i, b);
+  g.world.set(x, y, z, b); // el mundo guarda el cambio (para quien entre después)
+  const i = key(x, y, z);
   g.changes.push([i, b]);
 }
 
@@ -192,20 +189,20 @@ export function place(g: Game, pid: string): boolean {
   if (!def?.block) return false;
   const d = lookDir(p.input.yaw, Math.max(-1.55, Math.min(1.55, p.input.pitch))); // la mirada más reciente
   const hit = raycast(g.world, p.body.x, p.body.y + EYE, p.body.z, d[0], d[1], d[2], REACH);
-  if (!hit || !g.world.inside(hit.px, hit.py, hit.pz) || g.world.get(hit.px, hit.py, hit.pz) !== B.Aire) return false;
+  if (!hit || hit.py < 0 || hit.py >= H || g.world.get(hit.px, hit.py, hit.pz) !== B.Aire) return false;
   if (USABLE.has(g.world.get(hit.x, hit.y, hit.z))) return false; // se usa, no se construye encima
   const b = def.block;
   if (b === B.Antorcha && !isSolid(g.world.get(hit.px, hit.py - 1, hit.pz)) && !isSolid(g.world.get(hit.x, hit.y, hit.z))) return false;
   if (BLOCKS[b].solid) {
-    g.world.set(hit.px, hit.py, hit.pz, b); // comprobar que no atrapa a nadie
+    g.world.set(hit.px, hit.py, hit.pz, b, false); // comprobar que no atrapa a nadie
     const trapped = g.players.some((q) => q.alive && bodyBlocked(g.world, q.body.x, q.body.y, q.body.z, 0.3, 1.8))
       || g.mobs.some((m) => bodyBlocked(g.world, m.body.x, m.body.y, m.body.z, MOB_SIZE[m.kind].hw, MOB_SIZE[m.kind].h));
-    g.world.set(hit.px, hit.py, hit.pz, B.Aire);
+    g.world.set(hit.px, hit.py, hit.pz, B.Aire, false);
     if (trapped) return false;
   }
   removeItem(p.inv, b, 1);
   setBlock(g, hit.px, hit.py, hit.pz, b);
-  if (b === B.Horno || b === B.Cofre) g.boxes.set(World.index(hit.px, hit.py, hit.pz), newBox(b));
+  if (b === B.Horno || b === B.Cofre) g.boxes.set(key(hit.px, hit.py, hit.pz), newBox(b));
   g.events.push({ kind: 'place', pid, x: hit.px, y: hit.py, z: hit.pz, b });
   return true;
 }
@@ -307,7 +304,7 @@ function stepPlayer(g: Game, p: Player, dt: number) {
   if (p.mine.t >= p.mine.need) {
     const drop = dropOf(b, held(p));
     setBlock(g, hit.x, hit.y, hit.z, B.Aire);
-    const bi = World.index(hit.x, hit.y, hit.z), box = g.boxes.get(bi);
+    const bi = key(hit.x, hit.y, hit.z), box = g.boxes.get(bi);
     if (box) { for (const s of box.slots) if (s) addItem(p.inv, s.id, s.n); g.boxes.delete(bi); }
     // Una antorcha sin apoyo cae con el bloque
     if (g.world.get(hit.x, hit.y + 1, hit.z) === B.Antorcha) { setBlock(g, hit.x, hit.y + 1, hit.z, B.Aire); addItem(p.inv, B.Antorcha, 1); }
@@ -336,7 +333,7 @@ function trySpawn(g: Game) {
     const p = targets[Math.floor(g.rand() * targets.length)];
     const a = g.rand() * Math.PI * 2, r = 22 + g.rand() * 10;
     const x = Math.floor(p.body.x + Math.cos(a) * r), z = Math.floor(p.body.z + Math.sin(a) * r);
-    if (x > 1 && z > 1 && x < W - 2 && z < W - 2) {
+    {
       const y = g.world.top(x, z) + 1;
       g.mobs.push({ id: g.nextId++, kind: 'sombra', body: { x: x + 0.5, y, z: z + 0.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: y }, yaw: 0, hp: 999, cd: 30, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 });
       return;
@@ -347,7 +344,6 @@ function trySpawn(g: Game) {
   for (let t = 0; t < 10; t++) {
     const a = g.rand() * Math.PI * 2, r = 14 + g.rand() * 14;
     const x = Math.floor(p.body.x + Math.cos(a) * r), z = Math.floor(p.body.z + Math.sin(a) * r);
-    if (x < 1 || z < 1 || x >= W - 1 || z >= W - 1) continue;
     // Buscar un hueco de dos bloques con suelo, cerca de la altura del jugador (cuevas) o en la superficie
     const cave = g.rand() < 0.5;
     const y0 = cave ? Math.floor(p.body.y) + Math.floor(g.rand() * 9) - 4 : g.world.top(x, z) + 1;
@@ -499,7 +495,7 @@ export function verityCommand(g: Game, pid: string, c: VerityCmd): boolean {
 function boxAt(g: Game, x: number, y: number, z: number): Box | null {
   const b = g.world.get(x, y, z);
   if (b !== B.Horno && b !== B.HornoEncendido && b !== B.Cofre) return null;
-  const i = World.index(x, y, z);
+  const i = key(x, y, z);
   let box = g.boxes.get(i);
   if (!box) g.boxes.set(i, (box = newBox(b === B.HornoEncendido ? B.Horno : b)));
   return box;
@@ -559,7 +555,7 @@ export function boxMove(g: Game, pid: string, x: number, y: number, z: number, o
 function stepFurnaces(g: Game, dt: number) {
   for (const [i, box] of g.boxes) {
     if (box.kind !== 'horno') continue;
-    const x = i % W, z = Math.floor(i / W) % W, y = Math.floor(i / (W * W));
+    const [x, y, z] = unkey(i);
     const input = box.slots[FURNACE.IN], out = box.slots[FURNACE.OUT];
     const result = input ? SMELT[input.id] : undefined;
     const canSmelt = result !== undefined && (!out || (out.id === result && out.n < (ITEMS.get(result)?.stack ?? 64)));

@@ -6,7 +6,7 @@ export type TexName =
   | 'grass' | 'grassSide' | 'dirt' | 'stone' | 'cobble' | 'planks' | 'log' | 'logTop' | 'leaves'
   | 'sand' | 'crate' | 'metal' | 'metalDark' | 'gold' | 'brick' | 'glow'
   | 'gravel' | 'oreCoal' | 'oreIron' | 'oreGold' | 'oreDiamond' | 'bedrock' | 'tableTop' | 'tableSide' | 'torch' | 'furnace' | 'furnaceTop'
-  | 'furnaceOn' | 'chest' | 'chestTop';
+  | 'furnaceOn' | 'chest' | 'chestTop' | 'oreEmerald' | 'snow' | 'snowSide';
 
 const N = 16;
 type RGB = [number, number, number];
@@ -168,6 +168,9 @@ const PAINT: Record<TexName, Painter> = {
     const p = PAINT.planks(x, y, r);
     return rim ? { c: shade([96, 66, 34], 0.9), h: 1 } : { c: shade(p.c, 0.9), h: p.h };
   },
+  oreEmerald: (x, y, r) => ore(x, y, r, [60, 220, 110], 11),
+  snow: (_x, _y, r) => { const v = r(); return { c: v < 0.15 ? [222, 232, 240] : [244, 248, 252], h: v * 0.4 }; },
+  snowSide: (x, y, r) => (y < 3 + Math.floor(r() * 2) ? PAINT.snow(x, y, r) : PAINT.stone(x, y, r)),
   chestTop: (x, y, r) => {
     const rim = x === 0 || x === 15 || y === 0 || y === 15;
     const p = PAINT.planks(x, y, r);
@@ -226,7 +229,7 @@ const SEED: Record<TexName, number> = {
   grass: 11, grassSide: 12, dirt: 13, stone: 14, cobble: 15, planks: 16, log: 17, logTop: 18, leaves: 19,
   sand: 20, crate: 21, metal: 22, metalDark: 23, gold: 24, brick: 25, glow: 26,
   gravel: 27, oreCoal: 28, oreIron: 29, oreGold: 30, oreDiamond: 31, bedrock: 32, tableTop: 33, tableSide: 34, torch: 35, furnace: 36, furnaceTop: 37,
-  furnaceOn: 38, chest: 39, chestTop: 40,
+  furnaceOn: 38, chest: 39, chestTop: 40, oreEmerald: 41, snow: 42, snowSide: 43,
 };
 const RELIEF: Partial<Record<TexName, number>> = {
   oreCoal: 2, oreIron: 2, oreGold: 2, oreDiamond: 2, gravel: 1.6, bedrock: 1.4, furnace: 1.8, cobble: 2.2, brick: 2, planks: 1.6, crate: 1.8, metal: 1.6, metalDark: 1.6, stone: 1.4, log: 1.6 };

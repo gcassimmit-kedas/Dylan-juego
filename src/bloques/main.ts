@@ -7,7 +7,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { World, generate, surfaceHeight, raycast, moveBody, BLOCKS, B, W, USABLE, lightOf, type Tex, type Body } from './voxel.ts';
+import { World, generate, spawnPoint, raycast, moveBody, BLOCKS, B, USABLE, lightOf, unkey, CHUNK, type Tex, type Body } from './voxel.ts';
 import { newGame, addPlayer, step, place, craft, selectSlot, moveSlot, respawn, lookDir, sunLight, isNight, dayPhase, stationsNear, verityCommand, boxMove, getBox, FURNACE, type Box,
   walkSpeed, jumpSpeed, MODS, MOD_INFO, MAX_HP, MAX_FOOD, EYE, REACH, type Game, type GEvent, type Look, type MobKind, type ModId, type VerityCmd } from './game.ts';
 import { verity } from './verity.ts';
@@ -15,9 +15,10 @@ import { ITEMS, RECIPES, HOTBAR, SLOTS, count, cannotCraft, itemName, toolId, SM
 import type { IconName } from '../ui/icons.ts';
 import { MOB_KINDS, type NetP, type WorldInfo } from './protocol.ts';
 import { WorldNet } from './net.ts';
-import { meshChunk, CHUNK, type MeshData } from './mesher.ts';
-import { buildTerrain } from './terrain.ts';
-import { blockMat, buildAtlas, setAnisotropy, type TexName } from './textures.ts';
+import { meshChunk, type MeshData } from './mesher.ts';
+import MeshWorker from './mesh.worker.ts?worker&inline';
+import type { MeshResult, Packed } from './mesh.worker.ts';
+import { buildAtlas, setAnisotropy, type TexName } from './textures.ts';
 import { itemIcon, itemModel } from './itemart.ts';
 import { makePerson, animatePerson, makeSpider, animateSpider, MOB_LOOKS, type Person, type Spider } from './models.ts';
 import { fpInput, applyLook } from './controls.ts';
@@ -65,7 +66,7 @@ const scene = new THREE.Scene();
 const DAY_SKY = new THREE.Color(0x2f7fd6), NIGHT_SKY = new THREE.Color(0x060a18), DAY_FOG = new THREE.Color(0xbfdcf0), NIGHT_FOG = new THREE.Color(0x0b1020), DUSK = new THREE.Color(0xf0a070);
 const fogColor = DAY_FOG.clone();
 scene.background = fogColor;
-scene.fog = new THREE.Fog(fogColor, 40, 110);
+scene.fog = new THREE.Fog(fogColor, 50, 95);
 const camera = new THREE.PerspectiveCamera(72, 1, 0.05, 400);
 camera.rotation.order = 'YXZ';
 scene.add(camera);
@@ -134,23 +135,22 @@ const solidMat = worldMat(false), seeMat = worldMat(true);
 let world: World = generate(1);
 const chunks = new Map<string, THREE.Mesh[]>();
 const dirty = new Set<string>();
-const NCH = W / CHUNK;
-let decor: THREE.Group | null = null;
-function geometryOf(d: MeshData) {
+function geometryOf(d: MeshData | Packed) {
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(d.pos, 3));
-  g.setAttribute('normal', new THREE.Float32BufferAttribute(d.nrm, 3));
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(d.uv, 2));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(d.col, 3));
-  g.setAttribute('glow', new THREE.Float32BufferAttribute(d.glow, 1));
-  g.setIndex(d.idx);
+  const f = (v: number[] | Float32Array) => (v instanceof Float32Array ? v : new Float32Array(v));
+  g.setAttribute('position', new THREE.BufferAttribute(f(d.pos), 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(f(d.nrm), 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(f(d.uv), 2));
+  g.setAttribute('color', new THREE.BufferAttribute(f(d.col), 3));
+  g.setAttribute('glow', new THREE.BufferAttribute(f(d.glow), 1));
+  g.setIndex(new THREE.BufferAttribute(d.idx instanceof Uint32Array ? d.idx : new Uint32Array(d.idx), 1));
   g.computeBoundingSphere();
   return g;
 }
-function buildChunk(cx: number, cz: number) {
+/** Pone (o cambia) las mallas de un trozo. */
+function setChunkMeshes(cx: number, cz: number, solid: MeshData | Packed, see: MeshData | Packed) {
   const key = `${cx},${cz}`;
   for (const m of chunks.get(key) ?? []) { scene.remove(m); m.geometry.dispose(); }
-  const { solid, see } = meshChunk(world, cx, cz, uvOf);
   const list: THREE.Mesh[] = [];
   for (const [d, mat] of [[solid, solidMat], [see, seeMat]] as const) {
     if (!d.idx.length) continue;
@@ -160,43 +160,71 @@ function buildChunk(cx: number, cz: number) {
   }
   chunks.set(key, list);
 }
+// Las mallas se construyen en segundo plano (worker) para que el juego no se pare al caminar
+let mesher: Worker | null = null;
+const meshPending = new Map<string, number>(); // trozo -> número de petición (la última manda)
+let meshSeq = 0;
+try {
+  mesher = new MeshWorker();
+  const uv: Record<string, [number, number, number, number]> = {};
+  for (const t of TEXS) uv[t] = atlas.uv(t);
+  mesher.postMessage({ uv });
+  mesher.onmessage = (e: MessageEvent<MeshResult>) => {
+    const r = e.data, key = `${r.cx},${r.cz}`;
+    if (meshPending.get(key) !== r.id) return; // ya se pidió otra más nueva (o se descartó)
+    meshPending.delete(key);
+    if (r.solid.idx.length + r.see.idx.length === 0 && !chunks.has(key)) { chunks.set(key, []); return; }
+    setChunkMeshes(r.cx, r.cz, r.solid, r.see);
+  };
+  mesher.onerror = () => { mesher = null; };
+} catch { mesher = null; }
+function buildChunk(cx: number, cz: number) {
+  const key = `${cx},${cz}`;
+  if (!mesher) { const { solid, see } = meshChunk(world, cx, cz, uvOf); setChunkMeshes(cx, cz, solid, see); return; }
+  const near: Uint8Array[] = [];
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) near.push(world.chunkData(cx + dx, cz + dz).slice());
+  const id = ++meshSeq;
+  meshPending.set(key, id);
+  mesher.postMessage({ job: { id, cx, cz, seed: world.seed, near } }, near.map((n) => n.buffer));
+}
 function markDirty(x: number, z: number, radius = 1) {
   for (let cx = Math.floor((x - radius) / CHUNK); cx <= Math.floor((x + radius) / CHUNK); cx++)
     for (let cz = Math.floor((z - radius) / CHUNK); cz <= Math.floor((z + radius) / CHUNK); cz++)
-      if (cx >= 0 && cz >= 0 && cx < NCH && cz < NCH) dirty.add(`${cx},${cz}`);
+      if (chunks.has(`${cx},${cz}`)) dirty.add(`${cx},${cz}`); // solo los que se están viendo
 }
 function applyChange(i: number, b: number) {
-  const x = i % W, z = Math.floor(i / W) % W, y = Math.floor(i / (W * W));
+  const [x, y, z] = unkey(i);
   const was = world.get(x, y, z);
   world.set(x, y, z, b);
   markDirty(x, z, lightOf(was) || lightOf(b) ? 9 : 1); // la luz de una antorcha o un horno llega lejos
 }
-/** Carga un mundo entero (semilla + cambios) y prepara sus mallas y el paisaje del fondo. */
+/** Cambia de mundo: quita las mallas del anterior; los trozos del nuevo se van cargando alrededor del jugador. */
 function loadWorld(w: World) {
   world = w;
   for (const list of chunks.values()) for (const m of list) { scene.remove(m); m.geometry.dispose(); }
-  chunks.clear(); dirty.clear();
-  for (let cx = 0; cx < NCH; cx++) for (let cz = 0; cz < NCH; cz++) buildChunk(cx, cz);
-  if (decor) scene.remove(decor);
-  // Paisaje alrededor del mundo jugable (mismo relieve, sin cuevas): parece que el mundo sigue
-  const half = W / 2, seed = w.seed;
-  const t = buildTerrain(W + 40, 0, (x, z) => {
-    const wx = x + half, wz = z + half;
-    if (wx >= 0 && wz >= 0 && wx < W && wz < W) return 0;
-    return surfaceHeight(wx, wz, seed) + 1;
-  });
-  decor = new THREE.Group();
-  for (const [f, mat] of [[t.grass, blockMat('grass')], [t.side, blockMat('grassSide')], [t.dirt, blockMat('dirt')]] as const) {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(f.pos, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(f.nrm, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(f.uv, 2));
-    const m = new THREE.Mesh(g, mat);
-    m.receiveShadow = true;
-    decor.add(m);
+  chunks.clear(); dirty.clear(); meshPending.clear();
+}
+/** Distancia de visión en trozos (6 = 96 bloques; menos con calidad baja). */
+const viewChunks = () => (lowQuality ? 4 : 6);
+let unloadT = 0;
+/** Carga los trozos que faltan cerca de (x, z), los más cercanos primero, sin pasarse de unos milisegundos por fotograma. */
+function streamChunks(x: number, z: number, dt: number) {
+  const R = viewChunks(), ccx = Math.floor(x / CHUNK), ccz = Math.floor(z / CHUNK);
+  const t0 = performance.now();
+  for (let r = 0; r <= R && performance.now() - t0 < 10; r++)
+    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
+      if (Math.max(Math.abs(dx), Math.abs(dz)) !== r || dx * dx + dz * dz > R * R + 1) continue;
+      const k = `${ccx + dx},${ccz + dz}`;
+      if (chunks.has(k) || meshPending.has(k)) continue;
+      if ((performance.now() - t0 >= 10 && chunks.size) || (mesher && meshPending.size >= 3)) return;
+      buildChunk(ccx + dx, ccz + dz);
+    }
+  // Quitar las mallas lejanas y, de vez en cuando, los datos de trozos muy lejanos (sus cambios se guardan)
+  for (const [k, list] of chunks) {
+    const [cx, cz] = k.split(',').map(Number);
+    if (Math.abs(cx - ccx) > R + 2 || Math.abs(cz - ccz) > R + 2) { for (const m of list) { scene.remove(m); m.geometry.dispose(); } chunks.delete(k); meshPending.delete(k); }
   }
-  decor.position.set(half, 0, half);
-  scene.add(decor);
+  if ((unloadT -= dt) <= 0) { unloadT = 5; world.unloadFar(x, z, R + 6); }
 }
 
 // ---------- Estado de la partida ----------
@@ -796,9 +824,10 @@ net.onJoined = () => {
   document.body.classList.toggle('terror', hasMod('terror'));
   verityLog.innerHTML = '';
   const wd = generate(w.seed);
-  for (let i = 0; i < net.edits.length; i += 2) wd.blocks[net.edits[i]] = net.edits[i + 1];
+  wd.applyEdits(net.edits);
   loadWorld(wd);
-  me = { body: { x: W / 2 + 0.5, y: wd.top(W / 2, W / 2) + 1.01, z: W / 2 + 0.5, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: 0 }, hp: MAX_HP, alive: true, inv: [], sel: 0, mine: null, food: MAX_FOOD };
+  const [sx, sy, sz] = spawnPoint(wd);
+  me = { body: { x: sx, y: sy, z: sz, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: 0 }, hp: MAX_HP, alive: true, inv: [], sel: 0, mine: null, food: MAX_FOOD };
   firstSnap = true;
   document.body.classList.add('multi');
   $<HTMLInputElement>('inviteLink').value = inviteLink();
@@ -1147,7 +1176,8 @@ function frame(now: number) {
   } else if (!playing) time += dt * 4; // portada: el día pasa deprisa de fondo
   // Reconstruir las mallas que han cambiado (unas pocas por fotograma)
   let n = 0;
-  for (const key of dirty) { if (n++ >= 4) break; dirty.delete(key); const [cx, cz] = key.split(',').map(Number); buildChunk(cx, cz); }
+  for (const key of dirty) { if (n++ >= 4) break; dirty.delete(key); const [cx, cz] = key.split(',').map(Number); if (chunks.has(key)) buildChunk(cx, cz); }
+  if (playing) streamChunks(me.body.x, me.body.z, dt); else streamChunks(titleAt[0], titleAt[2], dt);
   hud();
   renderClock();
   lockHint.hidden = isTouch || !playing || inMenu() || locked() || !lockTried;
@@ -1165,7 +1195,8 @@ function frame(now: number) {
   nvAmbient.intensity = nightVision ? (1 - sl) * 1.6 : 0;
   sun.intensity = 2.7 * sl; hemi.intensity = (0.22 + 0.85 * sl) * (1 - fear * 0.7);
   if (fear) fogColor.lerp(tmpC.setRGB(0.01, 0.01, 0.015), fear * 0.8);
-  (scene.fog as THREE.Fog).near = 40 - fear * 32; (scene.fog as THREE.Fog).far = 110 - fear * 78;
+  const far = viewChunks() * CHUNK - 4; // la niebla tapa el borde de lo cargado
+  (scene.fog as THREE.Fog).near = far * 0.55 - fear * (far * 0.55 - 8); (scene.fog as THREE.Fog).far = far - fear * (far - 32);
   (scene.fog as THREE.Fog).color.copy(fogColor); // la niebla guarda su propia copia del color
   sun.color.copy(tmpC.setRGB(1, 0.94 - dusk * 0.2, 0.84 - dusk * 0.35));
 
@@ -1236,8 +1267,8 @@ function frame(now: number) {
   } else {
     // Portada: la cámara gira despacio sobre el mundo
     const a = now / 30000;
-    camera.position.set(W / 2 + Math.cos(a) * 30, 48, W / 2 + Math.sin(a) * 30);
-    camera.lookAt(W / 2, 28, W / 2);
+    camera.position.set(titleAt[0] + Math.cos(a) * 34, titleAt[1] + 22, titleAt[2] + Math.sin(a) * 34);
+    camera.lookAt(titleAt[0], titleAt[1], titleAt[2]);
   }
   // Bloque al que miras
   const d = lookDir(yaw, pitch);
@@ -1260,8 +1291,8 @@ function frame(now: number) {
   if (usable !== placeShowsUse) { placeShowsUse = usable; $('placeBtn').innerHTML = icon(usable ? 'pointer' : 'box'); }
   fx.update(dt);
 
-  const cx = playing ? me.body.x : W / 2, cz = playing ? me.body.z : W / 2;
-  sun.target.position.set(cx, playing ? me.body.y : 28, cz);
+  const cx = playing ? me.body.x : titleAt[0], cz = playing ? me.body.z : titleAt[2];
+  sun.target.position.set(cx, playing ? me.body.y : titleAt[1], cz);
   sun.position.copy(sun.target.position).addScaledVector(sunDir.y > 0 ? sunDir : tmpV.copy(sunDir).negate(), 80);
   sky.position.copy(camera.position);
   if (lowQuality) renderer.render(scene, camera); else composer.render();
@@ -1272,6 +1303,7 @@ const tmpV = new THREE.Vector3();
 
 // Mundo de fondo para la portada
 loadWorld(generate(20271));
+const titleAt = spawnPoint(world);
 time = 600 * 0.08;
 requestAnimationFrame(frame);
 

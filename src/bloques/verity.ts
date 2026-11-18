@@ -2,7 +2,7 @@
 // ("dame 10 tablas", "¿dónde hay diamantes?", "hazlo de día", "¿cómo hago un pico de piedra?").
 // Todo se entiende en el propio dispositivo: el texto no sale de él. Al servidor solo llega la orden.
 // Lógica pura y testeable.
-import { World, B, BLOCKS, W, H } from './voxel.ts';
+import { World, B, BLOCKS, H } from './voxel.ts';
 import { ITEMS, RECIPES, I, toolId, itemName, TIERS, SMELT, type ToolType, type Tier } from './items.ts';
 import { DAY_SECONDS, dayPhase, isNight, type VerityCmd } from './game.ts';
 
@@ -66,7 +66,7 @@ function direction(ctx: VerityCtx, x: number, y: number, z: number): string {
 function nearest(ctx: VerityCtx, block: number, radius = 40): [number, number, number] | null {
   let best: [number, number, number] | null = null, bd = Infinity;
   const cx = Math.floor(ctx.x), cy = Math.floor(ctx.y), cz = Math.floor(ctx.z);
-  for (let x = Math.max(0, cx - radius); x < Math.min(W, cx + radius); x++) for (let z = Math.max(0, cz - radius); z < Math.min(W, cz + radius); z++) {
+  for (let x = cx - radius; x < cx + radius; x++) for (let z = cz - radius; z < cz + radius; z++) {
     const top = ctx.world.top(x, z);
     for (let y = 1; y < H; y++) {
       const b = ctx.world.get(x, y, z);

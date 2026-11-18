@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { verity, findItem, norm } from './verity.ts';
-import { World, B, W } from './voxel.ts';
+import { World, B } from './voxel.ts';
+const W = 96; // zona de pruebas
 import { I, toolId } from './items.ts';
 import { DAY_SECONDS } from './game.ts';
 
 function ctx(extra: Partial<Parameters<typeof verity>[1]> = {}) {
-  const w = new World(1);
+  const w = World.empty(1);
   for (let x = 0; x < W; x++) for (let z = 0; z < W; z++) for (let y = 0; y <= 10; y++) w.set(x, y, z, B.Piedra);
   return { world: w, x: 20.5, y: 11, z: 20.5, yaw: 0, time: DAY_SECONDS * 0.2, terror: false, ...extra };
 }

@@ -37,7 +37,7 @@ function join(c: MClient, r: WorldRoom) {
   r.clients.set(c.pid, c); c.world = r; c.paused = false; c.lastInput = Date.now();
   addPlayer(r.game, c.pid, c.name, c.look);
   r.emptySince = 0;
-  send(c, { t: 'mjoined', you: c.pid, world: { id: r.id, name: r.name, seed: r.game.seed, mods: [...r.game.mods] }, edits: [...r.game.edits].flat() });
+  send(c, { t: 'mjoined', you: c.pid, world: { id: r.id, name: r.name, seed: r.game.seed, mods: [...r.game.mods] }, edits: [...r.game.world.edits].flat() });
 }
 
 export function leave(c: MClient) {
@@ -64,6 +64,8 @@ function tick(r: WorldRoom) {
   // Si todos los que están en el mundo han pausado, el mundo se detiene de verdad.
   if (!roomPaused([...r.clients.values()].map((x) => x.paused))) step(g, 1 / TICK_HZ);
   r.tick++;
+  // Cada 10 s, olvidar los trozos lejos de todos (el mundo no tiene bordes; los cambios se guardan aparte)
+  if (r.tick % (TICK_HZ * 10) === 0) g.world.unloadAwayFrom(g.players.map((p) => [p.body.x, p.body.z]), 8);
   const events = g.events.splice(0), changes = g.changes.splice(0);
   for (const c of r.clients.values())
     if (c.ws.readyState === WebSocket.OPEN && c.ws.bufferedAmount < 512 * 1024)
