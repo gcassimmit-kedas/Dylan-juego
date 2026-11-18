@@ -108,13 +108,22 @@ composer.addPass(new OutputPass());
 const TEXS = [...new Set(BLOCKS.flatMap((b) => b.tex))] as TexName[];
 const atlas = buildAtlas(TEXS);
 const uvOf = (t: Tex) => atlas.uv(t as TexName);
+/** Visión nocturna: se ve con los colores de verdad en cuevas y de noche (no en verde). Activada siempre salvo que se quite en Ajustes. */
+let nightVision = readStr('bloques.vision') !== '0';
+const nvU = { value: 0 };
+const nvAmbient = new THREE.AmbientLight(0xffffff, 0);
+scene.add(nvAmbient);
 function worldMat(see: boolean) {
   const m = new THREE.MeshStandardMaterial({ map: atlas.map, normalMap: atlas.normal, normalScale: new THREE.Vector2(0.8, 0.8), vertexColors: true, roughness: 0.92,
     alphaTest: see ? 0.5 : 0, side: see ? THREE.DoubleSide : THREE.FrontSide });
   // Las antorchas dan luz propia: brillan también de noche (atributo "glow" de cada vértice)
   m.onBeforeCompile = (sh) => {
+    sh.uniforms.uNV = nvU;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float glow; varying float vGlow;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlow = glow;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vGlow;')
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vGlow; uniform float uNV;')
+      // Color de la textura antes de la sombra de la cueva: con visión nocturna, nunca se ve más oscuro que esto
+      .replace('#include <map_fragment>', '#include <map_fragment>\nvec3 nvBase = diffuseColor.rgb;')
+      .replace('#include <opaque_fragment>', 'outgoingLight = max(outgoingLight, nvBase * uNV * (0.62 + 0.38 * clamp(normal.z, 0.0, 1.0)));\n#include <opaque_fragment>')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.82, 0.55) * vGlow * 0.9;');
   };
   return m;
@@ -1086,12 +1095,14 @@ const settingsEl = $('settings'), sensEl = $<HTMLInputElement>('setSens');
 function renderSettings() {
   $('setSound').setAttribute('aria-checked', String(!isMuted()));
   $('setShake').setAttribute('aria-checked', String(settings.shake));
+  $('setVision').setAttribute('aria-checked', String(nightVision));
   sensEl.value = String(sens);
   for (const b of settingsEl.querySelectorAll<HTMLButtonElement>('[data-quality]')) b.setAttribute('aria-checked', String(b.dataset.quality === settings.quality));
 }
 function openSettings() { renderSettings(); settingsEl.hidden = false; $('settingsClose').focus(); }
 $('setSound').addEventListener('click', () => { setMuted(!isMuted()); renderMute(); renderSettings(); });
 $('setShake').addEventListener('click', () => { settings.shake = !settings.shake; renderSettings(); });
+$('setVision').addEventListener('click', () => { nightVision = !nightVision; writeStr('bloques.vision', nightVision ? '1' : '0'); renderSettings(); });
 sensEl.addEventListener('input', () => { sens = Number(sensEl.value) || 1; writeStr('bloques.sensibilidad', String(sens)); });
 for (const b of settingsEl.querySelectorAll<HTMLButtonElement>('[data-quality]')) b.addEventListener('click', () => { setQuality(b.dataset.quality as Quality); renderSettings(); });
 $('settingsClose').addEventListener('click', () => { settingsEl.hidden = true; });
@@ -1148,7 +1159,10 @@ function frame(now: number) {
   const dusk = Math.max(0, 1 - Math.abs(Math.sin(ang)) * 4);
   fogColor.copy(NIGHT_FOG).lerp(DAY_FOG, sl).lerp(DUSK, dusk * 0.3);
   skyU.top.value.copy(NIGHT_SKY).lerp(DAY_SKY, sl);
-  const fear = playing && hasMod('terror') ? 1 - sl : 0; // terror: la noche es mucho más oscura y con niebla
+  // Terror: la noche es mucho más oscura y con niebla (salvo con visión nocturna, que deja verlo todo)
+  const fear = playing && hasMod('terror') && !nightVision ? 1 - sl : 0;
+  nvU.value = nightVision ? 0.78 : 0;
+  nvAmbient.intensity = nightVision ? (1 - sl) * 1.6 : 0;
   sun.intensity = 2.7 * sl; hemi.intensity = (0.22 + 0.85 * sl) * (1 - fear * 0.7);
   if (fear) fogColor.lerp(tmpC.setRGB(0.01, 0.01, 0.015), fear * 0.8);
   (scene.fog as THREE.Fog).near = 40 - fear * 32; (scene.fog as THREE.Fog).far = 110 - fear * 78;
