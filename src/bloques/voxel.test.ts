@@ -156,3 +156,43 @@ test('el rayo sobre una planta coloca en su sitio; para pegar a un monstruo, la 
   assert.deepEqual([hit.x, hit.px, hit.py], [3, 3, 11]);
   assert.equal(raycast(w, 0.5, 11.5, 5.5, 1, 0, 0, 8, true)!.x, 6);
 });
+
+/** Suelo de piedra a la altura 10 (se pisa en y = 11) para probar losas. */
+function slabWorld() {
+  const w = World.empty(1);
+  for (let x = 0; x < 12; x++) for (let z = 0; z < 4; z++) w.set(x, 10, z, B.Piedra);
+  return w;
+}
+const walkEast = (w: World, b: Body, secs: number) => { for (let i = 0; i < secs * 60; i++) moveBody(w, b, 4, 0, false, 1 / 60); };
+
+test('una losa mide medio bloque: se sube andando, sin saltar, y se queda uno de pie a media altura', () => {
+  const w = slabWorld();
+  w.set(4, 11, 1, B.LosaTablas);
+  const b: Body = { x: 2.5, y: 11, z: 1.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 };
+  walkEast(w, b, 0.5);
+  assert.ok(b.x > 4.2 && b.x < 4.9, `x = ${b.x}`);
+  assert.ok(Math.abs(b.y - 11.5) < 1e-6, `y = ${b.y}`);
+  assert.equal(b.onGround, true);
+});
+
+test('de una losa se sube andando a un bloque entero (hace de escalón), pero un bloque entero desde el suelo no', () => {
+  const w = slabWorld();
+  w.set(4, 11, 1, B.LosaPiedra); w.set(5, 11, 1, B.Piedra);
+  const b: Body = { x: 2.5, y: 11, z: 1.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 };
+  w.set(6, 11, 1, B.Piedra); w.set(7, 11, 1, B.Piedra);
+  walkEast(w, b, 1);
+  assert.ok(b.x > 5.3 && Math.abs(b.y - 12) < 1e-6, `x = ${b.x}, y = ${b.y}`);
+  const w2 = slabWorld();
+  w2.set(4, 11, 1, B.Piedra);
+  const c: Body = { x: 2.5, y: 11, z: 1.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 };
+  walkEast(w2, c, 1);
+  assert.ok(c.x < 3.8 && c.y === 11);
+});
+
+test('bajo una losa colocada a la altura de la cabeza no se pasa', () => {
+  const w = slabWorld();
+  w.set(4, 12, 1, B.LosaTablas);
+  const b: Body = { x: 2.5, y: 11, z: 1.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 };
+  walkEast(w, b, 1);
+  assert.ok(b.x < 3.8);
+});

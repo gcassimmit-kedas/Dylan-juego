@@ -22,7 +22,7 @@ const NAMES: [string, number][] = [
   ['tabla', B.Tablas], ['madera', B.Tablas], ['tronco', B.Tronco], ['palo', I.Palo], ['piedra', B.Adoquin], ['adoquin', B.Adoquin], ['roca', B.Adoquin],
   ['tierra', B.Tierra], ['arena', B.Arena], ['grava', B.Grava], ['hoja', B.Hojas], ['hierba', B.Hierba], ['cesped', B.Hierba],
   ['carbon', I.Carbon], ['lingote de hierro', I.LingoteHierro], ['hierro', I.LingoteHierro], ['lingote de oro', I.LingoteOro], ['oro', I.LingoteOro],
-  ['diamante', I.Diamante], ['mesa de crafteo', B.Mesa], ['mesa', B.Mesa], ['horno', B.Horno], ['antorcha', B.Antorcha], ['cofre', B.Cofre], ['baul', B.Cofre], ['bayas', I.Bayas], ['baya', I.Bayas], ['flor de sol', B.FlorSol], ['flor de fuego', B.FlorFuego], ['flor', B.FlorSol],
+  ['diamante', I.Diamante], ['mesa de crafteo', B.Mesa], ['mesa', B.Mesa], ['horno', B.Horno], ['antorcha', B.Antorcha], ['cofre', B.Cofre], ['baul', B.Cofre], ['losa de piedra', B.LosaPiedra], ['losa de tabla', B.LosaTablas], ['losa de madera', B.LosaTablas], ['losa', B.LosaTablas], ['chatarra', I.Chatarra], ['bayas', I.Bayas], ['baya', I.Bayas], ['flor de sol', B.FlorSol], ['flor de fuego', B.FlorFuego], ['flor', B.FlorSol],
   ['manzana', I.Manzana], ['carne asada', I.CarneAsada], ['carne', I.CarneAsada], ['comida', I.CarneAsada],
 ];
 const TOOL_WORDS: [string, ToolType][] = [['pico', 'pico'], ['hacha', 'hacha'], ['pala', 'pala'], ['espada', 'espada']];
@@ -126,7 +126,7 @@ export function verity(text: string, ctx: VerityCtx, rand: () => number = Math.r
   if (has(t, 'tengo hambre', 'hambre')) return r('Ya no tienes hambre.', { k: 'comer' });
   // Hora del día
   if (has(t, 'de dia', 'que amanezca', 'amanecer', 'dia')) return r('Que salga el sol.', { k: 'dia' });
-  if (has(t, 'de noche', 'que anochezca', 'anochecer', 'noche')) return r('Que llegue la noche. Cuidado con los monstruos.', { k: 'noche' });
+  if (has(t, 'de noche', 'que anochezca', 'anochecer', 'noche')) return r('Que llegue la noche. Cuidado con los robots.', { k: 'noche' });
   if (has(t, 'que hora', 'hora es', 'cuanto falta')) {
     const p = dayPhase({ time: ctx.time });
     const night = isNight({ time: ctx.time });
@@ -136,7 +136,7 @@ export function verity(text: string, ctx: VerityCtx, rand: () => number = Math.r
   // Salir de un apuro
   if (has(t, 'sacame', 'superficie', 'atrapado', 'perdido', 'subeme', 'arriba', 'no puedo salir')) return r('Te subo a la superficie.', { k: 'superficie' });
   // Consejos
-  if (has(t, 'monstruo', 'zombi', 'esqueleto', 'arana', 'sombra', 'miedo')) return r('De noche y en las cuevas salen monstruos. Construye un refugio, pon antorchas y lleva una espada. Al sol, zombis y esqueletos arden.');
+  if (has(t, 'monstruo', 'robot', 'escudero', 'tirador', 'arana', 'sombra', 'miedo')) return r('De noche y en las cuevas salen robots: escuderos, tiradores y arañas. Construye un refugio, pon antorchas y lleva una espada. A pleno sol, escuderos y tiradores se sobrecalientan.');
   if (has(t, 'como empiezo', 'que hago', 'empezar', 'consejo', 'consejos')) return r('Rompe un tronco, haz tablas y una mesa de crafteo. Con la mesa haz un pico de madera y busca piedra. Antes de la noche, haz antorchas con carbón y palos.');
   // Quién es
   if (has(t, 'quien eres', 'como te llamas', 'eres', 'hola', 'buenas', 'hey')) return r(ctx.terror ? 'Soy Verity. Siempre estoy aquí. Siempre.' : 'Hola, soy Verity. Pídeme cosas o pregúntame sobre el juego.');

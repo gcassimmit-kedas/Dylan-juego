@@ -59,3 +59,15 @@ test('una planta no tapa la luz del suelo y se dibuja con dos planos cruzados', 
   assert.ok(Math.min(...m.solid.col.filter((_c, i) => m.solid.pos[Math.floor(i / 3) * 3 + 1] === 31)) > DARK + 0.1);
   assert.equal(faces(m.see), 4);
 });
+
+test('una losa se dibuja a media altura y no tapa la cara del bloque de al lado', () => {
+  const w = World.empty(1);
+  w.set(5, 30, 5, B.LosaTablas);
+  const m = meshChunk(w, 0, 0, uv).solid;
+  assert.equal(faces(m), 6);
+  assert.equal(Math.max(...m.pos.filter((_v, i) => i % 3 === 1)), 30.5);
+  w.set(6, 30, 5, B.Piedra);
+  assert.equal(faces(meshChunk(w, 0, 0, uv).solid), 11); // la losa pierde la cara pegada a la piedra; la piedra conserva las suyas
+  w.set(6, 30, 5, B.LosaTablas);
+  assert.equal(faces(meshChunk(w, 0, 0, uv).solid), 10); // dos losas juntas: sin caras entre ellas
+});

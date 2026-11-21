@@ -18,8 +18,8 @@ export type ModId = 'terror' | 'supervivencia' | 'heroes';
 export const MODS: ModId[] = ['terror', 'supervivencia', 'heroes'];
 export const isMod = (v: unknown): v is ModId => typeof v === 'string' && (MODS as string[]).includes(v);
 export const MOD_INFO: Record<ModId, { name: string; desc: string }> = {
-  terror: { name: 'Terror', desc: 'Noches mucho más oscuras y con niebla, el doble de monstruos y más rápidos. Algo te observa desde lejos y desaparece si lo miras.' },
-  supervivencia: { name: 'Supervivencia extrema', desc: 'Tienes hambre: come manzanas o carne asada. Los monstruos pegan más y al morir pierdes todo.' },
+  terror: { name: 'Terror', desc: 'Noches mucho más oscuras y con niebla, el doble de robots y más rápidos. Algo te observa desde lejos y desaparece si lo miras.' },
+  supervivencia: { name: 'Supervivencia extrema', desc: 'Tienes hambre: come manzanas, bayas o carne asada. Los robots pegan más y al morir pierdes todo.' },
   heroes: { name: 'Superhéroes', desc: 'Saltas muy alto, corres más, rompes y golpeas con superfuerza y no te haces daño al caer.' },
 };
 /** Velocidad al andar y fuerza del salto según los mods (también la usa la predicción del cliente). */
@@ -42,7 +42,7 @@ export interface Player {
   food: number; foodT: number;
 }
 /** La sombra (mod de terror) no ataca: aparece lejos, te observa y desaparece cuando la miras. */
-export type MobKind = 'zombi' | 'esqueleto' | 'arana' | 'sombra';
+export type MobKind = 'escudero' | 'tirador' | 'arana' | 'sombra';
 export interface Mob { id: number; kind: MobKind; body: Body; yaw: number; hp: number; cd: number; flash: number; wanderT: number; wx: number; wz: number; burn: number }
 export interface Arrow { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number }
 
@@ -57,8 +57,8 @@ export type GEvent =
   | { kind: 'eat'; pid: string; item: number } | { kind: 'vanish'; x: number; y: number; z: number; near: boolean } | { kind: 'verity'; pid: string; what: string };
 
 const MOB: Record<MobKind, { hp: number; speed: number; dmg: number; hw: number; h: number; range: number }> = {
-  zombi: { hp: 20, speed: 2.6, dmg: 3, hw: 0.3, h: 1.9, range: 1.3 },
-  esqueleto: { hp: 20, speed: 2.4, dmg: 3, hw: 0.3, h: 1.95, range: 15 },
+  escudero: { hp: 20, speed: 2.6, dmg: 3, hw: 0.3, h: 1.9, range: 1.3 },
+  tirador: { hp: 20, speed: 2.4, dmg: 3, hw: 0.3, h: 1.95, range: 15 },
   arana: { hp: 16, speed: 4.2, dmg: 2, hw: 0.55, h: 0.9, range: 1.5 },
   sombra: { hp: 999, speed: 0, dmg: 0, hw: 0.3, h: 2.3, range: 0 },
 };
@@ -256,14 +256,14 @@ function hitMob(g: Game, m: Mob, dmg: number, fromX: number, fromZ: number, owne
   if (m.hp <= 0) {
     g.events.push({ kind: 'mobDie', id: m.id, x: m.body.x, y: m.body.y, z: m.body.z, mob: m.kind });
     const p = owner ? getPlayer(g, owner) : undefined;
-    // Botín: los esqueletos sueltan palos (sirven para craftear), las arañas y zombis a veces carbón
+    // Botín: escuderos y tiradores sueltan chatarra (se funde en hierro); las arañas, a veces carbón de su batería
     if (p) {
-      const loot = m.kind === 'esqueleto' ? I_PALO : m.kind === 'zombi' && g.rand() < 0.6 ? I.CarnePodrida : g.rand() < 0.4 ? I_CARBON : null;
+      const loot = m.kind !== 'arana' && g.rand() < 0.6 ? I.Chatarra : g.rand() < 0.4 ? I_CARBON : null;
       if (loot !== null) { addItem(p.inv, loot, 1 + Math.floor(g.rand() * 2)); g.events.push({ kind: 'pickup', pid: p.id, item: loot, n: 1 }); }
     }
   }
 }
-const I_PALO = 100, I_CARBON = 101;
+const I_CARBON = 101;
 
 function stepPlayer(g: Game, p: Player, dt: number) {
   p.invuln -= dt; p.attackCd -= dt; p.calm += dt;
@@ -358,7 +358,7 @@ function trySpawn(g: Game) {
     if (!isSolid(g.world.get(x, y0 - 1, z)) || !isFree(g.world.get(x, y0, z)) || !isFree(g.world.get(x, y0 + 1, z))) continue;
     if (!dark(g, x, y0, z)) continue;
     const roll = g.rand();
-    const kind: MobKind = roll < 0.45 ? 'zombi' : roll < 0.75 ? 'esqueleto' : 'arana';
+    const kind: MobKind = roll < 0.45 ? 'escudero' : roll < 0.75 ? 'tirador' : 'arana';
     const s = MOB[kind];
     g.mobs.push({ id: g.nextId++, kind, body: { x: x + 0.5, y: y0, z: z + 0.5, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: y0 }, yaw: 0, hp: s.hp, cd: 1, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 });
     return;
@@ -402,11 +402,11 @@ function stepMob(g: Game, m: Mob, dt: number) {
   if (tgt) {
     const dx = tgt.body.x - m.body.x, dz = tgt.body.z - m.body.z, d = Math.hypot(dx, dz) || 1;
     m.yaw = Math.atan2(dx, dz);
-    const keep = m.kind === 'esqueleto' ? (d < 6 ? -1 : d > 10 ? 1 : 0) : 1;
+    const keep = m.kind === 'tirador' ? (d < 6 ? -1 : d > 10 ? 1 : 0) : 1;
     const fast = terror ? 1.25 : 1;
     wx = (dx / d) * s.speed * keep * fast; wz = (dz / d) * s.speed * keep * fast;
     const sees = !raycast(g.world, m.body.x, m.body.y + s.h * 0.85, m.body.z, tgt.body.x - m.body.x, tgt.body.y + EYE - m.body.y - s.h * 0.85, tgt.body.z - m.body.z, best);
-    if (m.kind === 'esqueleto') {
+    if (m.kind === 'tirador') {
       if (sees && m.cd <= 0 && best < s.range) {
         m.cd = 2.2;
         const ox = m.body.x, oy = m.body.y + 1.5, oz = m.body.z;
@@ -431,7 +431,7 @@ function stepMob(g: Game, m: Mob, dt: number) {
     if (isSolid(g.world.get(Math.floor(ax), Math.floor(m.body.y), Math.floor(m.body.z))) || isSolid(g.world.get(Math.floor(m.body.x), Math.floor(m.body.y), Math.floor(az)))) jump = true;
   }
   moveBody(g.world, m.body, wx, wz, jump, dt, s.hw, s.h);
-  // Al sol, zombis y esqueletos arden
+  // Robots de la noche: a pleno sol, escuderos y tiradores se sobrecalientan
   if (m.kind !== 'arana' && !isNight(g) && g.world.top(Math.floor(m.body.x), Math.floor(m.body.z)) < m.body.y) {
     m.burn += dt;
     if (m.burn >= 1) { m.burn = 0; hitMob(g, m, 2, m.body.x, m.body.z, null); }

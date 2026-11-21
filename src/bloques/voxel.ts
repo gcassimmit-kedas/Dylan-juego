@@ -7,7 +7,7 @@
 export const B = {
   Aire: 0, Hierba: 1, Tierra: 2, Piedra: 3, Adoquin: 4, Tronco: 5, Hojas: 6, Tablas: 7, Arena: 8, Grava: 9,
   Carbon: 10, Hierro: 11, Oro: 12, Diamante: 13, RocaBase: 14, Mesa: 15, Antorcha: 16, Horno: 17, Cofre: 18, HornoEncendido: 19,
-  Esmeralda: 20, Nieve: 21, PiedraNevada: 22, HierbaAlta: 23, FlorSol: 24, FlorFuego: 25, ArbustoBayas: 26,
+  Esmeralda: 20, Nieve: 21, PiedraNevada: 22, HierbaAlta: 23, FlorSol: 24, FlorFuego: 25, ArbustoBayas: 26, LosaTablas: 27, LosaPiedra: 28,
 } as const;
 export type Tex =
   | 'grass' | 'grassSide' | 'dirt' | 'stone' | 'cobble' | 'planks' | 'log' | 'logTop' | 'leaves' | 'sand' | 'gravel'
@@ -32,6 +32,8 @@ export interface BlockDef {
   see: boolean;
   /** Luz que da (antorcha). */
   light?: number;
+  /** Alto del bloque si no llega a 1 (las losas miden 0,5): se pisa, se sube sin saltar y no tapa a los de al lado. */
+  height?: number;
   /** Planta: se dibuja como dos planos cruzados, se atraviesa, se rompe al instante y solo vive sobre hierba o tierra. */
   plant?: boolean;
 }
@@ -66,12 +68,16 @@ export const BLOCKS: BlockDef[] = [
   D('Flor de sol', 0, null, 'flowerSun', { solid: false, see: true, plant: true }),
   D('Flor de fuego', 0, null, 'flowerFire', { solid: false, see: true, plant: true }),
   D('Arbusto de bayas', 0, null, 'berryBush', { solid: false, see: true, plant: true, drop: 109 }), // suelta bayas
+  D('Losa de tablas', 1.5, 'hacha', 'planks', { see: true, height: 0.5 }),
+  D('Losa de piedra', 1.5, 'pico', 'cobble', { see: true, height: 0.5, needs: 1 }),
 ];
 /** Bloques que se usan (se abren) en vez de colocar algo encima. */
 export const USABLE = new Set<number>([B.Mesa, B.Horno, B.HornoEncendido, B.Cofre]);
 export const lightOf = (b: number) => BLOCKS[b]?.light ?? 0;
 export const isSolid = (b: number) => BLOCKS[b]?.solid ?? false;
 export const isSee = (b: number) => BLOCKS[b]?.see ?? true;
+/** Alto de un bloque sólido (1, o 0,5 en las losas). */
+export const heightOf = (b: number) => BLOCKS[b]?.height ?? 1;
 export const isPlant = (b: number) => BLOCKS[b]?.plant ?? false;
 /** Hueco libre: aire o una planta (las plantas se atraviesan y se pueden sustituir por otro bloque). */
 export const isFree = (b: number) => b === B.Aire || isPlant(b);
@@ -349,10 +355,20 @@ function blocked(wd: World, x: number, y: number, z: number, hw: number, h: numb
   for (let bx = Math.floor(x - hw); bx <= Math.floor(x + hw - 1e-6); bx++)
     for (let by = Math.floor(y); by <= Math.floor(y + h - 1e-6); by++)
       for (let bz = Math.floor(z - hw); bz <= Math.floor(z + hw - 1e-6); bz++)
-        if (isSolid(wd.get(bx, by, bz))) return true;
+        { const b = wd.get(bx, by, bz); if (isSolid(b) && y < by + heightOf(b) - 1e-6) return true; }
   return false;
 }
 export const bodyBlocked = blocked;
+/** Altura a la que queda apoyado un cuerpo que cae hasta `y`: la cara de arriba más alta de lo que pisa. */
+function restTop(wd: World, x: number, y: number, z: number, hw: number): number {
+  const by = Math.floor(y);
+  let top = by;
+  for (let bx = Math.floor(x - hw); bx <= Math.floor(x + hw - 1e-6); bx++)
+    for (let bz = Math.floor(z - hw); bz <= Math.floor(z + hw - 1e-6); bz++) { const b = wd.get(bx, by, bz); if (isSolid(b)) top = Math.max(top, by + heightOf(b)); }
+  return top;
+}
+/** Medio escalón: lo que se sube andando, sin saltar (una losa, o de una losa a un bloque entero). */
+export const STEP = 0.5;
 
 /**
  * Mueve un cuerpo: `wishX/wishZ` es la velocidad horizontal deseada (bloques/s), `jump` salta si está en el suelo.
@@ -369,9 +385,13 @@ export function moveBody(wd: World, b: Body, wishX: number, wishZ: number, jump:
   const sdt = dt / steps;
   for (let s = 0; s < steps; s++) {
     const nx = b.x + b.vx * sdt;
-    if (!blocked(wd, nx, b.y, b.z, hw, h)) b.x = nx; else b.vx = 0;
+    if (!blocked(wd, nx, b.y, b.z, hw, h)) b.x = nx;
+    else if (b.onGround && !blocked(wd, nx, b.y + STEP, b.z, hw, h) && !blocked(wd, b.x, b.y + STEP, b.z, hw, h)) { b.x = nx; b.y += STEP; }
+    else b.vx = 0;
     const nz = b.z + b.vz * sdt;
-    if (!blocked(wd, b.x, b.y, nz, hw, h)) b.z = nz; else b.vz = 0;
+    if (!blocked(wd, b.x, b.y, nz, hw, h)) b.z = nz;
+    else if (b.onGround && !blocked(wd, b.x, b.y + STEP, nz, hw, h) && !blocked(wd, b.x, b.y + STEP, b.z, hw, h)) { b.z = nz; b.y += STEP; }
+    else b.vz = 0;
     const ny = b.y + b.vy * sdt;
     if (!blocked(wd, b.x, ny, b.z, hw, h)) {
       if (b.onGround && b.vy <= 0) b.fallFrom = b.y;
@@ -379,7 +399,7 @@ export function moveBody(wd: World, b: Body, wishX: number, wishZ: number, jump:
       if (b.vy > 0) b.fallFrom = b.y;
     } else {
       if (b.vy < 0) {
-        b.y = Math.floor(ny) + 1; // apoyado justo encima del bloque
+        b.y = restTop(wd, b.x, ny, b.z, hw); // apoyado justo encima de lo que pisa (bloque entero o losa)
         if (!b.onGround) { landed = Math.max(0, b.fallFrom - b.y); b.fallFrom = b.y; }
         b.onGround = true;
       }

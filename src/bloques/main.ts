@@ -1,5 +1,5 @@
 // Bloques: supervivencia en un mundo de bloques, en primera persona. Minar con su tiempo, craftear,
-// cuevas con minerales, día y noche con monstruos, 10 corazones. Solo o en mundos compartidos con amigos
+// cuevas con minerales, día y noche con robots, 10 corazones. Solo o en mundos compartidos con amigos
 // (el servidor manda: aquí solo se envía la entrada y se dibuja lo que dice el servidor).
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -7,7 +7,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { World, generate, spawnPoint, raycast, moveBody, BLOCKS, B, USABLE, lightOf, unkey, CHUNK, type Tex, type Body } from './voxel.ts';
+import { World, generate, spawnPoint, raycast, moveBody, BLOCKS, B, USABLE, lightOf, heightOf, unkey, CHUNK, type Tex, type Body } from './voxel.ts';
 import { newGame, addPlayer, step, place, craft, selectSlot, moveSlot, respawn, lookDir, sunLight, isNight, dayPhase, stationsNear, verityCommand, boxMove, getBox, FURNACE, type Box,
   walkSpeed, jumpSpeed, MODS, MOD_INFO, MAX_HP, MAX_FOOD, EYE, REACH, type Game, type GEvent, type Look, type MobKind, type ModId, type VerityCmd } from './game.ts';
 import { verity } from './verity.ts';
@@ -20,12 +20,12 @@ import MeshWorker from './mesh.worker.ts?worker&inline';
 import type { MeshResult, Packed } from './mesh.worker.ts';
 import { buildAtlas, setAnisotropy, type TexName } from './textures.ts';
 import { itemIcon, itemModel } from './itemart.ts';
-import { makePerson, animatePerson, makeSpider, animateSpider, MOB_LOOKS, type Person, type Spider } from './models.ts';
+import { makePerson, animatePerson, MOB_LOOKS, type Person } from './models.ts';
 import { fpInput, applyLook } from './controls.ts';
 import { sfx, unlock, isMuted, setMuted } from '../shooter/audio.ts';
 import { normalizeForFilter } from '../shooter/moderation.ts';
 import { Effects } from '../shooter/fx.ts';
-import { makeLabel } from '../shooter/models.ts';
+import { makeLabel, makeRobot, animateRobot, type Robot } from '../shooter/models.ts';
 import { settings, type Quality } from '../shooter/settings.ts';
 import { icon, hydrateIcons } from '../ui/icons.ts';
 import '../ui/pwa.ts';
@@ -500,8 +500,8 @@ function renderClock() {
   clockIc.innerHTML = icon(night ? 'moon' : 'sun');
   clockText.textContent = night ? 'Noche' : 'Día';
   if (playing && changed) {
-    if (night) banner('Cae la noche', 'Cuidado', 'Salen los monstruos. Refúgiate o enciende antorchas.');
-    else banner('Amanece', 'Nuevo día', 'Los zombis y esqueletos arden al sol.');
+    if (night) banner('Cae la noche', 'Cuidado', 'Salen los robots. Refúgiate o enciende antorchas.');
+    else banner('Amanece', 'Nuevo día', 'Escuderos y tiradores se sobrecalientan al sol.');
   }
 }
 function renderMute() {
@@ -581,9 +581,12 @@ $('invClose').addEventListener('click', closeInventory);
 
 // ---------- Escena: personajes, monstruos, flechas, selección ----------
 const persons = new Map<string, Person & { heldId: number | null }>();
-const mobViews = new Map<number, { kind: MobKind; p?: Person; s?: Spider; px: number; pz: number }>();
+/** Los robots de la noche usan los modelos de Shooter 2027; la sombra (mod de terror) es una figura humana. */
+const ROBOT_OF = { escudero: 'escudero', tirador: 'tirador', arana: 'chaser' } as const;
+const mobViews = new Map<number, { kind: MobKind; root: THREE.Object3D; p?: Person; r?: Robot; px: number; pz: number; walked: number }>();
 const arrowGroup = new THREE.Group(); scene.add(arrowGroup);
-const arrowGeo = new THREE.BoxGeometry(0.05, 0.05, 0.6), arrowMat = new THREE.MeshStandardMaterial({ color: 0x8a6a42 });
+// Disparos de los tiradores: un rayo corto y brillante
+const arrowGeo = new THREE.BoxGeometry(0.06, 0.06, 0.7), arrowMat = new THREE.MeshBasicMaterial({ color: 0xff5a3c });
 const outline = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.004, 1.004, 1.004)), new THREE.LineBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.6 }));
 outline.visible = false; scene.add(outline);
 // Grietas al romper: 10 dibujos que se van abriendo
@@ -631,13 +634,19 @@ function removePerson(id: string) {
 function mobFor(id: number, kind: MobKind, x: number, y: number, z: number) {
   let v = mobViews.get(id);
   if (!v) {
-    v = { kind, px: x, pz: z };
-    const root = kind === 'arana' ? (v.s = makeSpider()).root : (v.p = makePerson(MOB_LOOKS[kind])).root;
+    const root = new THREE.Group();
+    v = { kind, root, px: x, pz: z, walked: 0 };
     if (kind === 'sombra') {
       // Más alta y con ojos que brillan en la oscuridad
-      root.scale.set(1, 1.25, 1);
+      v.p = makePerson(MOB_LOOKS.sombra);
+      v.p.root.scale.set(1, 1.25, 1);
       const glow = new THREE.MeshBasicMaterial({ color: 0xffffff });
-      for (const sx of [-0.12, 0.12]) { const e = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.02), glow); e.position.set(sx, 0.3, 0.26); v.p!.head.add(e); }
+      for (const sx of [-0.12, 0.12]) { const e = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.02), glow); e.position.set(sx, 0.3, 0.26); v.p.head.add(e); }
+      root.add(v.p.root);
+    } else {
+      v.r = makeRobot(ROBOT_OF[kind]);
+      v.r.root.scale.setScalar(kind === 'tirador' ? 0.85 : kind === 'arana' ? 1.1 : 0.95);
+      root.add(v.r.root);
     }
     root.position.set(x, y, z);
     scene.add(root);
@@ -647,7 +656,7 @@ function mobFor(id: number, kind: MobKind, x: number, y: number, z: number) {
 }
 function clearScene() {
   for (const id of [...persons.keys()]) removePerson(id);
-  for (const v of mobViews.values()) scene.remove(v.p?.root ?? v.s!.root);
+  for (const v of mobViews.values()) scene.remove(v.root);
   mobViews.clear();
   arrowGroup.clear();
   for (const c of cracks) c.visible = false;
@@ -686,6 +695,7 @@ function setViewModel(item: number | null) {
 const BLOCK_COLOR: Partial<Record<number, number>> = { [B.Hierba]: 0x66ac3e, [B.Tierra]: 0x946440, [B.Piedra]: 0x94989e, [B.Adoquin]: 0x7c7e80, [B.Tronco]: 0x6b4c2e,
   [B.Hojas]: 0x3f7a2e, [B.Tablas]: 0xa8834e, [B.Arena]: 0xdccb98, [B.Grava]: 0x7a7470, [B.Carbon]: 0x3a3a3c, [B.Hierro]: 0xd8a880, [B.Oro]: 0xfcde50, [B.Diamante]: 0x60e8e2,
   [B.Mesa]: 0x9a6a3a, [B.Antorcha]: 0xffc85a, [B.Horno]: 0x6a6a6c, [B.HornoEncendido]: 0x6a6a6c, [B.Cofre]: 0x8a6236,
+  [B.LosaTablas]: 0xa8834e, [B.LosaPiedra]: 0x7c7e80,
   [B.HierbaAlta]: 0x6cb440, [B.FlorSol]: 0xffce3e, [B.FlorFuego]: 0xe84a38, [B.ArbustoBayas]: 0x3c8232 };
 let shake = 0;
 function flushEvents(evs: GEvent[]) {
@@ -709,7 +719,7 @@ function flushEvents(evs: GEvent[]) {
       case 'respawn': if (mine) { $('death').hidden = true; lockPointer(); } break;
       case 'swing': { const v = persons.get(ev.pid); if (v) v.swing = 1; break; }
       case 'mobHurt': sfx.hit(); break;
-      case 'mobDie': fx.debris(ev.x, ev.y + 0.8, ev.z, ev.mob === 'zombi' ? 0x5f8c4e : ev.mob === 'esqueleto' ? 0xd9d4c4 : 0x2b2420, 12, 5, 0.18); fx.smoke(ev.x, ev.y + 0.5, ev.z, 4, 0x6b6b6b, 0.9, 1); sfx.kill(); break;
+      case 'mobDie': fx.debris(ev.x, ev.y + 0.8, ev.z, ev.mob === 'escudero' ? 0x4f6f96 : ev.mob === 'tirador' ? 0x8a9098 : ev.mob === 'arana' ? 0xc0392b : 0x2b2420, 12, 5, 0.18); fx.smoke(ev.x, ev.y + 0.5, ev.z, 4, 0x6b6b6b, 0.9, 1); sfx.kill(); break;
       case 'shoot': sfx.enemyShoot(); break;
       case 'smelt': if (Math.hypot(ev.x - me.body.x, ev.z - me.body.z) < 8) sfx.pickup(); if (!$('box').hidden) renderBox(); break;
       case 'eat': if (mine) { sfx.pickup(); toast(`Te has comido: ${itemName(ev.item).toLowerCase()}`); } break;
@@ -1017,7 +1027,7 @@ function setPaused(v: boolean) {
   $('pauseKicker').textContent = shared ? 'El mundo sigue en marcha' : 'Partida en pausa';
   $('pauseTitle').textContent = shared ? 'Menú' : 'Pausa';
   $('pausePlayers').hidden = mode !== 'multi';
-  $('pauseHelp').textContent = shared ? 'Los demás siguen jugando. Mientras estás en este menú, los monstruos no te atacan. Si todos pausáis, el mundo se detiene.'
+  $('pauseHelp').textContent = shared ? 'Los demás siguen jugando. Mientras estás en este menú, los robots no te atacan. Si todos pausáis, el mundo se detiene.'
     : isTouch ? 'El juego se pausa solo si cambias de app.' : 'Esc o P para pausar y continuar.';
   if (v && mode === 'multi') renderTeam();
   $('pauseBtn').innerHTML = icon(v ? 'play' : 'pause');
@@ -1222,21 +1232,24 @@ function frame(now: number) {
   for (const m of mobs) {
     live.add(m.id);
     const v = mobFor(m.id, m.kind, m.x, m.y, m.z);
-    const root = v.p?.root ?? v.s!.root;
+    const root = v.root;
     const k = Math.min(1, dt * 14);
     root.position.x += (m.x - root.position.x) * k; root.position.y += (m.y - root.position.y) * k; root.position.z += (m.z - root.position.z) * k;
-    const speed = Math.hypot(root.position.x - v.px, root.position.z - v.pz) / Math.max(dt, 1e-3);
+    const step = Math.hypot(root.position.x - v.px, root.position.z - v.pz);
     v.px = root.position.x; v.pz = root.position.z;
     root.rotation.y = m.yaw;
     if (v.p) {
-      animatePerson(v.p, Math.min(speed, 5), dt, now / 1000, false, reduceMotion.matches);
-      if (m.kind === 'zombi') { v.p.armL.rotation.x = -1.45; v.p.armR.rotation.x = -1.45; } // brazos al frente
-      if (m.kind === 'esqueleto') { v.p.armR.rotation.x = -1.5; v.p.armL.rotation.x = -1.3; v.p.armL.rotation.z = 0.4; }
-      if (m.kind === 'sombra') { v.p.armL.rotation.x = 0; v.p.armR.rotation.x = 0; v.p.body.position.y = 0; }
+      animatePerson(v.p, 0, dt, now / 1000, false, reduceMotion.matches);
+      v.p.armL.rotation.x = 0; v.p.armR.rotation.x = 0; v.p.body.position.y = 0;
       for (const mat of v.p.mats) mat.emissive.setRGB(m.hit ? 0.7 : 0, 0, 0);
-    } else animateSpider(v.s!, Math.min(speed, 5), dt, m.hit, reduceMotion.matches);
+    } else if (v.r) {
+      // El modelo anda "en el sitio": se le da la distancia recorrida y luego se deja centrado en su grupo
+      v.walked += reduceMotion.matches ? 0 : step;
+      animateRobot(v.r, 0, v.walked, 0, v.walked + 1, dt, now / 1000, m.hit);
+      v.r.root.position.set(0, 0, 0);
+    }
   }
-  for (const [id, v] of mobViews) if (!live.has(id)) { scene.remove(v.p?.root ?? v.s!.root); mobViews.delete(id); }
+  for (const [id, v] of mobViews) if (!live.has(id)) { scene.remove(v.root); mobViews.delete(id); }
   // Flechas
   while (arrowGroup.children.length < arrows.length / 6) arrowGroup.add(new THREE.Mesh(arrowGeo, arrowMat));
   arrowGroup.children.forEach((a, i) => {
@@ -1251,7 +1264,8 @@ function frame(now: number) {
   cracks.forEach((c, i) => { c.visible = i < breaking.length; });
   breaking.forEach(([x, y, z, prog], i) => {
     const c = crackAt(i);
-    c.visible = true; c.position.set(x + 0.5, y + 0.5, z + 0.5);
+    const ch = heightOf(world.get(x, y, z)); c.scale.y = ch;
+    c.visible = true; c.position.set(x + 0.5, y + ch / 2, z + 0.5);
     (c.material as THREE.MeshBasicMaterial).map = crackTex[Math.min(9, Math.floor(prog * 10))];
   });
   if (me.mine && playing && (mineSoundT -= dt) <= 0) { mineSoundT = 0.24; sfx.hit(); }
@@ -1275,7 +1289,7 @@ function frame(now: number) {
   const d = lookDir(yaw, pitch);
   const hit = playing && me.alive ? raycast(world, me.body.x, me.body.y + EYE, me.body.z, d[0], d[1], d[2], REACH) : null;
   outline.visible = !!hit && !inMenu();
-  if (hit) outline.position.set(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
+  if (hit) { const hh = heightOf(world.get(hit.x, hit.y, hit.z)); outline.scale.y = hh; outline.position.set(hit.x + 0.5, hit.y + hh / 2, hit.z + 0.5); }
   // Mano: golpea en bucle mientras rompes, y un golpe corto al colocar
   view.visible = playing && me.alive;
   if (view.visible) {

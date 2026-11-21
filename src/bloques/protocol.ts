@@ -44,7 +44,7 @@ export type MServerMsg =
   | { t: 'ms'; s: MSnapshot }
   | { t: 'error'; msg: string } | { t: 'notice'; msg: string } | { t: 'kicked'; msg: string };
 
-export const MOB_KINDS: MobKind[] = ['zombi', 'esqueleto', 'arana', 'sombra'];
+export const MOB_KINDS: MobKind[] = ['escudero', 'tirador', 'arana', 'sombra'];
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
 export function encodeSnapshot(g: Game, tick: number, pid: string, events: GEvent[], changes: [number, number][], box?: { x: number; y: number; z: number } & Box): MSnapshot {

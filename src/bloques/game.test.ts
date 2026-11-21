@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { newGame, addPlayer, step, place, craft, respawn, MAX_HP, EYE, IDLE, DAY_SECONDS, isNight, type Game, type Player } from './game.ts';
 import { World, B } from './voxel.ts';
 const W = 96; // zona de pruebas
-import { addItem, count, breakTime, toolId, RECIPES, I } from './items.ts';
+import { addItem, count, breakTime, toolId, RECIPES, I, SMELT, FOOD } from './items.ts';
 
 /** Partida en un mundo plano: piedra hasta la altura 10, un bloque de tierra delante. Sin monstruos. */
 function flatGame(): { g: Game; p: Player } {
@@ -152,7 +152,7 @@ test('los monstruos aparecen de noche y atacan a quien está cerca, no a quien e
   const { g, p } = flatGame();
   g.time = DAY_SECONDS * 0.75;
   assert.ok(isNight(g));
-  g.mobs.push({ id: 900, kind: 'zombi', body: { x: 22.5, y: 11, z: 20.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 }, yaw: 0, hp: 20, cd: 0, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 });
+  g.mobs.push({ id: 900, kind: 'escudero', body: { x: 22.5, y: 11, z: 20.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 }, yaw: 0, hp: 20, cd: 0, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 });
   p.away = true;
   run(g, 3);
   assert.equal(p.hp, MAX_HP, 'en pausa no le hacen daño');
@@ -164,7 +164,7 @@ test('los monstruos aparecen de noche y atacan a quien está cerca, no a quien e
 test('se puede matar a un monstruo a golpes y una espada pega más que la mano', () => {
   const { g, p } = flatGame();
   g.time = DAY_SECONDS * 0.75;
-  const z = { id: 901, kind: 'zombi' as const, body: { x: 22.3, y: 11, z: 20.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 }, yaw: 0, hp: 20, cd: 99, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 };
+  const z = { id: 901, kind: 'escudero' as const, body: { x: 22.3, y: 11, z: 20.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 }, yaw: 0, hp: 20, cd: 99, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 };
   g.mobs.push(z);
   addItem(p.inv, toolId('espada', 'hierro'), 1);
   for (let i = 0; i < 200 && g.mobs.length; i++) {
@@ -374,4 +374,26 @@ test('las bayas se comen', () => {
   assert.equal(place(g, 'p1'), true);
   assert.equal(p.hp, 11);
   assert.equal(count(p.inv, I.Bayas), 0);
+});
+
+test('los robots de la noche sueltan chatarra, que se funde en lingotes de hierro (y no se come)', () => {
+  const { g, p } = flatGame();
+  g.rand = () => 0.1;
+  const r = { id: 902, kind: 'tirador' as const, body: { x: 22.3, y: 11, z: 20.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 }, yaw: 0, hp: 1, cd: 99, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 };
+  g.mobs.push(r);
+  lookAt(p, 22, 11, 20);
+  run(g, 0.2);
+  assert.equal(g.mobs.length, 0);
+  assert.ok(count(p.inv, I.Chatarra) >= 1);
+  assert.equal(SMELT[I.Chatarra], I.LingoteHierro);
+  assert.equal(FOOD[I.Chatarra], undefined);
+});
+
+test('las losas se fabrican en la mesa: 3 tablas dan 6 losas', () => {
+  const { g, p } = flatGame();
+  g.world.set(21, 11, 21, B.Mesa);
+  addItem(p.inv, B.Tablas, 3);
+  assert.equal(craft(g, 'p1', 'losa-tablas'), true);
+  assert.equal(count(p.inv, B.LosaTablas), 6);
+  assert.equal(count(p.inv, B.Tablas), 0);
 });

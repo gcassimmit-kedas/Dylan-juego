@@ -86,11 +86,13 @@ export function meshChunk(w: World, cx: number, cz: number, uvOf: UV): { solid: 
       crossMesh(see, x, y, z, uvOf(def.tex[1]), 0.1, ox, oz, light(x, y, z), torches.length ? torchLight(torches, x + 0.5, y + 0.5, z + 0.5) : 0);
       continue;
     }
-    const out = def.see ? see : solid;
+    const hgt = def.height ?? 1, low = hgt < 1;
+    const out = def.see && !low ? see : solid;
     for (const f of FACES) {
       const nx = x + f.n[0], ny = y + f.n[1], nz = z + f.n[2];
       const nb = get(nx, ny, nz);
-      if (nb !== B.Aire && !isSee(nb)) continue; // tapada
+      // Tapada por el vecino. La cara de arriba de una losa queda al aire; entre dos losas iguales no hay cara
+      if (low && f.n[1] === 1 ? false : (nb !== B.Aire && !isSee(nb)) || (low && nb === b && f.n[1] === 0)) continue;
       if (b === B.Hojas && nb === B.Hojas && f.n[1] === 0 && (x + z) % 2) continue; // menos caras internas de hojas
       const L = light(nx, ny, nz), T = torches.length ? torchLight(torches, nx + 0.5, ny + 0.5, nz + 0.5) : 0;
       const [u0, v0, u1, v1] = uvOf(def.tex[f.t]);
@@ -98,7 +100,7 @@ export function meshChunk(w: World, cx: number, cz: number, uvOf: UV): { solid: 
       const ao = AO_TMP;
       for (let v = 0; v < 4; v++) {
         const [ox, oy, oz] = f.c[v], o = f.ao[v];
-        out.pos.push(x + ox, y + oy, z + oz);
+        out.pos.push(x + ox, y + oy * hgt, z + oz);
         out.nrm.push(f.n[0], f.n[1], f.n[2]);
         // Oclusión ambiental: los dos vecinos de lado y el de la esquina, por fuera de la cara (precalculados)
         const s1 = opaque(nx + o[0], ny + o[1], nz + o[2]) ? 1 : 0, s2 = opaque(nx + o[3], ny + o[4], nz + o[5]) ? 1 : 0;
@@ -110,7 +112,8 @@ export function meshChunk(w: World, cx: number, cz: number, uvOf: UV): { solid: 
         out.glow.push(AO[occ] * T);
       }
       // UV: abajo-izquierda, abajo-derecha, arriba-derecha, arriba-izquierda (la textura no está volteada)
-      out.uv.push(u0, v1, u1, v1, u1, v0, u0, v0);
+      const vt = f.n[1] === 0 ? v1 - (v1 - v0) * hgt : v0; // en los lados de una losa, solo la mitad de la textura
+      out.uv.push(u0, v1, u1, v1, u1, vt, u0, vt);
       // Girar la diagonal según la sombra para que no se vean triángulos raros
       if (ao[0] + ao[2] < ao[1] + ao[3]) out.idx.push(base + 1, base + 2, base + 3, base + 1, base + 3, base);
       else out.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);

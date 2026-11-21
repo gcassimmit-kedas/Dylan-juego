@@ -4,10 +4,10 @@ import { B, BLOCKS } from './voxel.ts';
 
 export const I = {
   Palo: 100, Carbon: 101, LingoteHierro: 102, LingoteOro: 103, Diamante: 104,
-  Manzana: 105, CarnePodrida: 106, CarneAsada: 107, Esmeralda: 108, Bayas: 109,
+  Manzana: 105, Chatarra: 106, CarneAsada: 107, Esmeralda: 108, Bayas: 109,
 } as const;
 /** Comida: cuánto quita el hambre (en medios muslos, de 20). */
-export const FOOD: Partial<Record<number, number>> = { 105: 4, 106: 2, 107: 8, 109: 2 };
+export const FOOD: Partial<Record<number, number>> = { 105: 4, 107: 8, 109: 2 };
 export type ToolType = 'pico' | 'hacha' | 'pala' | 'espada';
 export const TOOL_TYPES: ToolType[] = ['pico', 'hacha', 'pala', 'espada'];
 export const TIERS = ['madera', 'piedra', 'hierro', 'diamante'] as const;
@@ -22,7 +22,7 @@ const TYPE_NAME: Record<ToolType, string> = { pico: 'Pico', hacha: 'Hacha', pala
 export const ITEMS = new Map<number, ItemDef>();
 BLOCKS.forEach((b, id) => { if (id !== B.Aire && id !== B.RocaBase && id !== B.HornoEncendido) ITEMS.set(id, { id, name: b.name, stack: 64, block: id }); });
 for (const [id, name] of [[I.Palo, 'Palo'], [I.Carbon, 'Carbón'], [I.LingoteHierro, 'Lingote de hierro'], [I.LingoteOro, 'Lingote de oro'], [I.Diamante, 'Diamante'],
-  [I.Manzana, 'Manzana'], [I.CarnePodrida, 'Carne podrida'], [I.CarneAsada, 'Carne asada'], [I.Esmeralda, 'Esmeralda'], [I.Bayas, 'Bayas']] as const)
+  [I.Manzana, 'Manzana'], [I.Chatarra, 'Chatarra'], [I.CarneAsada, 'Carne asada'], [I.Esmeralda, 'Esmeralda'], [I.Bayas, 'Bayas']] as const)
   ITEMS.set(id, { id, name, stack: 64 });
 for (const type of TOOL_TYPES) for (const tier of TIERS) {
   const id = toolId(type, tier);
@@ -74,6 +74,8 @@ export const RECIPES: Recipe[] = [
   R('horno', B.Horno, 1, [[B.Adoquin, 8]], 'mesa'),
   ...TIERS.flatMap((tier) => TOOL_TYPES.map((type) => R(`${type}-${tier}`, toolId(type, tier), 1, [[TIER_MAT[tier], TOOL_COST[type]], [I.Palo, TOOL_STICKS[type]]], 'mesa'))),
   R('cofre', B.Cofre, 1, [[B.Tablas, 8]], 'mesa'),
+  R('losa-tablas', B.LosaTablas, 6, [[B.Tablas, 3]], 'mesa'),
+  R('losa-piedra', B.LosaPiedra, 6, [[B.Adoquin, 3]], 'mesa'),
 ];
 export const recipeById = new Map(RECIPES.map((r) => [r.id, r]));
 
@@ -81,11 +83,11 @@ export const recipeById = new Map(RECIPES.map((r) => [r.id, r]));
 
 /** Lo que se funde en el horno: entrada -> resultado. */
 export const SMELT: Partial<Record<number, number>> = {
-  [B.Hierro]: I.LingoteHierro, [B.Oro]: I.LingoteOro, [I.CarnePodrida]: I.CarneAsada, [B.Adoquin]: B.Piedra, [B.Tronco]: I.Carbon,
+  [B.Hierro]: I.LingoteHierro, [B.Oro]: I.LingoteOro, [I.Chatarra]: I.LingoteHierro, [B.Adoquin]: B.Piedra, [B.Tronco]: I.Carbon,
 };
 /** Combustible: segundos que arde cada unidad. */
 export const FUEL: Partial<Record<number, number>> = {
-  [I.Carbon]: 80, [B.Tronco]: 15, [B.Tablas]: 15, [B.Mesa]: 15, [B.Cofre]: 15, [I.Palo]: 5,
+  [I.Carbon]: 80, [B.Tronco]: 15, [B.Tablas]: 15, [B.LosaTablas]: 7, [B.Mesa]: 15, [B.Cofre]: 15, [I.Palo]: 5,
 };
 export const SMELT_SECONDS = 8;
 

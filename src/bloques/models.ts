@@ -40,10 +40,8 @@ export const LOOKS: Partial<Record<CharacterId, Look>> = {
 };
 export const lookFor = (c: CharacterId) => LOOKS[c] ?? LOOKS.coloso!;
 /** Monstruos con forma de persona (diseños propios del juego). */
-export const MOB_LOOKS: Record<'zombi' | 'esqueleto' | 'sombra', Look> = {
+export const MOB_LOOKS: Record<'sombra', Look> = {
   sombra: { skin: 0x0b0b0e, hair: 0x0b0b0e, shirt: 0x0e0e12, pants: 0x0b0b0e, shoes: 0x08080a, curly: false, stripes: false, sleeves: false, collar: false, wide: 0.8, face: 'sombra' },
-  zombi: { skin: 0x5f8c4e, hair: 0x2f4a26, shirt: 0x3a6d74, pants: 0x4a3f78, shoes: 0x2c2c34, curly: false, stripes: false, sleeves: true, collar: false, wide: 1.05, face: 'zombi', torn: true },
-  esqueleto: { skin: 0xd9d4c4, hair: 0xd9d4c4, shirt: 0xd9d4c4, pants: 0xcfcab8, shoes: 0xbdb8a6, curly: false, stripes: false, sleeves: false, collar: false, wide: 0.7, face: 'calavera' },
 };
 
 function faceTex(l: Look) {
