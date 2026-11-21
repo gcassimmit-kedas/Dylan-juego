@@ -44,7 +44,7 @@
   <div id="banner" aria-live="polite"><div class="kicker" id="bannerKicker"></div><div class="title" id="bannerTitle"></div><div class="sub" id="bannerSub"></div></div>
   <div id="lockHint" hidden><span data-icon="crosshair"></span> Haz clic para jugar</div>
   <div id="bottom">
-    <div class="bars"><div id="hearts" role="meter" aria-label="Vida" aria-valuemin="0" aria-valuemax="20"></div><div id="food" role="meter" aria-label="Hambre" aria-valuemin="0" aria-valuemax="20" hidden></div></div>
+    <div class="bars"><div id="hearts" role="meter" aria-label="Vida" aria-valuemin="0" aria-valuemax="20"></div></div>
     <div id="hotbar" role="toolbar" aria-label="Barra rápida"></div>
     <div id="heldName" aria-live="polite"></div>
   </div>
@@ -120,7 +120,7 @@
     <div class="panel verity-panel">
       <div class="head">
         <div>
-          <p class="kicker" id="verityKicker">Tu ayudante</p>
+          <p class="kicker">Tu ayudante</p>
           <h2 id="verityTitle">Verity</h2>
         </div>
         <button id="verityClose" class="btn" aria-label="Cerrar Verity" data-icon="x"></button>
@@ -132,38 +132,6 @@
         <button id="veritySend" class="primary" type="submit" aria-label="Enviar"><span data-icon="send"></span></button>
       </form>
       <p class="help" id="verityNote">Lo que escribes se queda en tu dispositivo: solo se usa para entender lo que pides.</p>
-    </div>
-  </div>
-
-  <!-- Mods -->
-  <div id="mods" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="modsTitle">
-    <div class="panel mods-panel">
-      <div class="head">
-        <div>
-          <p class="kicker">Mundo nuevo</p>
-          <h2 id="modsTitle">Mods</h2>
-        </div>
-      </div>
-      <p class="help mods-help">Elige cómo quieres que sea tu mundo. Puedes juntar varios. Si invitas a tus amigos, juegan con los mismos mods.</p>
-      <div id="modsList" class="mods-list" role="group" aria-labelledby="modsTitle"></div>
-      <div class="cs-foot">
-        <button id="modsBack" class="ghost"><span data-icon="arrowLeft"></span> Volver</button>
-        <button id="modsGo" class="primary big"><span data-icon="play"></span> Crear mundo</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Otros juegos -->
-  <div id="games" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="gamesTitle">
-    <div class="panel games-panel">
-      <div class="head">
-        <div>
-          <p class="kicker">Más diversión</p>
-          <h2 id="gamesTitle">Otros juegos</h2>
-        </div>
-        <button id="gamesClose" class="btn" aria-label="Cerrar otros juegos" data-icon="x"></button>
-      </div>
-      <ul id="gamesList" class="games-list"></ul>
     </div>
   </div>
 
@@ -199,23 +167,67 @@
     </div>
   </div>
 
-  <!-- Portada -->
-  <div id="overlay" class="screen title">
-    <div class="brand">
+  <!-- Inicio: tus mundos. Antes de jugar hay que crear un mundo. -->
+  <div id="overlay" class="screen home">
+    <header class="home-brand">
       <div class="logo-blocks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <h1 aria-label="Bloques"><span class="l1" aria-hidden="true">Bloques</span><span class="l2" aria-hidden="true">Supervivencia</span></h1>
-      <p class="tagline">Explora, mina, craftea y sobrevive. Solo o con tus amigos.</p>
-      <p class="invited" id="invited" hidden><span data-icon="users"></span> Te han invitado a un mundo</p>
-    </div>
-    <div class="menu">
-      <button id="play" class="primary big"><span data-icon="play"></span> Jugar</button>
-      <button id="multiBtn" class="ghost"><span data-icon="users"></span> Mundos de otros</button>
+      <div>
+        <h1>Bloques</h1>
+        <p class="home-tag">Crea tu mundo. Mina, construye y sobrevive a la noche.</p>
+      </div>
+    </header>
+    <section class="panel home-worlds" aria-labelledby="worldsTitle">
+      <div class="home-head">
+        <div>
+          <p class="kicker">Para empezar</p>
+          <h2 id="worldsTitle">Tus mundos</h2>
+        </div>
+        <button id="newWorldBtn" class="primary"><span data-icon="plus"></span> Crear mundo</button>
+      </div>
+      <button id="joinInvite" class="primary big home-invite" hidden><span data-icon="users"></span> Entrar al mundo de tu amigo</button>
+      <p id="worldsEmpty" class="home-empty">Aún no tienes ningún mundo. Crea el primero para empezar a jugar.</p>
+      <ul id="worldList" class="world-list" aria-label="Mundos guardados"></ul>
+      <p id="worldsFull" class="help" hidden>Tienes el máximo de mundos. Borra uno para crear otro.</p>
+    </section>
+    <nav class="home-links" aria-label="Más opciones">
+      <button id="multiBtn" class="ghost"><span data-icon="globe"></span> Mundos de otros</button>
       <button id="menuSettings" class="ghost"><span data-icon="settings"></span> Ajustes</button>
       <a href="./creditos.html" class="ghost"><span data-icon="info"></span> Créditos</a>
-      <button id="gamesBtn" class="ghost"><span data-icon="grid"></span> Otros juegos</button>
-    </div>
+    </nav>
     <p class="help" id="help"></p>
     <span class="version">v2.0.0</span>
+  </div>
+
+  <!-- Crear mundo -->
+  <div id="newWorld" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="nwTitle">
+    <div class="panel nw-panel">
+      <div class="head">
+        <div>
+          <p class="kicker">Mundo nuevo</p>
+          <h2 id="nwTitle">Crear mundo</h2>
+        </div>
+      </div>
+      <div class="nw-name">
+        <div>
+          <span class="f-lbl">Nombre</span>
+          <strong id="nwName" aria-live="polite"></strong>
+        </div>
+        <button id="nwReroll" class="ghost"><span data-icon="refreshCw"></span> Otro nombre</button>
+      </div>
+      <div class="opt" id="nwPeaceRow">
+        <span>Mundo tranquilo <small>(sin criaturas de noche)</small></span>
+        <button id="nwPeace" class="switch" role="switch" aria-checked="false" aria-label="Mundo tranquilo, sin criaturas de noche"><span></span></button>
+      </div>
+      <div class="opt" id="openRow">
+        <span>Jugar con amigos <small>(mundo en línea)</small></span>
+        <button id="nwOpen" class="switch" role="switch" aria-checked="false" aria-label="Jugar con amigos en un mundo en línea"><span></span></button>
+      </div>
+      <p class="help nw-note" id="nwNote"></p>
+      <div class="cs-foot">
+        <button id="nwBack" class="ghost"><span data-icon="arrowLeft"></span> Volver</button>
+        <button id="nwGo" class="primary big"><span data-icon="check"></span> Crear y jugar</button>
+      </div>
+    </div>
   </div>
 
   <!-- Lista de mundos -->
@@ -231,21 +243,6 @@
       <div class="lobby-body">
         <p id="lobbyStatus" class="lobby-status" role="status" aria-live="polite"></p>
         <ul id="roomsList" class="servers" aria-label="Mundos"></ul>
-      </div>
-    </div>
-  </div>
-
-  <!-- Elegir personaje -->
-  <div id="charSelect" class="screen" hidden role="dialog" aria-modal="true" aria-labelledby="csTitle">
-    <div class="panel cs-panel">
-      <div class="cs-head">
-        <p class="kicker" id="csKicker">Tu personaje</p>
-        <h2 id="csTitle">Elige tu personaje</h2>
-      </div>
-      <div id="csGrid" class="cs-grid" role="radiogroup" aria-labelledby="csTitle"></div>
-      <div class="cs-foot">
-        <button id="csBack" class="ghost"><span data-icon="arrowLeft"></span> Volver</button>
-        <button id="csGo" class="primary big"><span data-icon="check"></span> Elegir</button>
       </div>
     </div>
   </div>

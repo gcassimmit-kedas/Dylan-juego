@@ -36,9 +36,6 @@ function pixels(id: number): (string | null)[][] {
     case I.Bayas: for (const [bx, by] of [[5, 9], [10, 8], [8, 12]]) for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) if (Math.hypot(x, y) < 2.4) put(bx + x, by + y, x + y < -1 ? '#ff7f9c' : x + y > 1 ? '#a81f46' : '#e2345a');
       for (let i = 0; i < 4; i++) { put(7 + i, 5 - i, '#4e9638'); put(6, 6 + (i % 2), '#4e9638'); }
       break;
-    case I.Chatarra: // engranaje roto
-      for (let y = 2; y < 14; y++) for (let x = 2; x < 14; x++) { const d = Math.hypot(x - 7.5, y - 7.5), a = Math.atan2(y - 7.5, x - 7.5); if (d > 1.8 && (d < 4.2 || (d < 5.8 && Math.cos(a * 6) > 0.2)) && !(x > 9 && y < 6)) put(x, y, x + y < 14 ? '#b9bec6' : '#7c828c'); }
-      break;
     case I.Esmeralda: for (let y = 2; y < 14; y++) for (let x = 4; x < 12; x++) if (Math.abs(x - 7.5) * 1.6 + Math.abs(y - 7.5) < 6.5) put(x, y, x + y < 15 ? '#9dffc0' : '#1f9e55'); break;
     default: { // lingotes
       const c = id === I.LingoteOro ? '#ffd23a' : '#d8d8dc';

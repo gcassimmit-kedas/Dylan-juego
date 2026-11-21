@@ -3,8 +3,8 @@
 // Un mundo vacío se guarda 10 minutos en memoria por si alguien vuelve con el enlace; después desaparece.
 import { WebSocket } from 'ws';
 import { randomBytes } from 'node:crypto';
-import { newGame, addPlayer, removePlayer, step, place, craft, selectSlot, moveSlot, respawn, getPlayer, verityCommand, isMod, boxMove, getBox, type Game, type Look, type ModId, type VerityCmd } from '../src/bloques/game.ts';
-import { encodeSnapshot, clampMInput, isLook, MAX_PLAYERS, TICK_HZ, type MClientMsg, type MServerMsg, type WorldInfo } from '../src/bloques/protocol.ts';
+import { newGame, addPlayer, removePlayer, step, place, craft, selectSlot, moveSlot, respawn, getPlayer, verityCommand, boxMove, getBox, type Game, type Look, type VerityCmd } from '../src/bloques/game.ts';
+import { encodeSnapshot, clampMInput, MAX_PLAYERS, TICK_HZ, type MClientMsg, type MServerMsg, type WorldInfo } from '../src/bloques/protocol.ts';
 import { randomServerName, roomPaused, reportsToKick } from '../src/shooter/protocol.ts';
 
 export interface MClient { ws: WebSocket; pid: string; name: string; look: Look; world: WorldRoom | null; paused: boolean; lastInput: number;
@@ -15,15 +15,14 @@ export interface WorldRoom { id: string; name: string; game: Game; clients: Map<
 const worlds = new Map<string, WorldRoom>();
 const MAX_WORLDS = 40;
 const KEEP_EMPTY_MS = 10 * 60 * 1000;
-const LOOK_NAME: Record<Look, string> = { coloso: 'Grande', halcon: 'Rápido' };
 
 function send(c: MClient, m: MServerMsg) { if (c.ws.readyState === WebSocket.OPEN) c.ws.send(JSON.stringify(m)); }
-const info = (r: WorldRoom): WorldInfo => ({ id: r.id, name: r.name, players: r.clients.size, max: MAX_PLAYERS, mods: [...r.game.mods] });
+const info = (r: WorldRoom): WorldInfo => ({ id: r.id, name: r.name, players: r.clients.size, max: MAX_PLAYERS });
 export const worldList = () => [...worlds.values()].filter((r) => r.clients.size > 0).map(info).sort((a, b) => b.players - a.players);
 
-function createWorld(mods: ModId[]): WorldRoom {
+function createWorld(): WorldRoom {
   const taken = new Set([...worlds.values()].map((r) => r.name));
-  const r: WorldRoom = { id: randomBytes(5).toString('hex'), name: randomServerName(Math.random, taken), game: newGame(Math.floor(Math.random() * 2 ** 31), Math.random, mods), clients: new Map(), tick: 0, emptySince: 0, reports: new Map() };
+  const r: WorldRoom = { id: randomBytes(5).toString('hex'), name: randomServerName(Math.random, taken), game: newGame(Math.floor(Math.random() * 2 ** 31), Math.random), clients: new Map(), tick: 0, emptySince: 0, reports: new Map() };
   worlds.set(r.id, r);
   return r;
 }
@@ -31,13 +30,15 @@ function createWorld(mods: ModId[]): WorldRoom {
 function join(c: MClient, r: WorldRoom) {
   if (c.world) leave(c);
   if (r.clients.size >= MAX_PLAYERS) return send(c, { t: 'error', msg: `${r.name} está lleno (${MAX_PLAYERS}/${MAX_PLAYERS}). Elige otro mundo.` });
+  // Nadie elige nada: el servidor reparte los dos aspectos por turnos y numera a los jugadores
   const used = new Set([...r.clients.values()].map((x) => x.name));
-  let n = 1; while (used.has(`${LOOK_NAME[c.look]} ${n}`)) n++;
-  c.name = `${LOOK_NAME[c.look]} ${n}`;
+  let n = 1; while (used.has(`Jugador ${n}`)) n++;
+  c.name = `Jugador ${n}`;
+  c.look = n % 2 ? 'coloso' : 'halcon';
   r.clients.set(c.pid, c); c.world = r; c.paused = false; c.lastInput = Date.now();
   addPlayer(r.game, c.pid, c.name, c.look);
   r.emptySince = 0;
-  send(c, { t: 'mjoined', you: c.pid, world: { id: r.id, name: r.name, seed: r.game.seed, mods: [...r.game.mods] }, edits: [...r.game.world.edits].flat() });
+  send(c, { t: 'mjoined', you: c.pid, world: { id: r.id, name: r.name, seed: r.game.seed }, edits: [...r.game.world.edits].flat() });
 }
 
 export function leave(c: MClient) {
@@ -107,11 +108,9 @@ export function onWorldMessage(c: MClient, m: MClientMsg, save: (entry: object) 
   switch (m.t) {
     case 'mlist': send(c, { t: 'mrooms', rooms: worldList() }); return true;
     case 'mhost':
-      c.look = isLook(m.look) ? m.look : 'coloso';
       if (worlds.size >= MAX_WORLDS) { send(c, { t: 'error', msg: 'No hay sitio para más mundos ahora. Únete a uno de la lista.' }); return true; }
-      join(c, createWorld(Array.isArray(m.mods) ? [...new Set(m.mods.filter(isMod))] : [])); return true;
+      join(c, createWorld()); return true;
     case 'mjoin': {
-      c.look = isLook(m.look) ? m.look : 'coloso';
       const target = worlds.get(String(m.world));
       if (!target) { send(c, { t: 'error', msg: 'Ese mundo ya no existe. Crea uno nuevo o elige otro de la lista.' }); return true; }
       if (c.world !== target) join(c, target);

@@ -1,16 +1,16 @@
 // Protocolo de los mundos compartidos de Bloques. Lo comparten servidor y cliente: tipos y funciones puras.
-import type { Game, GEvent, Look, PInput, MobKind, ModId, VerityCmd, Box } from './game.ts';
+import type { Game, GEvent, Look, PInput, MobKind, VerityCmd, Box } from './game.ts';
 import type { Slot } from './items.ts';
 
 export const MAX_PLAYERS = 7;
 export const TICK_HZ = 20;
 
-export interface WorldInfo { id: string; name: string; players: number; max: number; mods: ModId[] }
+export interface WorldInfo { id: string; name: string; players: number; max: number }
 
 export type MClientMsg =
   | { t: 'mlist' }
-  | { t: 'mhost'; look?: string; mods?: unknown }
-  | { t: 'mjoin'; world: string; look?: string }
+  | { t: 'mhost' }
+  | { t: 'mjoin'; world: string }
   | { t: 'min'; i: unknown }
   | { t: 'mplace' } | { t: 'mcraft'; r: string } | { t: 'mslot'; s: number } | { t: 'mswap'; a: number; b: number } | { t: 'mrespawn' }
   | { t: 'mpause'; v: boolean } | { t: 'mleave' }
@@ -33,18 +33,18 @@ export interface MSnapshot {
   ch: number[];
   ev: GEvent[];
   /** Lo tuyo: inventario y casilla elegida. */
-  me: { inv: Slot[]; sel: number; food: number };
+  me: { inv: Slot[]; sel: number };
   /** El horno o cofre que tienes abierto. */
   box?: { x: number; y: number; z: number } & Box;
 }
 
 export type MServerMsg =
   | { t: 'mrooms'; rooms: WorldInfo[] }
-  | { t: 'mjoined'; you: string; world: { id: string; name: string; seed: number; mods: ModId[] }; edits: number[] }
+  | { t: 'mjoined'; you: string; world: { id: string; name: string; seed: number }; edits: number[] }
   | { t: 'ms'; s: MSnapshot }
   | { t: 'error'; msg: string } | { t: 'notice'; msg: string } | { t: 'kicked'; msg: string };
 
-export const MOB_KINDS: MobKind[] = ['escudero', 'tirador', 'arana', 'sombra'];
+export const MOB_KINDS: MobKind[] = ['pedrusco', 'espino', 'brincon'];
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
 export function encodeSnapshot(g: Game, tick: number, pid: string, events: GEvent[], changes: [number, number][], box?: { x: number; y: number; z: number } & Box): MSnapshot {
@@ -60,7 +60,7 @@ export function encodeSnapshot(g: Game, tick: number, pid: string, events: GEven
     A: g.arrows.flatMap((a) => [r2(a.x), r2(a.y), r2(a.z), r2(a.vx), r2(a.vy), r2(a.vz)]),
     ch: changes.flat(),
     ev: events,
-    me: { inv: me ? me.inv.map((s) => (s ? { ...s } : null)) : [], sel: me?.sel ?? 0, food: me?.food ?? 20 },
+    me: { inv: me ? me.inv.map((s) => (s ? { ...s } : null)) : [], sel: me?.sel ?? 0 },
     ...(box ? { box: { ...box, slots: box.slots.map((s) => (s ? { ...s } : null)), burn: r2(box.burn), prog: r2(box.prog) } } : {}),
   };
 }

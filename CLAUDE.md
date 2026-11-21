@@ -16,7 +16,7 @@ Reglas obligatorias para cualquier cambio en este repositorio. Si una petición 
   - paleta oliva oscuro + dorado `#ffc83d` (variables en `src/shooter/style.css`);
   - paneles y botones con **esquina recortada** (clip-path), botón principal dorado y secundarios translúcidos;
   - cada pantalla con estructura de juego comercial: título con logotipo, HUD con barra de vida e indicador de oleada, anuncios de oleada, pantalla final con estadísticas.
-  - **Excepción: Bloques** (`bloques.html`) es de supervivencia, no de oleadas. Su estructura equivalente: título con logotipo, HUD con 10 corazones y aviso de día/noche, anuncios (anochece, amanece), inventario con crafteo y pantalla de muerte con reaparecer.
+  - **Excepción: Bloques** (`bloques.html`) es de supervivencia, no de oleadas. Su estructura equivalente: título con logotipo, HUD con 10 corazones y aviso de día/noche, anuncios (anochece, amanece), inventario con crafteo y pantalla de muerte con reaparecer. Su pantalla de inicio es propia (lista de mundos y crear mundo), con las mismas tipografías y paleta.
 
 ## 2. Cumplimiento de tiendas (App Store y Google Play)
 
@@ -36,7 +36,7 @@ Reglas obligatorias para cualquier cambio en este repositorio. Si una petición 
 - Si algún día se permite escribir (nombres, chat), debe pasar por `src/shooter/moderation.ts` en el servidor y actualizarse antes la política de privacidad.
 - **Bloques:** cada mundo es público (aparece en la lista) y se puede invitar con un enlace `bloques.html?mundo=<id>`. El enlace solo lleva el identificador aleatorio del mundo, nunca datos de nadie. El servidor (`server/mundo.ts`) simula todo: movimiento, minado, crafteo y monstruos.
 - **Verity (Bloques):** se le escribe, pero no es un chat: el texto se entiende en el propio dispositivo (`src/bloques/verity.ts`) y al servidor solo llega la orden ya entendida (`mcmd`), nunca el texto. Nadie más lo ve. Solo la versión Artifact puede preguntar a Claude lo que no entiende, con el permiso de quien juega en claude.ai. Conectar una IA en la web o en la app exige antes actualizar la política de privacidad y las fichas de las tiendas.
-- **Mods (Bloques):** los elige quien crea el mundo y valen para todos; el servidor los aplica.
+- **Mundos (Bloques):** antes de jugar se crea un mundo. Los de un jugador llevan nombre automático (nadie escribe nada) y se guardan solo en el dispositivo (`src/bloques/save.ts`); los en línea los crea y simula el servidor. No hay mods, ni elección de personaje, ni enlaces a otros juegos: Bloques tiene sus propias criaturas (`src/bloques/criaturas.ts`) y su propia pantalla de inicio.
 - Denunciar y bloquear jugadores deben seguir disponibles (norma 1.2 de Apple).
 - Producción solo con HTTPS/WSS.
 - Cualquier dato nuevo que se trate exige actualizar antes `privacidad.html`, `docs/TIENDAS.md` y las fichas de privacidad.

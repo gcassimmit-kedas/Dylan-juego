@@ -54,6 +54,7 @@ import ban from 'lucide-static/icons/ban.svg?raw';
 import keyRound from 'lucide-static/icons/key-round.svg?raw';
 import handFist from 'lucide-static/icons/hand-fist.svg?raw';
 import blocks from 'lucide-static/icons/blocks.svg?raw';
+import trash from 'lucide-static/icons/trash-2.svg?raw';
 import pickaxe from 'lucide-static/icons/pickaxe.svg?raw';
 import box from 'lucide-static/icons/box.svg?raw';
 import chevronUp from 'lucide-static/icons/chevron-up.svg?raw';
@@ -112,7 +113,7 @@ const LUCIDE = {
   pause, play, volumeOn, volumeOff, house, coins, heart, heartPulse, zap, flame, bomb, rocket,
   footprints, magnet, drone, shieldCheck, brickWall, settings, x, chevronRight, arrowLeft,
   trophy, check, fileText, info, crosshair, grid, rotateCcw, hammer, fence, castle, hospital, plane, zapOff, userRound, shieldOff,
-  globe, search, lock, users, flag, copy, refreshCw, logIn, logOut, plus, wifiOff, ban, keyRound, handFist, blocks,
+  globe, search, lock, users, flag, copy, refreshCw, logIn, logOut, plus, wifiOff, ban, keyRound, handFist, blocks, trash,
   pickaxe, box, chevronUp, backpack, userPlus, sun, moon,
   skull, drumstick, sparkles, send, externalLink, puzzle, tentTree, pointer, flameKindling: flame2,
 };

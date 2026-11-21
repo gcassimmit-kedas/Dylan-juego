@@ -5,7 +5,7 @@ import type { MClientMsg, MServerMsg, MSnapshot, WorldInfo } from './protocol.ts
 export class WorldNet {
   ws: WebSocket | null = null;
   you = '';
-  world: { id: string; name: string; seed: number; mods: import('./game.ts').ModId[] } | null = null;
+  world: { id: string; name: string; seed: number } | null = null;
   edits: number[] = [];
   snap: MSnapshot | null = null;
   /** Instantáneas que aún no ha procesado el juego (eventos y bloques cambiados no se pueden perder). */

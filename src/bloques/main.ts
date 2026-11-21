@@ -1,5 +1,5 @@
 // Bloques: supervivencia en un mundo de bloques, en primera persona. Minar con su tiempo, craftear,
-// cuevas con minerales, día y noche con robots, 10 corazones. Solo o en mundos compartidos con amigos
+// cuevas con minerales, día y noche con criaturas, 10 corazones. Solo o en mundos compartidos con amigos
 // (el servidor manda: aquí solo se envía la entrada y se dibuja lo que dice el servidor).
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -8,8 +8,8 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { World, generate, spawnPoint, raycast, moveBody, BLOCKS, B, USABLE, lightOf, heightOf, unkey, CHUNK, type Tex, type Body } from './voxel.ts';
-import { newGame, addPlayer, step, place, craft, selectSlot, moveSlot, respawn, lookDir, sunLight, isNight, dayPhase, stationsNear, verityCommand, boxMove, getBox, FURNACE, type Box,
-  walkSpeed, jumpSpeed, MODS, MOD_INFO, MAX_HP, MAX_FOOD, EYE, REACH, type Game, type GEvent, type Look, type MobKind, type ModId, type VerityCmd } from './game.ts';
+import { step, place, craft, selectSlot, moveSlot, respawn, lookDir, sunLight, isNight, dayPhase, stationsNear, verityCommand, boxMove, getBox, FURNACE, type Box,
+  WALK, DAY_SECONDS, MAX_HP, EYE, REACH, type Game, type GEvent, type Look, type MobKind, type VerityCmd } from './game.ts';
 import { verity } from './verity.ts';
 import { ITEMS, RECIPES, HOTBAR, SLOTS, count, cannotCraft, itemName, toolId, SMELT, FUEL, SMELT_SECONDS, type Slot, type Station, type Recipe } from './items.ts';
 import type { IconName } from '../ui/icons.ts';
@@ -20,12 +20,14 @@ import MeshWorker from './mesh.worker.ts?worker&inline';
 import type { MeshResult, Packed } from './mesh.worker.ts';
 import { buildAtlas, setAnisotropy, type TexName } from './textures.ts';
 import { itemIcon, itemModel } from './itemart.ts';
-import { makePerson, animatePerson, MOB_LOOKS, type Person } from './models.ts';
+import { makePerson, animatePerson, type Person } from './models.ts';
+import { makeCreature, animateCreature, type Creature } from './criaturas.ts';
+import { worldName, newCard, startWorld, saveGame, loadGame, parseCards, MAX_WORLDS, type WorldCard } from './save.ts';
 import { fpInput, applyLook } from './controls.ts';
 import { sfx, unlock, isMuted, setMuted } from '../shooter/audio.ts';
 import { normalizeForFilter } from '../shooter/moderation.ts';
 import { Effects } from '../shooter/fx.ts';
-import { makeLabel, makeRobot, animateRobot, type Robot } from '../shooter/models.ts';
+import { makeLabel } from '../shooter/models.ts';
 import { settings, type Quality } from '../shooter/settings.ts';
 import { icon, hydrateIcons } from '../ui/icons.ts';
 import '../ui/pwa.ts';
@@ -44,12 +46,11 @@ const writeStr = (k: string, v: string) => { try { localStorage.setItem(k, v); }
 /** Versión publicada como Artifact de claude.ai: solo un jugador (allí no se puede conectar con el servidor). */
 const ARTEFACTO = import.meta.env.VITE_ARTEFACTO === '1';
 if (ARTEFACTO) {
-  for (const el of document.querySelectorAll<HTMLElement>('#multiBtn, a[href="./creditos.html"], a[href="./juegos.html"], #settings .links')) { el.hidden = true; el.style.display = 'none'; }
-  document.querySelector('.tagline')!.textContent = 'Explora, mina, craftea y sobrevive.';
-  const credits = document.createElement('p');
-  credits.className = 'help';
+  for (const el of document.querySelectorAll<HTMLElement>('#multiBtn, #openRow, a[href="./creditos.html"], #settings .links')) { el.hidden = true; el.style.display = 'none'; }
+  const credits = document.createElement('span');
+  credits.className = 'credits';
   credits.textContent = 'Versión de un jugador. Hecho con Three.js (MIT), iconos Lucide (ISC) y fuentes Oswald e Inter (SIL OFL 1.1).';
-  $('help').after(credits);
+  $('help').append(credits);
 }
 const invitedWorld = ARTEFACTO ? null : new URLSearchParams(location.search).get('mundo');
 if (invitedWorld) $('invited').hidden = false;
@@ -235,11 +236,8 @@ let myId = 'p1';
 let yaw = Math.PI, pitch = 0;
 let playing = false, paused = false;
 /** Mi estado (en solo, el de la partida; en línea, mi predicción local y lo que dice el servidor). */
-let me: { body: Body; hp: number; alive: boolean; inv: Slot[]; sel: number; mine: [number, number, number, number] | null; food: number } =
-  { body: { x: 48, y: 40, z: 48, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: 40 }, hp: MAX_HP, alive: true, inv: [], sel: 0, mine: null, food: MAX_FOOD };
-/** Mods del mundo en el que se juega. */
-let worldMods = new Set<ModId>();
-const hasMod = (m: ModId) => worldMods.has(m);
+let me: { body: Body; hp: number; alive: boolean; inv: Slot[]; sel: number; mine: [number, number, number, number] | null } =
+  { body: { x: 48, y: 40, z: 48, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: 40 }, hp: MAX_HP, alive: true, inv: [], sel: 0, mine: null };
 let others: NetP[] = [];
 let mobs: { id: number; kind: MobKind; x: number; y: number; z: number; yaw: number; hit: boolean }[] = [];
 let arrows: number[] = [];
@@ -383,7 +381,7 @@ function pollPad() {
     const lt = (g.buttons[6]?.value ?? 0) > 0.3;
     if (lt && !padPlace) doPlace();
     padPlace = lt;
-  } else if (!playing && !$('overlay').hidden && hit(0)) $('play').click();
+  } else if (!playing && !$('overlay').hidden && hit(0)) (document.querySelector<HTMLElement>('#worldList .w-play') ?? $('newWorldBtn')).click();
   padPrev = g.buttons.map((b) => b.pressed);
 }
 
@@ -450,8 +448,6 @@ function showHeldName() {
   heldNameEl.classList.toggle('show', !!s);
   clearTimeout(heldTimer); heldTimer = window.setTimeout(() => heldNameEl.classList.remove('show'), 1600);
 }
-const foodEl = $('food');
-for (let i = 0; i < MAX_FOOD / 2; i++) { const f = document.createElement('span'); f.className = 'f'; f.innerHTML = icon('drumstick'); foodEl.appendChild(f); }
 const heartSvg = icon('heart');
 for (let i = 0; i < MAX_HP / 2; i++) {
   const h = document.createElement('span'); h.className = 'h';
@@ -463,7 +459,7 @@ function slotHtml(s: Slot, key?: number) {
 }
 let hudKey = '';
 function hud() {
-  const key = `${me.hp}|${me.food}|${hasMod('supervivencia')}|${me.sel}|${me.inv.map((s) => (s ? `${s.id}:${s.n}` : '')).join(',')}`;
+  const key = `${me.hp}|${me.sel}|${me.inv.map((s) => (s ? `${s.id}:${s.n}` : '')).join(',')}`;
   if (key === hudKey) return;
   hudKey = key;
   [...heartsEl.children].forEach((h, i) => {
@@ -473,10 +469,6 @@ function hud() {
   heartsEl.classList.toggle('low', me.hp > 0 && me.hp <= 6);
   heartsEl.setAttribute('aria-valuenow', String(me.hp));
   heartsEl.setAttribute('aria-label', `Vida: ${me.hp / 2} de 10 corazones`);
-  foodEl.hidden = !hasMod('supervivencia');
-  [...foodEl.children].forEach((f, i) => { const v = me.food - i * 2; f.className = `f${v >= 2 ? '' : v === 1 ? ' half' : ' empty'}`; });
-  foodEl.setAttribute('aria-valuenow', String(me.food));
-  foodEl.setAttribute('aria-label', `Hambre: ${me.food / 2} de 10`);
   hotbarEl.innerHTML = '';
   for (let i = 0; i < HOTBAR; i++) {
     const s = me.inv[i] ?? null, b = document.createElement('button');
@@ -500,8 +492,8 @@ function renderClock() {
   clockIc.innerHTML = icon(night ? 'moon' : 'sun');
   clockText.textContent = night ? 'Noche' : 'Día';
   if (playing && changed) {
-    if (night) banner('Cae la noche', 'Cuidado', 'Salen los robots. Refúgiate o enciende antorchas.');
-    else banner('Amanece', 'Nuevo día', 'Escuderos y tiradores se sobrecalientan al sol.');
+    if (night) banner('Cae la noche', 'Cuidado', 'Salen las criaturas. Refúgiate o enciende antorchas.');
+    else banner('Amanece', 'Nuevo día', 'Con el sol, pedruscos y espinos se deshacen.');
   }
 }
 function renderMute() {
@@ -579,14 +571,12 @@ function openInventory(table = false) {
 function closeInventory() { $('inventory').hidden = true; picked = null; lockPointer(); }
 $('invClose').addEventListener('click', closeInventory);
 
-// ---------- Escena: personajes, monstruos, flechas, selección ----------
+// ---------- Escena: personajes, criaturas, púas, selección ----------
 const persons = new Map<string, Person & { heldId: number | null }>();
-/** Los robots de la noche usan los modelos de Shooter 2027; la sombra (mod de terror) es una figura humana. */
-const ROBOT_OF = { escudero: 'escudero', tirador: 'tirador', arana: 'chaser' } as const;
-const mobViews = new Map<number, { kind: MobKind; root: THREE.Object3D; p?: Person; r?: Robot; px: number; pz: number; walked: number }>();
+const mobViews = new Map<number, { c: Creature; px: number; pz: number }>();
 const arrowGroup = new THREE.Group(); scene.add(arrowGroup);
-// Disparos de los tiradores: un rayo corto y brillante
-const arrowGeo = new THREE.BoxGeometry(0.06, 0.06, 0.7), arrowMat = new THREE.MeshBasicMaterial({ color: 0xff5a3c });
+// Púas que lanza el espino
+const arrowGeo = new THREE.BoxGeometry(0.05, 0.05, 0.5), arrowMat = new THREE.MeshStandardMaterial({ color: 0xe8e2c4, roughness: 0.6 });
 const outline = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.004, 1.004, 1.004)), new THREE.LineBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.6 }));
 outline.visible = false; scene.add(outline);
 // Grietas al romper: 10 dibujos que se van abriendo
@@ -634,29 +624,16 @@ function removePerson(id: string) {
 function mobFor(id: number, kind: MobKind, x: number, y: number, z: number) {
   let v = mobViews.get(id);
   if (!v) {
-    const root = new THREE.Group();
-    v = { kind, root, px: x, pz: z, walked: 0 };
-    if (kind === 'sombra') {
-      // Más alta y con ojos que brillan en la oscuridad
-      v.p = makePerson(MOB_LOOKS.sombra);
-      v.p.root.scale.set(1, 1.25, 1);
-      const glow = new THREE.MeshBasicMaterial({ color: 0xffffff });
-      for (const sx of [-0.12, 0.12]) { const e = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.02), glow); e.position.set(sx, 0.3, 0.26); v.p.head.add(e); }
-      root.add(v.p.root);
-    } else {
-      v.r = makeRobot(ROBOT_OF[kind]);
-      v.r.root.scale.setScalar(kind === 'tirador' ? 0.85 : kind === 'arana' ? 1.1 : 0.95);
-      root.add(v.r.root);
-    }
-    root.position.set(x, y, z);
-    scene.add(root);
+    v = { c: makeCreature(kind), px: x, pz: z };
+    v.c.root.position.set(x, y, z);
+    scene.add(v.c.root);
     mobViews.set(id, v);
   }
   return v;
 }
 function clearScene() {
   for (const id of [...persons.keys()]) removePerson(id);
-  for (const v of mobViews.values()) scene.remove(v.root);
+  for (const v of mobViews.values()) scene.remove(v.c.root);
   mobViews.clear();
   arrowGroup.clear();
   for (const c of cracks) c.visible = false;
@@ -667,7 +644,7 @@ function clearScene() {
 const view = new THREE.Group(); camera.add(view);
 const viewArm = new THREE.Group(); viewArm.scale.setScalar(0.62); view.add(viewArm);
 let viewItem: number | null | undefined, viewLook: Look | null = null, swingT = 0, bobT = 0;
-let myLook: Look = 'coloso';
+const myLook: Look = 'coloso';
 function setViewModel(item: number | null) {
   if (viewItem === item && viewLook === myLook) return;
   viewItem = item; viewLook = myLook;
@@ -719,15 +696,10 @@ function flushEvents(evs: GEvent[]) {
       case 'respawn': if (mine) { $('death').hidden = true; lockPointer(); } break;
       case 'swing': { const v = persons.get(ev.pid); if (v) v.swing = 1; break; }
       case 'mobHurt': sfx.hit(); break;
-      case 'mobDie': fx.debris(ev.x, ev.y + 0.8, ev.z, ev.mob === 'escudero' ? 0x4f6f96 : ev.mob === 'tirador' ? 0x8a9098 : ev.mob === 'arana' ? 0xc0392b : 0x2b2420, 12, 5, 0.18); fx.smoke(ev.x, ev.y + 0.5, ev.z, 4, 0x6b6b6b, 0.9, 1); sfx.kill(); break;
+      case 'mobDie': fx.debris(ev.x, ev.y + 0.8, ev.z, ev.mob === 'pedrusco' ? 0x8a8c8e : ev.mob === 'espino' ? 0x3f8a3a : 0x7a4fd0, 12, 5, 0.18); fx.smoke(ev.x, ev.y + 0.5, ev.z, 4, 0x6b6b6b, 0.9, 1); sfx.kill(); break;
       case 'shoot': sfx.enemyShoot(); break;
       case 'smelt': if (Math.hypot(ev.x - me.body.x, ev.z - me.body.z) < 8) sfx.pickup(); if (!$('box').hidden) renderBox(); break;
       case 'eat': if (mine) { sfx.pickup(); toast(`Te has comido: ${itemName(ev.item).toLowerCase()}`); } break;
-      case 'vanish':
-        if (ev.near) { sfx.gameover(); hurtFlash.classList.add('on'); setTimeout(() => hurtFlash.classList.remove('on'), 200); shake = Math.max(shake, 0.5); banner('...', '', 'Estaba justo detrás de ti'); }
-        else sfx.hit();
-        fx.smoke(ev.x, ev.y + 1, ev.z, 6, 0x0a0a0c, 1.2, 0.6);
-        break;
       case 'join': if (ev.pid !== myId && mode === 'multi') toast(`${names.get(ev.pid) ?? 'Alguien'} ha entrado en el mundo`); break;
       case 'leave': if (mode === 'multi') toast(`${names.get(ev.pid) ?? 'Alguien'} ha salido`); break;
     }
@@ -749,7 +721,6 @@ $('deathMenu').addEventListener('click', () => { $('death').hidden = true; toTit
 
 // ---------- Empezar y salir ----------
 const overlay = $('overlay');
-function savedLook(): Look { return readStr('bloques.aspecto') === 'halcon' ? 'halcon' : 'coloso'; }
 function beginPlaying() {
   $('lobby').hidden = true; overlay.hidden = true; $('death').hidden = true; $('inventory').hidden = true;
   document.body.classList.add('playing');
@@ -761,42 +732,58 @@ function beginPlaying() {
   lockPointer();
   hud(); showHeldName();
 }
-function startSolo(mods: ModId[] = chosenMods()) {
+/** Mundo guardado en el que se juega (un jugador). */
+let card: WorldCard | null = null;
+const worldKey = (id: string) => `bloques.mundo.${id}`;
+let cards: WorldCard[] = parseCards(readStr('bloques.mundos'));
+const storeCards = () => writeStr('bloques.mundos', JSON.stringify(cards));
+/** Guarda la partida en el dispositivo (al pausar, al salir, al pasar a segundo plano y cada poco). */
+function saveNow() {
+  if (mode !== 'solo' || !game || !card) return;
+  const data = saveGame(game, myId);
+  if (!data) return;
+  writeStr(worldKey(card.id), JSON.stringify(data));
+  card.played = Date.now(); card.days = Math.floor(game.time / DAY_SECONDS);
+  storeCards();
+}
+setInterval(() => { if (playing && !paused) saveNow(); }, 20000);
+function startSolo(c: WorldCard, fresh: boolean) {
   leaveMulti();
   clearScene();
   mode = 'solo'; myId = 'p1';
-  myLook = savedLook();
-  game = newGame(Math.floor(Math.random() * 2 ** 31), Math.random, mods);
-  worldMods = new Set(game.mods);
-  document.body.classList.toggle('terror', hasMod('terror'));
-  addPlayer(game, myId, 'Tú', myLook);
+  card = c;
+  let saved: unknown = null;
+  if (!fresh) { try { saved = JSON.parse(readStr(worldKey(c.id)) || 'null'); } catch { saved = null; } }
+  game = fresh ? startWorld(c, myId) : loadGame(c, saved, myId);
   verityLog.innerHTML = '';
-  game.events.length = 0;
   loadWorld(game.world);
   syncSolo();
   beginPlaying();
-  banner('Bloques', mods.length ? `Mods: ${mods.map((m) => MOD_INFO[m].name).join(', ')}` : 'Mundo nuevo', 'Rompe un tronco para empezar. Mantén pulsado: cada bloque tarda su tiempo.');
+  if (fresh) saveNow();
+  banner(c.name, fresh ? 'Mundo nuevo' : `Día ${Math.floor(game.time / DAY_SECONDS) + 1}`, fresh ? 'Rompe un tronco para empezar. Mantén pulsado: cada bloque tarda su tiempo.' : c.peaceful ? 'Mundo tranquilo: sin criaturas.' : 'Tu mundo sigue como lo dejaste.');
 }
 /** Copia el estado de la partida local a lo que se dibuja. */
 function syncSolo() {
   const g = game!, p = g.players[0];
-  me = { body: p.body, hp: p.hp, alive: p.alive, inv: p.inv, sel: p.sel, food: p.food, mine: p.mine && Number.isFinite(p.mine.need) ? [p.mine.x, p.mine.y, p.mine.z, Math.min(1, p.mine.t / p.mine.need)] : null };
+  me = { body: p.body, hp: p.hp, alive: p.alive, inv: p.inv, sel: p.sel, mine: p.mine && Number.isFinite(p.mine.need) ? [p.mine.x, p.mine.y, p.mine.z, Math.min(1, p.mine.t / p.mine.need)] : null };
   others = [];
   mobs = g.mobs.map((m) => ({ id: m.id, kind: m.kind, x: m.body.x, y: m.body.y, z: m.body.z, yaw: m.yaw, hit: m.flash > 0 }));
   arrows = g.arrows.flatMap((a) => [a.x, a.y, a.z, a.vx, a.vy, a.vz]);
   time = g.time;
 }
 function toTitle() {
+  saveNow();
   leaveMulti();
-  game = null;
+  game = null; card = null;
   playing = false; paused = false;
   if (locked()) document.exitPointerLock();
-  document.body.classList.remove('playing', 'multi', 'terror');
+  document.body.classList.remove('playing', 'multi');
   $('box').hidden = true; openAt = null;
   closeVerity(false);
   for (const id of ['pause', 'inventory', 'death']) $(id).hidden = true;
   clearScene();
   overlay.hidden = false;
+  renderWorlds();
 }
 
 // ---------- Multijugador ----------
@@ -810,35 +797,27 @@ async function connectQuick(): Promise<boolean> {
   return ok;
 }
 /** Jugar: con conexión se crea un mundo público (o se entra al de la invitación); sin conexión, se juega solo. */
-async function play() {
+/** Abre un mundo en línea para jugar con amigos (o entra en el de la invitación). Sin conexión, avisa y no hace nada. */
+async function playOnline() {
   unlock();
-  if (ARTEFACTO) { startSolo(); return; }
-  const pb = $<HTMLButtonElement>('play');
-  pb.disabled = true;
   const online = await connectQuick();
-  pb.disabled = false;
-  if (!online) {
-    if (invitedWorld) toast('No se puede conectar con el mundo de tu amigo. Juegas solo, sin conexión.');
-    startSolo(); return;
-  }
+  if (!online) { toast(invitedWorld ? 'No se puede conectar con el mundo de tu amigo. Inténtalo más tarde.' : 'No hay conexión con el servidor. Crea un mundo para jugar sin conexión.'); return; }
   hosting = !invitedWorld;
-  if (invitedWorld) net.send({ t: 'mjoin', world: invitedWorld, look: savedLook() });
-  else net.send({ t: 'mhost', look: savedLook(), mods: chosenMods() });
+  if (invitedWorld) net.send({ t: 'mjoin', world: invitedWorld });
+  else net.send({ t: 'mhost' });
 }
 net.onJoined = () => {
   const w = net.world!;
   clearScene();
-  mode = 'multi'; myId = net.you; myLook = savedLook();
+  mode = 'multi'; myId = net.you; card = null;
   joinedWorld = { id: w.id, name: w.name };
   game = null;
-  worldMods = new Set(w.mods ?? []);
-  document.body.classList.toggle('terror', hasMod('terror'));
   verityLog.innerHTML = '';
   const wd = generate(w.seed);
   wd.applyEdits(net.edits);
   loadWorld(wd);
   const [sx, sy, sz] = spawnPoint(wd);
-  me = { body: { x: sx, y: sy, z: sz, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: 0 }, hp: MAX_HP, alive: true, inv: [], sel: 0, mine: null, food: MAX_FOOD };
+  me = { body: { x: sx, y: sy, z: sz, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: 0 }, hp: MAX_HP, alive: true, inv: [], sel: 0, mine: null };
   firstSnap = true;
   document.body.classList.add('multi');
   $<HTMLInputElement>('inviteLink').value = inviteLink();
@@ -849,7 +828,7 @@ net.onJoined = () => {
   teamKey = '';
   if (invitedWorld) history.replaceState(null, '', location.pathname); // al recargar no vuelve a entrar sin querer
   beginPlaying();
-  banner(w.name, worldMods.size ? `Mods: ${[...worldMods].map((m) => MOD_INFO[m].name).join(', ')}` : 'Mundo público', hosting ? 'Invita a tus amigos: botón de invitar, copia el enlace y mándaselo' : 'Has entrado en el mundo de tus amigos');
+  banner(w.name, 'Mundo público', hosting ? 'Invita a tus amigos: botón de invitar, copia el enlace y mándaselo' : 'Has entrado en el mundo de tus amigos');
   hosting = false;
 };
 function inviteLink() { return `${location.origin}${location.pathname}?mundo=${joinedWorld?.id ?? ''}`; }
@@ -859,7 +838,7 @@ $('copyLink').addEventListener('click', async () => {
   catch { input.focus(); input.select(); toast('Selecciona el enlace y cópialo.'); }
 });
 net.onError = (msg) => {
-  if (mode !== 'multi' && (hosting || invitedWorld) && $('lobby').hidden) { hosting = false; toast(msg); startSolo(); return; }
+  if (mode !== 'multi' && (hosting || invitedWorld) && $('lobby').hidden) { hosting = false; toast(msg); return; }
   if (!$('lobby').hidden) setLobbyStatus(msg, true); else toast(msg);
 };
 net.onNotice = (msg) => toast(msg);
@@ -889,7 +868,7 @@ function multiFrame(dt: number, inp: Inp) {
     if (!me.alive && mine.alive) $('death').hidden = true;
     me.alive = mine.alive;
   }
-  me.inv = s.me.inv; me.food = s.me.food ?? MAX_FOOD;
+  me.inv = s.me.inv;
   if (s.me.sel !== me.sel && performance.now() - lastSlotChange > 400) me.sel = s.me.sel;
   others = s.P.filter((p) => p.id !== myId);
   mobs = [];
@@ -899,8 +878,7 @@ function multiFrame(dt: number, inp: Inp) {
   // Mi movimiento: predicción local con la misma física, y corrección suave hacia lo que dice el servidor
   const active = playing && !inMenu() && me.alive && !document.hidden;
   const i = active ? inp : { mx: 0, mz: 0, jump: false, attack: false, yaw, pitch };
-  const ws = walkSpeed(worldMods);
-  if (me.alive) moveBody(world, me.body, i.mx * ws, i.mz * ws, i.jump, dt, 0.3, 1.8, jumpSpeed(worldMods));
+  if (me.alive) moveBody(world, me.body, i.mx * WALK, i.mz * WALK, i.jump, dt, 0.3, 1.8);
   if (mine && me.alive) {
     const k = Math.min(1, dt * 1.2);
     me.body.x += (mine.x - me.body.x) * k; me.body.z += (mine.z - me.body.z) * k;
@@ -932,13 +910,12 @@ function renderRooms(rooms: WorldInfo[] | null) {
       b.innerHTML = `<span class="sv-ic">${icon('blocks')}</span><span class="sv-txt"><span class="sv-name"></span><span class="sv-state"></span></span><span class="sv-count"><span class="sv-dots"></span><span class="sv-n"></span></span>`;
       b.querySelector('.sv-name')!.textContent = r.name;
       const id = r.id, name = r.name;
-      b.addEventListener('click', () => { setLobbyStatus(`Entrando en ${name}`); net.send({ t: 'mjoin', world: id, look: savedLook() }); });
+      b.addEventListener('click', () => { setLobbyStatus(`Entrando en ${name}`); net.send({ t: 'mjoin', world: id }); });
       const li = document.createElement('li'); li.appendChild(b); list.appendChild(li);
     }
     const full = r.players >= r.max;
     b.disabled = full; b.classList.toggle('full', full); b.classList.toggle('busy', r.players > 0);
-    const mods = (r.mods ?? []).map((m) => MOD_INFO[m]?.name).filter(Boolean).join(', ');
-    b.querySelector('.sv-state')!.textContent = full ? 'Mundo lleno' : `${mods ? `Mods: ${mods}` : 'Sin mods'} · toca para entrar`;
+    b.querySelector('.sv-state')!.textContent = full ? 'Mundo lleno' : 'Toca para entrar';
     b.querySelector('.sv-n')!.textContent = `${r.players}/${r.max}`;
     b.querySelector('.sv-dots')!.innerHTML = Array.from({ length: r.max }, (_, k) => `<i class="${k < r.players ? 'on' : ''}"></i>`).join('');
     b.setAttribute('aria-label', `${r.name}: ${r.players} de ${r.max} jugadores${full ? ', lleno' : ''}`);
@@ -957,8 +934,7 @@ async function openLobby(message = '') {
 }
 net.onRooms = (r) => renderRooms(r);
 $('lobbyClose').addEventListener('click', () => { lobbyEl.hidden = true; clearInterval(listTimer); if (mode !== 'multi') { netClosing = true; net.close(); netClosing = false; } });
-$('play').addEventListener('click', () => openCharSelect(() => (invitedWorld ? void play() : openMods(() => void play())), invitedWorld ? 'Te han invitado' : 'Tu personaje'));
-$('multiBtn').addEventListener('click', () => openCharSelect(() => void openLobby(), 'Mundos de otros'));
+$('multiBtn').addEventListener('click', () => void openLobby());
 
 // Equipo, bloquear y denunciar
 let teamKey = '', reportPid = '';
@@ -1027,7 +1003,7 @@ function setPaused(v: boolean) {
   $('pauseKicker').textContent = shared ? 'El mundo sigue en marcha' : 'Partida en pausa';
   $('pauseTitle').textContent = shared ? 'Menú' : 'Pausa';
   $('pausePlayers').hidden = mode !== 'multi';
-  $('pauseHelp').textContent = shared ? 'Los demás siguen jugando. Mientras estás en este menú, los robots no te atacan. Si todos pausáis, el mundo se detiene.'
+  $('pauseHelp').textContent = shared ? 'Los demás siguen jugando. Mientras estás en este menú, las criaturas no te atacan. Si todos pausáis, el mundo se detiene.'
     : isTouch ? 'El juego se pausa solo si cambias de app.' : 'Esc o P para pausar y continuar.';
   if (v && mode === 'multi') renderTeam();
   $('pauseBtn').innerHTML = icon(v ? 'play' : 'pause');
@@ -1041,6 +1017,7 @@ $('pauseBtn').innerHTML = icon('pause');
 $('pauseBtn').addEventListener('click', () => setPaused(!paused));
 $('resume').addEventListener('click', () => { setPaused(false); lockPointer(); });
 $('quit').addEventListener('click', () => { setPaused(false); toTitle(); });
+window.addEventListener('pagehide', saveNow);
 document.addEventListener('visibilitychange', () => {
   last = performance.now();
   if (mode === 'multi') {
@@ -1048,66 +1025,82 @@ document.addEventListener('visibilitychange', () => {
     else if (playing && !paused) setPaused(true);
     return;
   }
+  if (document.hidden) saveNow();
   if (document.hidden && playing) setPaused(true);
 });
 
-// ---------- Elegir personaje ----------
-const LOOKS: Look[] = ['coloso', 'halcon'];
-const LOOK_NAME: Record<Look, string> = { coloso: 'Grande', halcon: 'Rápido' };
-const LOOK_TEXT: Record<Look, string> = { coloso: 'Camiseta negra de rayas, pelo corto.', halcon: 'Polo blanco, pelo rizado.' };
-let csSel: Look = savedLook(), csDone: () => void = () => {}, csLabel = '';
-let portraits: Partial<Record<Look, string>> = {};
-function makePortraits() {
-  if (Object.keys(portraits).length) return;
-  try {
-    const Wd = 240, Ht = 280;
-    const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-    r.setPixelRatio(1); r.setSize(Wd, Ht, false); r.toneMapping = THREE.ACESFilmicToneMapping;
-    const sc = new THREE.Scene();
-    sc.add(new THREE.HemisphereLight(0xfff4e0, 0x3a4a2a, 1.6));
-    const key = new THREE.DirectionalLight(0xfff1d6, 2.6); key.position.set(2.5, 4, 3.5); sc.add(key);
-    const cam = new THREE.PerspectiveCamera(30, Wd / Ht, 0.1, 50);
-    cam.position.set(1.4, 1.6, 4.4); cam.lookAt(0, 1.05, 0);
-    for (const c of LOOKS) {
-      const p = makePerson(c);
-      const tool = itemModel(c === 'coloso' ? toolId('pico', 'piedra') : toolId('espada', 'hierro'), atlas);
-      tool.scale.setScalar(0.5); tool.position.set(0, -0.05, 0.2); tool.rotation.set(0, -Math.PI / 2, 0.6); p.hand.add(tool);
-      p.root.rotation.y = 0.4; p.armR.rotation.x = -0.5;
-      sc.add(p.root); r.render(sc, cam);
-      portraits[c] = r.domElement.toDataURL('image/png');
-      sc.remove(p.root);
+// ---------- Pantalla de inicio: tus mundos ----------
+// Antes de jugar hay que crear un mundo. Cada mundo tiene nombre automático (nadie escribe nada) y se guarda en el dispositivo.
+const fmtDate = new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short' });
+let askDelete = '';
+function renderWorlds() {
+  const list = $('worldList');
+  list.innerHTML = '';
+  cards.sort((a, b) => b.played - a.played);
+  $('worldsEmpty').hidden = cards.length > 0;
+  for (const c of cards) {
+    const li = document.createElement('li');
+    li.className = 'world';
+    if (askDelete === c.id) {
+      li.classList.add('ask');
+      li.innerHTML = `<p class="w-ask"></p><div class="w-actions"><button class="ghost w-no">${icon('x')} No</button><button class="ghost danger w-yes">${icon('trash')} Borrar</button></div>`;
+      li.querySelector('.w-ask')!.textContent = `¿Borrar ${c.name}? No se puede deshacer.`;
+      li.querySelector('.w-no')!.addEventListener('click', () => { askDelete = ''; renderWorlds(); });
+      li.querySelector('.w-yes')!.addEventListener('click', () => {
+        cards = cards.filter((x) => x.id !== c.id); storeCards();
+        try { localStorage.removeItem(worldKey(c.id)); } catch { /* sin almacenamiento */ }
+        askDelete = ''; renderWorlds(); $('newWorldBtn').focus();
+      });
+    } else {
+      li.innerHTML = `<span class="w-ic">${icon(c.peaceful ? 'sun' : 'moon')}</span><span class="w-txt"><strong></strong><span class="w-meta"></span></span>
+        <button class="btn w-del" data-icon="trash"></button><button class="primary w-play">${icon('play')} Jugar</button>`;
+      li.querySelector('strong')!.textContent = c.name;
+      li.querySelector('.w-meta')!.textContent = `Día ${c.days + 1} · ${c.peaceful ? 'tranquilo' : 'con criaturas'} · ${fmtDate.format(c.played)}`;
+      const del = li.querySelector<HTMLElement>('.w-del')!;
+      del.innerHTML = icon('trash'); del.setAttribute('aria-label', `Borrar ${c.name}`);
+      del.addEventListener('click', () => { askDelete = c.id; renderWorlds(); (list.querySelector('.w-no') as HTMLElement | null)?.focus(); });
+      const go = li.querySelector<HTMLElement>('.w-play')!;
+      go.setAttribute('aria-label', `Jugar en ${c.name}`);
+      go.addEventListener('click', () => { unlock(); startSolo(c, false); });
     }
-    r.dispose(); r.forceContextLoss();
-  } catch { portraits = {}; }
-}
-function renderCharSelect() {
-  $('csKicker').textContent = csLabel;
-  const grid = $('csGrid');
-  grid.innerHTML = '';
-  for (const c of LOOKS) {
-    const b = document.createElement('button');
-    b.className = 'cs-card'; b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(c === csSel));
-    b.innerHTML = `<div class="cs-art">${portraits[c] ? `<img src="${portraits[c]}" alt="" />` : icon('userRound')}</div><div class="cs-info"><span class="cs-role">Aspecto</span><span class="cs-name">${LOOK_NAME[c]}</span><p>${LOOK_TEXT[c]}</p></div>`;
-    b.setAttribute('aria-label', `${LOOK_NAME[c]}. ${LOOK_TEXT[c]}`);
-    b.addEventListener('click', () => { csSel = c; renderCharSelect(); });
-    b.addEventListener('dblclick', () => $('csGo').click());
-    grid.appendChild(b);
+    list.appendChild(li);
   }
+  const full = cards.length >= MAX_WORLDS;
+  $<HTMLButtonElement>('newWorldBtn').disabled = full;
+  $('worldsFull').hidden = !full;
 }
-function openCharSelect(done: () => void, label: string) {
+let draftName = '', draftPeaceful = false, draftOpen = false;
+function renderDraft() {
+  $('nwName').textContent = draftName;
+  $('nwPeace').setAttribute('aria-checked', String(draftPeaceful));
+  $('nwOpen').setAttribute('aria-checked', String(draftOpen));
+  $('nwPeaceRow').hidden = draftOpen; // los mundos en línea siempre tienen criaturas
+  $('nwNote').textContent = draftOpen ? 'Mundo en línea: aparece en la lista pública y puedes invitar con un enlace. No se guarda en tu lista.'
+    : 'Se guarda en este dispositivo y puedes seguir otro día.';
+}
+function openNewWorld() {
+  draftName = worldName(Math.random, cards.map((c) => c.name)); draftPeaceful = false; draftOpen = false;
+  $('newWorld').hidden = false;
+  renderDraft();
+  $('nwGo').focus();
+}
+$('newWorldBtn').addEventListener('click', openNewWorld);
+$('nwReroll').addEventListener('click', () => { draftName = worldName(Math.random, [...cards.map((c) => c.name), draftName]); renderDraft(); });
+$('nwPeace').addEventListener('click', () => { draftPeaceful = !draftPeaceful; renderDraft(); });
+$('nwOpen').addEventListener('click', () => { draftOpen = !draftOpen; renderDraft(); });
+$('nwBack').addEventListener('click', () => { $('newWorld').hidden = true; $('newWorldBtn').focus(); });
+$('newWorld').addEventListener('keydown', (e) => { if (e.key === 'Escape') $('nwBack').click(); });
+$('nwGo').addEventListener('click', () => {
+  $('newWorld').hidden = true;
+  if (draftOpen) { void playOnline(); return; }
   unlock();
-  csSel = savedLook(); csDone = done; csLabel = label;
-  $('charSelect').hidden = false;
-  makePortraits();
-  renderCharSelect();
-  ($('csGrid').querySelector('[aria-checked="true"]') as HTMLElement | null)?.focus({ preventScroll: true });
-}
-$('csGo').addEventListener('click', () => { writeStr('bloques.aspecto', csSel); $('charSelect').hidden = true; csDone(); });
-$('csBack').addEventListener('click', () => { $('charSelect').hidden = true; });
-$('charSelect').addEventListener('keydown', (e) => {
-  if (['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(e.key)) { e.preventDefault(); csSel = csSel === 'coloso' ? 'halcon' : 'coloso'; renderCharSelect(); }
-  if (e.key === 'Escape') $('csBack').click();
+  const c = newCard(Math.random, draftName, draftPeaceful, Date.now());
+  cards.push(c); storeCards();
+  startSolo(c, true);
 });
+$('joinInvite').addEventListener('click', () => void playOnline());
+if (invitedWorld) $('joinInvite').hidden = false;
+renderWorlds();
 
 // ---------- Calidad y ajustes ----------
 let perfFrames = 0, perfTime = 0, perfDone = settings.quality !== 'auto', lowQuality = false;
@@ -1200,14 +1193,11 @@ function frame(now: number) {
   const dusk = Math.max(0, 1 - Math.abs(Math.sin(ang)) * 4);
   fogColor.copy(NIGHT_FOG).lerp(DAY_FOG, sl).lerp(DUSK, dusk * 0.3);
   skyU.top.value.copy(NIGHT_SKY).lerp(DAY_SKY, sl);
-  // Terror: la noche es mucho más oscura y con niebla (salvo con visión nocturna, que deja verlo todo)
-  const fear = playing && hasMod('terror') && !nightVision ? 1 - sl : 0;
   nvU.value = nightVision ? 0.78 : 0;
   nvAmbient.intensity = nightVision ? (1 - sl) * 1.6 : 0;
-  sun.intensity = 2.7 * sl; hemi.intensity = (0.22 + 0.85 * sl) * (1 - fear * 0.7);
-  if (fear) fogColor.lerp(tmpC.setRGB(0.01, 0.01, 0.015), fear * 0.8);
+  sun.intensity = 2.7 * sl; hemi.intensity = (0.22 + 0.85 * sl);
   const far = viewChunks() * CHUNK - 4; // la niebla tapa el borde de lo cargado
-  (scene.fog as THREE.Fog).near = far * 0.55 - fear * (far * 0.55 - 8); (scene.fog as THREE.Fog).far = far - fear * (far - 32);
+  (scene.fog as THREE.Fog).near = far * 0.55; (scene.fog as THREE.Fog).far = far;
   (scene.fog as THREE.Fog).color.copy(fogColor); // la niebla guarda su propia copia del color
   sun.color.copy(tmpC.setRGB(1, 0.94 - dusk * 0.2, 0.84 - dusk * 0.35));
 
@@ -1232,24 +1222,15 @@ function frame(now: number) {
   for (const m of mobs) {
     live.add(m.id);
     const v = mobFor(m.id, m.kind, m.x, m.y, m.z);
-    const root = v.root;
+    const root = v.c.root;
     const k = Math.min(1, dt * 14);
     root.position.x += (m.x - root.position.x) * k; root.position.y += (m.y - root.position.y) * k; root.position.z += (m.z - root.position.z) * k;
-    const step = Math.hypot(root.position.x - v.px, root.position.z - v.pz);
+    const speed = Math.hypot(root.position.x - v.px, root.position.z - v.pz) / Math.max(dt, 1e-3);
     v.px = root.position.x; v.pz = root.position.z;
     root.rotation.y = m.yaw;
-    if (v.p) {
-      animatePerson(v.p, 0, dt, now / 1000, false, reduceMotion.matches);
-      v.p.armL.rotation.x = 0; v.p.armR.rotation.x = 0; v.p.body.position.y = 0;
-      for (const mat of v.p.mats) mat.emissive.setRGB(m.hit ? 0.7 : 0, 0, 0);
-    } else if (v.r) {
-      // El modelo anda "en el sitio": se le da la distancia recorrida y luego se deja centrado en su grupo
-      v.walked += reduceMotion.matches ? 0 : step;
-      animateRobot(v.r, 0, v.walked, 0, v.walked + 1, dt, now / 1000, m.hit);
-      v.r.root.position.set(0, 0, 0);
-    }
+    animateCreature(v.c, Math.min(speed, 6), dt, now / 1000, m.hit, reduceMotion.matches);
   }
-  for (const [id, v] of mobViews) if (!live.has(id)) { scene.remove(v.root); mobViews.delete(id); }
+  for (const [id, v] of mobViews) if (!live.has(id)) { scene.remove(v.c.root); mobViews.delete(id); }
   // Flechas
   while (arrowGroup.children.length < arrows.length / 6) arrowGroup.add(new THREE.Mesh(arrowGeo, arrowMat));
   arrowGroup.children.forEach((a, i) => {
@@ -1329,31 +1310,6 @@ Object.assign(window, {
 });
 
 
-// ---------- Mods ----------
-const MOD_ICON: Record<ModId, IconName> = { terror: 'skull', supervivencia: 'tentTree', heroes: 'zap' };
-let pickedMods = new Set<ModId>((() => { try { return (JSON.parse(readStr('bloques.mods') || '[]') as string[]).filter((m): m is ModId => (MODS as string[]).includes(m)); } catch { return []; } })());
-const chosenMods = () => [...pickedMods];
-let modsDone: () => void = () => {};
-function renderMods() {
-  const list = $('modsList');
-  list.innerHTML = '';
-  for (const m of MODS) {
-    const b = document.createElement('button');
-    b.className = `mod ${m}`;
-    b.setAttribute('aria-pressed', String(pickedMods.has(m)));
-    b.innerHTML = `${icon(MOD_ICON[m])}<span><span class="t"></span><span class="d"></span></span><span class="chk">${icon('check')}</span>`;
-    b.querySelector('.t')!.textContent = MOD_INFO[m].name;
-    b.querySelector('.d')!.textContent = MOD_INFO[m].desc;
-    b.setAttribute('aria-label', `Mod ${MOD_INFO[m].name}: ${MOD_INFO[m].desc}`);
-    b.addEventListener('click', () => { if (pickedMods.has(m)) pickedMods.delete(m); else pickedMods.add(m); renderMods(); (list.querySelector(`.mod.${m}`) as HTMLElement)?.focus(); });
-    list.appendChild(b);
-  }
-  $('modsGo').innerHTML = `${icon('play')} ${pickedMods.size ? 'Crear mundo con mods' : 'Crear mundo sin mods'}`;
-}
-function openMods(done: () => void) { modsDone = done; $('mods').hidden = false; renderMods(); ($('modsList').firstElementChild as HTMLElement | null)?.focus(); }
-$('modsGo').addEventListener('click', () => { writeStr('bloques.mods', JSON.stringify([...pickedMods])); $('mods').hidden = true; modsDone(); });
-$('modsBack').addEventListener('click', () => { $('mods').hidden = true; });
-
 // ---------- Verity ----------
 // Entiende lo que le pides en el propio dispositivo. En la versión Artifact, lo que no entiende se lo pregunta a Claude
 // (con permiso de quien juega). Al servidor solo llega la orden ("dar 10 tablas"), nunca el texto escrito.
@@ -1373,8 +1329,7 @@ function openVerity() {
   releaseTouches(); keys.clear();
   if (locked()) document.exitPointerLock();
   $('verity').hidden = false;
-  $('verityKicker').textContent = hasMod('terror') ? 'Te está esperando' : 'Tu ayudante';
-  if (!verityLog.children.length) sayVerity(hasMod('terror') ? 'Hola. Te estaba esperando. ¿Qué quieres?' : 'Hola, soy Verity. Pídeme cosas o pregúntame. Por ejemplo: dame 10 tablas, ¿dónde hay hierro?, hazlo de día.');
+  if (!verityLog.children.length) sayVerity('Hola, soy Verity. Pídeme cosas o pregúntame. Por ejemplo: dame 10 tablas, ¿dónde hay hierro?, hazlo de día.');
   verityInput.focus();
 }
 function closeVerity(relock = true) { $('verity').hidden = true; if (relock && playing) lockPointer(); }
@@ -1388,7 +1343,7 @@ function safeCmd(c: unknown): VerityCmd | undefined {
   if (!c || typeof c !== 'object') return undefined;
   const o = c as Record<string, unknown>;
   if (o.k === 'dar' && ITEMS.has(Number(o.id))) return { k: 'dar', id: Number(o.id), n: Math.max(1, Math.min(64, Math.floor(Number(o.n)) || 1)) };
-  if (o.k === 'curar' || o.k === 'comer' || o.k === 'dia' || o.k === 'noche' || o.k === 'superficie') return { k: o.k };
+  if (o.k === 'curar' || o.k === 'dia' || o.k === 'noche' || o.k === 'superficie') return { k: o.k };
   return undefined;
 }
 type Sample = { json: <T>(input: string | { role: 'user' | 'assistant'; content: string }[], o?: object) => Promise<T> };
@@ -1405,11 +1360,11 @@ async function askClaude(text: string) {
   const thinking = sayVerity('Pensando…', 'think');
   const items = [...ITEMS.values()].map((d) => `${d.id}=${d.name}`).join(', ');
   const rules = `Eres Verity, un personaje dentro de "Bloques", un juego de supervivencia de bloques en primera persona para niños.
-Hablas en español, con frases cortas y amables${hasMod('terror') ? ', pero con un tono misterioso e inquietante (sin nada violento ni desagradable)' : ''}.
+Hablas en español, con frases cortas y amables.
 Puedes responder cualquier pregunta apta para niños y puedes hacer UNA acción del juego si el jugador la pide.
-Estado: ${me.hp / 2} corazones${hasMod('supervivencia') ? `, hambre ${me.food / 2}/10` : ''}, ${isNight({ time }) ? 'es de noche' : 'es de día'}, mods: ${[...worldMods].map((m) => MOD_INFO[m].name).join(', ') || 'ninguno'}.
+Estado: ${me.hp / 2} corazones, ${isNight({ time }) ? 'es de noche' : 'es de día'}.
 Objetos (id=nombre): ${items}.
-Responde SOLO con JSON: {"texto": "tu respuesta", "accion": null o una de {"k":"dar","id":número,"n":1-64} {"k":"curar"} {"k":"comer"} {"k":"dia"} {"k":"noche"} {"k":"superficie"}}`;
+Responde SOLO con JSON: {"texto": "tu respuesta", "accion": null o una de {"k":"dar","id":número,"n":1-64} {"k":"curar"} {"k":"dia"} {"k":"noche"} {"k":"superficie"}}`;
   aiTurns.push({ role: 'user', content: text });
   while (aiTurns.length > 8) aiTurns.shift();
   try {
@@ -1434,42 +1389,10 @@ $('verityForm').addEventListener('submit', (e) => {
   if (!text) return;
   verityInput.value = '';
   sayVerity(text, 'u');
-  const r = verity(text, { world, x: me.body.x, y: me.body.y, z: me.body.z, yaw, time, terror: hasMod('terror') });
+  const r = verity(text, { world, x: me.body.x, y: me.body.y, z: me.body.z, yaw, time });
   if (r.understood) { sayVerity(r.text); if (r.cmd) runCmd(r.cmd); return; }
   void askClaude(text).then((done) => { if (!done) sayVerity(r.text); });
 });
-
-// ---------- Otros juegos ----------
-// En la web, enlaces a las demás páginas del juego. En la versión Artifact, a la web pública (se abre en otra pestaña).
-const WEB = ARTEFACTO ? 'https://shooter-2027.onrender.com/' : './';
-const GAMES: { name: string; desc: string; href: string; ic: IconName; here?: boolean }[] = [
-  { name: 'Bloques', desc: 'Supervivencia en un mundo de bloques: mina, craftea y juega con tus amigos.', href: 'bloques.html', ic: 'blocks', here: true },
-  { name: 'Shooter 2027', desc: 'Shooter de oleadas contra robots, con tienda de armas y equipo.', href: 'index.html', ic: 'crosshair' },
-  { name: 'Tres en Raya 3D', desc: 'Alinea 4 en un cubo, contra la CPU o un amigo.', href: 'tres-en-raya.html', ic: 'grid' },
-  { name: 'Brasas', desc: 'Sobrevive 99 noches en el bosque: mantén vivo el fuego.', href: 'brasas/index.html', ic: 'flame' },
-];
-function openGames() {
-  const ul = $('gamesList');
-  ul.innerHTML = '';
-  for (const g of GAMES) {
-    const li = document.createElement('li');
-    if (g.here) li.className = 'here';
-    const a = document.createElement('a');
-    a.href = g.here && !ARTEFACTO ? '#' : WEB + g.href;
-    if (ARTEFACTO) { a.target = '_blank'; a.rel = 'noopener'; }
-    a.innerHTML = `${icon(g.ic)}<span><strong></strong><span class="d"></span></span><span class="go">${icon(g.here ? 'check' : ARTEFACTO ? 'externalLink' : 'chevronRight')}</span>`;
-    a.querySelector('strong')!.textContent = g.name;
-    a.querySelector('.d')!.textContent = g.here ? 'Estás jugando a este.' : g.desc;
-    if (g.here) a.addEventListener('click', (e) => { e.preventDefault(); $('games').hidden = true; });
-    li.appendChild(a);
-    ul.appendChild(li);
-  }
-  $('games').hidden = false;
-  ($('gamesClose') as HTMLElement).focus();
-}
-$('gamesBtn').addEventListener('click', openGames);
-$('gamesClose').addEventListener('click', () => { $('games').hidden = true; $('gamesBtn').focus(); });
-
 
 // ---------- Horno y cofre ----------
 let openAt: { what: 'horno' | 'cofre'; x: number; y: number; z: number } | null = null;

@@ -4,9 +4,9 @@ import { B, BLOCKS } from './voxel.ts';
 
 export const I = {
   Palo: 100, Carbon: 101, LingoteHierro: 102, LingoteOro: 103, Diamante: 104,
-  Manzana: 105, Chatarra: 106, CarneAsada: 107, Esmeralda: 108, Bayas: 109,
+  Manzana: 105, CarneAsada: 107, Esmeralda: 108, Bayas: 109,
 } as const;
-/** Comida: cuánto quita el hambre (en medios muslos, de 20). */
+/** Comida: cuánto alimenta (al comer se recupera la mitad en medios corazones). */
 export const FOOD: Partial<Record<number, number>> = { 105: 4, 107: 8, 109: 2 };
 export type ToolType = 'pico' | 'hacha' | 'pala' | 'espada';
 export const TOOL_TYPES: ToolType[] = ['pico', 'hacha', 'pala', 'espada'];
@@ -22,7 +22,7 @@ const TYPE_NAME: Record<ToolType, string> = { pico: 'Pico', hacha: 'Hacha', pala
 export const ITEMS = new Map<number, ItemDef>();
 BLOCKS.forEach((b, id) => { if (id !== B.Aire && id !== B.RocaBase && id !== B.HornoEncendido) ITEMS.set(id, { id, name: b.name, stack: 64, block: id }); });
 for (const [id, name] of [[I.Palo, 'Palo'], [I.Carbon, 'Carbón'], [I.LingoteHierro, 'Lingote de hierro'], [I.LingoteOro, 'Lingote de oro'], [I.Diamante, 'Diamante'],
-  [I.Manzana, 'Manzana'], [I.Chatarra, 'Chatarra'], [I.CarneAsada, 'Carne asada'], [I.Esmeralda, 'Esmeralda'], [I.Bayas, 'Bayas']] as const)
+  [I.Manzana, 'Manzana'], [I.CarneAsada, 'Carne asada'], [I.Esmeralda, 'Esmeralda'], [I.Bayas, 'Bayas']] as const)
   ITEMS.set(id, { id, name, stack: 64 });
 for (const type of TOOL_TYPES) for (const tier of TIERS) {
   const id = toolId(type, tier);
@@ -83,7 +83,7 @@ export const recipeById = new Map(RECIPES.map((r) => [r.id, r]));
 
 /** Lo que se funde en el horno: entrada -> resultado. */
 export const SMELT: Partial<Record<number, number>> = {
-  [B.Hierro]: I.LingoteHierro, [B.Oro]: I.LingoteOro, [I.Chatarra]: I.LingoteHierro, [B.Adoquin]: B.Piedra, [B.Tronco]: I.Carbon,
+  [B.Hierro]: I.LingoteHierro, [B.Oro]: I.LingoteOro, [B.Adoquin]: B.Piedra, [B.Tronco]: I.Carbon,
 };
 /** Combustible: segundos que arde cada unidad. */
 export const FUEL: Partial<Record<number, number>> = {

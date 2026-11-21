@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { newGame, addPlayer, step, place, craft, respawn, MAX_HP, EYE, IDLE, DAY_SECONDS, isNight, type Game, type Player } from './game.ts';
 import { World, B } from './voxel.ts';
 const W = 96; // zona de pruebas
-import { addItem, count, breakTime, toolId, RECIPES, I, SMELT, FOOD } from './items.ts';
+import { addItem, count, breakTime, toolId, RECIPES, I } from './items.ts';
 
 /** Partida en un mundo plano: piedra hasta la altura 10, un bloque de tierra delante. Sin monstruos. */
 function flatGame(): { g: Game; p: Player } {
@@ -152,7 +152,7 @@ test('los monstruos aparecen de noche y atacan a quien está cerca, no a quien e
   const { g, p } = flatGame();
   g.time = DAY_SECONDS * 0.75;
   assert.ok(isNight(g));
-  g.mobs.push({ id: 900, kind: 'escudero', body: { x: 22.5, y: 11, z: 20.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 }, yaw: 0, hp: 20, cd: 0, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 });
+  g.mobs.push({ id: 900, kind: 'pedrusco', body: { x: 22.5, y: 11, z: 20.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 }, yaw: 0, hp: 20, cd: 0, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 });
   p.away = true;
   run(g, 3);
   assert.equal(p.hp, MAX_HP, 'en pausa no le hacen daño');
@@ -164,7 +164,7 @@ test('los monstruos aparecen de noche y atacan a quien está cerca, no a quien e
 test('se puede matar a un monstruo a golpes y una espada pega más que la mano', () => {
   const { g, p } = flatGame();
   g.time = DAY_SECONDS * 0.75;
-  const z = { id: 901, kind: 'escudero' as const, body: { x: 22.3, y: 11, z: 20.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 }, yaw: 0, hp: 20, cd: 99, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 };
+  const z = { id: 901, kind: 'pedrusco' as const, body: { x: 22.3, y: 11, z: 20.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 }, yaw: 0, hp: 20, cd: 99, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 };
   g.mobs.push(z);
   addItem(p.inv, toolId('espada', 'hierro'), 1);
   for (let i = 0; i < 200 && g.mobs.length; i++) {
@@ -181,71 +181,14 @@ test('cada jugador aparece en su sitio, no uno dentro del otro', () => {
   assert.ok(Math.hypot(a.body.x - b.body.x, a.body.z - b.body.z) > 1.5);
 });
 
-// ---------- Mods ----------
-import { verityCommand, walkSpeed, jumpSpeed, MAX_FOOD, WALK as WALK0, type ModId } from './game.ts';
-function modGame(mods: ModId[]) {
-  const r = flatGame();
-  r.g.mods = new Set(mods);
-  return r;
-}
+import { verityCommand } from './game.ts';
 
-test('superhéroes: corre más, salta más alto y no se hace daño al caer', () => {
-  assert.ok(walkSpeed(['heroes']) > WALK0 * 1.5 && jumpSpeed(['heroes']) > jumpSpeed([]));
-  const { g, p } = modGame(['heroes']);
-  Object.assign(p.body, { y: 30, onGround: false, fallFrom: 30 });
-  run(g, 3);
-  assert.equal(p.hp, MAX_HP);
-});
-
-test('superhéroes: rompe con superfuerza (la tierra a mano en un tercio del tiempo)', () => {
-  const { g, p } = modGame(['heroes']);
-  g.world.set(22, 11, 20, B.Tierra);
-  lookAt(p, 22, 11, 20); run(g, 0.35);
-  assert.equal(g.world.get(22, 11, 20), B.Aire);
-});
-
-test('supervivencia extrema: el hambre baja y se come para recuperarla', () => {
-  const { g, p } = modGame(['supervivencia']);
-  run(g, 60);
-  assert.ok(p.food < MAX_FOOD);
-  const before = p.food;
-  addItem(p.inv, I.Manzana, 1);
-  assert.ok(place(g, 'p1'), 'comer');
-  assert.equal(p.food, Math.min(MAX_FOOD, before + 4));
-  assert.equal(count(p.inv, I.Manzana), 0);
-});
-
-test('supervivencia extrema: con hambre no te curas y al morir pierdes el inventario', () => {
-  const { g, p } = modGame(['supervivencia']);
-  p.food = 2; p.hp = 10;
-  run(g, 10);
-  assert.ok(p.hp <= 10);
-  addItem(p.inv, B.Tablas, 5);
-  Object.assign(p.body, { y: 60, onGround: false, fallFrom: 60 });
-  run(g, 4);
-  assert.equal(p.alive, false);
-  assert.equal(count(p.inv, B.Tablas), 0);
-});
-
-test('sin el mod de supervivencia, la comida cura un poco', () => {
+test('la comida cura un poco', () => {
   const { g, p } = flatGame();
   p.hp = 10;
   addItem(p.inv, I.CarneAsada, 1);
   assert.ok(place(g, 'p1'));
   assert.ok(p.hp > 10);
-});
-
-test('terror: la sombra desaparece cuando la miras y no hace daño', () => {
-  const { g, p } = modGame(['terror']);
-  g.time = DAY_SECONDS * 0.75;
-  g.mobs.push({ id: 950, kind: 'sombra', body: { x: 40.5, y: 11, z: 20.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 }, yaw: 0, hp: 999, cd: 30, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 });
-  p.input = { ...IDLE, yaw: -Math.PI / 2, pitch: 0 }; // mirando hacia el otro lado
-  run(g, 2);
-  assert.equal(g.mobs.length, 1, 'mientras no la miras, sigue ahí');
-  assert.equal(p.hp, MAX_HP);
-  p.input = { ...IDLE, yaw: Math.atan2(40.5 - p.body.x, 0), pitch: 0.02 };
-  run(g, 0.2);
-  assert.equal(g.mobs.length, 0);
 });
 
 test('Verity da objetos, cura y cambia la hora; no da objetos que no existen', () => {
@@ -376,19 +319,6 @@ test('las bayas se comen', () => {
   assert.equal(count(p.inv, I.Bayas), 0);
 });
 
-test('los robots de la noche sueltan chatarra, que se funde en lingotes de hierro (y no se come)', () => {
-  const { g, p } = flatGame();
-  g.rand = () => 0.1;
-  const r = { id: 902, kind: 'tirador' as const, body: { x: 22.3, y: 11, z: 20.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 }, yaw: 0, hp: 1, cd: 99, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 };
-  g.mobs.push(r);
-  lookAt(p, 22, 11, 20);
-  run(g, 0.2);
-  assert.equal(g.mobs.length, 0);
-  assert.ok(count(p.inv, I.Chatarra) >= 1);
-  assert.equal(SMELT[I.Chatarra], I.LingoteHierro);
-  assert.equal(FOOD[I.Chatarra], undefined);
-});
-
 test('las losas se fabrican en la mesa: 3 tablas dan 6 losas', () => {
   const { g, p } = flatGame();
   g.world.set(21, 11, 21, B.Mesa);
@@ -396,4 +326,16 @@ test('las losas se fabrican en la mesa: 3 tablas dan 6 losas', () => {
   assert.equal(craft(g, 'p1', 'losa-tablas'), true);
   assert.equal(count(p.inv, B.LosaTablas), 6);
   assert.equal(count(p.inv, B.Tablas), 0);
+});
+
+test('cada criatura deja lo suyo: el espino palos, el pedrusco carbón y el brincón bayas', () => {
+  for (const [kind, item] of [['espino', I.Palo], ['pedrusco', I.Carbon], ['brincon', I.Bayas]] as const) {
+    const { g, p } = flatGame();
+    g.rand = () => 0.1;
+    g.mobs.push({ id: 902, kind, body: { x: 22.3, y: 11, z: 20.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 }, yaw: 0, hp: 1, cd: 99, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 });
+    lookAt(p, 22, 11, 20);
+    run(g, 0.2);
+    assert.equal(g.mobs.length, 0, kind);
+    assert.ok(count(p.inv, item) >= 1, kind);
+  }
 });

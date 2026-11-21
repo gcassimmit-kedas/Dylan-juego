@@ -6,7 +6,7 @@ import { World, B, BLOCKS, H } from './voxel.ts';
 import { ITEMS, RECIPES, I, toolId, itemName, TIERS, SMELT, type ToolType, type Tier } from './items.ts';
 import { DAY_SECONDS, dayPhase, isNight, type VerityCmd } from './game.ts';
 
-export interface VerityCtx { world: World; x: number; y: number; z: number; yaw: number; time: number; terror: boolean }
+export interface VerityCtx { world: World; x: number; y: number; z: number; yaw: number; time: number }
 export interface VerityReply { text: string; cmd?: VerityCmd; understood: boolean }
 
 /** Minúsculas, sin tildes ni signos. */
@@ -22,7 +22,7 @@ const NAMES: [string, number][] = [
   ['tabla', B.Tablas], ['madera', B.Tablas], ['tronco', B.Tronco], ['palo', I.Palo], ['piedra', B.Adoquin], ['adoquin', B.Adoquin], ['roca', B.Adoquin],
   ['tierra', B.Tierra], ['arena', B.Arena], ['grava', B.Grava], ['hoja', B.Hojas], ['hierba', B.Hierba], ['cesped', B.Hierba],
   ['carbon', I.Carbon], ['lingote de hierro', I.LingoteHierro], ['hierro', I.LingoteHierro], ['lingote de oro', I.LingoteOro], ['oro', I.LingoteOro],
-  ['diamante', I.Diamante], ['mesa de crafteo', B.Mesa], ['mesa', B.Mesa], ['horno', B.Horno], ['antorcha', B.Antorcha], ['cofre', B.Cofre], ['baul', B.Cofre], ['losa de piedra', B.LosaPiedra], ['losa de tabla', B.LosaTablas], ['losa de madera', B.LosaTablas], ['losa', B.LosaTablas], ['chatarra', I.Chatarra], ['bayas', I.Bayas], ['baya', I.Bayas], ['flor de sol', B.FlorSol], ['flor de fuego', B.FlorFuego], ['flor', B.FlorSol],
+  ['diamante', I.Diamante], ['mesa de crafteo', B.Mesa], ['mesa', B.Mesa], ['horno', B.Horno], ['antorcha', B.Antorcha], ['cofre', B.Cofre], ['baul', B.Cofre], ['losa de piedra', B.LosaPiedra], ['losa de tabla', B.LosaTablas], ['losa de madera', B.LosaTablas], ['losa', B.LosaTablas], ['bayas', I.Bayas], ['baya', I.Bayas], ['flor de sol', B.FlorSol], ['flor de fuego', B.FlorFuego], ['flor', B.FlorSol],
   ['manzana', I.Manzana], ['carne asada', I.CarneAsada], ['carne', I.CarneAsada], ['comida', I.CarneAsada],
 ];
 const TOOL_WORDS: [string, ToolType][] = [['pico', 'pico'], ['hacha', 'hacha'], ['pala', 'pala'], ['espada', 'espada']];
@@ -80,12 +80,10 @@ function nearest(ctx: VerityCtx, block: number, radius = 40): [number, number, n
   return best;
 }
 
-const SPOOKY = ['Te estoy mirando.', 'No mires atrás.', 'Algo se mueve en la oscuridad.', 'Las antorchas no duran para siempre.', 'Oigo pasos cerca de ti.'];
 /** Respuesta de Verity a lo que escribe el jugador. */
-export function verity(text: string, ctx: VerityCtx, rand: () => number = Math.random): VerityReply {
+export function verity(text: string, ctx: VerityCtx): VerityReply {
   const t = norm(text);
-  const spooky = (s: string) => (ctx.terror ? `${s} ${SPOOKY[Math.floor(rand() * SPOOKY.length)]}` : s);
-  const r = (s: string, cmd?: VerityCmd): VerityReply => ({ text: spooky(s), cmd, understood: true });
+  const r = (s: string, cmd?: VerityCmd): VerityReply => ({ text: s, cmd, understood: true });
   if (!t) return { text: 'Escríbeme algo. Por ejemplo: dame 10 tablas.', understood: false };
 
   // ¿Cómo se hace algo? (recetas)
@@ -120,13 +118,12 @@ export function verity(text: string, ctx: VerityCtx, rand: () => number = Math.r
       return r(`Toma: ${realN} ${itemName(id).toLowerCase()}.`, { k: 'dar', id, n: realN });
     }
     if (has(t, 'vida', 'corazon', 'corazones', 'salud')) return r('Te curo. Tienes los 10 corazones.', { k: 'curar' });
-    if (has(t, 'comida', 'comer')) return r('Ya no tienes hambre.', { k: 'comer' });
   }
   if (has(t, 'curame', 'cura', 'curar', 'sana', 'me muero', 'ayudame que me muero')) return r('Te curo. Tienes los 10 corazones.', { k: 'curar' });
-  if (has(t, 'tengo hambre', 'hambre')) return r('Ya no tienes hambre.', { k: 'comer' });
+  if (has(t, 'tengo hambre', 'hambre')) return r('Aquí no se pasa hambre: la comida te cura. Toma unas manzanas.', { k: 'dar', id: I.Manzana, n: 4 });
   // Hora del día
   if (has(t, 'de dia', 'que amanezca', 'amanecer', 'dia')) return r('Que salga el sol.', { k: 'dia' });
-  if (has(t, 'de noche', 'que anochezca', 'anochecer', 'noche')) return r('Que llegue la noche. Cuidado con los robots.', { k: 'noche' });
+  if (has(t, 'de noche', 'que anochezca', 'anochecer', 'noche')) return r('Que llegue la noche. Cuidado con las criaturas.', { k: 'noche' });
   if (has(t, 'que hora', 'hora es', 'cuanto falta')) {
     const p = dayPhase({ time: ctx.time });
     const night = isNight({ time: ctx.time });
@@ -136,10 +133,10 @@ export function verity(text: string, ctx: VerityCtx, rand: () => number = Math.r
   // Salir de un apuro
   if (has(t, 'sacame', 'superficie', 'atrapado', 'perdido', 'subeme', 'arriba', 'no puedo salir')) return r('Te subo a la superficie.', { k: 'superficie' });
   // Consejos
-  if (has(t, 'monstruo', 'robot', 'escudero', 'tirador', 'arana', 'sombra', 'miedo')) return r('De noche y en las cuevas salen robots: escuderos, tiradores y arañas. Construye un refugio, pon antorchas y lleva una espada. A pleno sol, escuderos y tiradores se sobrecalientan.');
+  if (has(t, 'monstruo', 'criatura', 'bicho', 'pedrusco', 'espino', 'brincon', 'miedo')) return r('De noche y en las cuevas salen tres criaturas: el pedrusco embiste, el espino lanza púas desde lejos y el brincón es pequeño y muy rápido. Construye un refugio, pon antorchas y lleva una espada. Con el sol, pedruscos y espinos se deshacen.');
   if (has(t, 'como empiezo', 'que hago', 'empezar', 'consejo', 'consejos')) return r('Rompe un tronco, haz tablas y una mesa de crafteo. Con la mesa haz un pico de madera y busca piedra. Antes de la noche, haz antorchas con carbón y palos.');
   // Quién es
-  if (has(t, 'quien eres', 'como te llamas', 'eres', 'hola', 'buenas', 'hey')) return r(ctx.terror ? 'Soy Verity. Siempre estoy aquí. Siempre.' : 'Hola, soy Verity. Pídeme cosas o pregúntame sobre el juego.');
+  if (has(t, 'quien eres', 'como te llamas', 'eres', 'hola', 'buenas', 'hey')) return r('Hola, soy Verity. Pídeme cosas o pregúntame sobre el juego.');
   if (has(t, 'ayuda', 'que puedes hacer', 'que sabes hacer', 'opciones')) return r('Puedo darte objetos (dame 10 tablas), curarte, cambiar la hora (hazlo de día), decirte dónde hay minerales (¿dónde hay diamantes?), explicarte recetas (¿cómo hago un pico de piedra?) y sacarte a la superficie.');
   if (has(t, 'gracias')) return r('De nada.');
   return { text: 'No te he entendido. Prueba con: dame 10 tablas, ¿dónde hay hierro?, hazlo de día o ayuda.', understood: false };

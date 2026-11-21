@@ -39,11 +39,6 @@ export const LOOKS: Partial<Record<CharacterId, Look>> = {
   halcon: { skin: 0x9a5e3b, hair: 0x22160e, shirt: 0xf3f3ef, pants: 0x2e3a4c, shoes: 0x2a2d33, curly: true, stripes: false, sleeves: true, collar: true, wide: 0.96 },
 };
 export const lookFor = (c: CharacterId) => LOOKS[c] ?? LOOKS.coloso!;
-/** Monstruos con forma de persona (diseños propios del juego). */
-export const MOB_LOOKS: Record<'sombra', Look> = {
-  sombra: { skin: 0x0b0b0e, hair: 0x0b0b0e, shirt: 0x0e0e12, pants: 0x0b0b0e, shoes: 0x08080a, curly: false, stripes: false, sleeves: false, collar: false, wide: 0.8, face: 'sombra' },
-};
-
 function faceTex(l: Look) {
   if (l.face === 'zombi') return pixelTex(8, 8, (g) => {
     g.fillStyle = hex(l.skin); g.fillRect(0, 0, 8, 8);
@@ -343,31 +338,4 @@ export function makeBullet(kind: string): THREE.Object3D {
   const m = new THREE.Mesh(box(big ? 0.22 : 0.08, big ? 0.22 : 0.08, big ? 0.5 : 0.45),
     kind === 'enemiga' ? enemyBulletMat : kind === 'fuego' ? fireMat : kind === 'tesla' || kind === 'rayo' ? teslaMat : bulletMat);
   return m;
-}
-
-// ---------- Araña de bloques ----------
-
-export interface Spider { root: THREE.Group; body: THREE.Group; legs: THREE.Group[]; walk: number; mats: THREE.MeshStandardMaterial[] }
-export function makeSpider(): Spider {
-  const dark = std({ color: 0x2b2420, roughness: 0.9 }), dark2 = std({ color: 0x3a302a, roughness: 0.9 });
-  const eyes = std({ color: 0xff2a2a, emissive: 0xff1a1a, emissiveIntensity: 2.2 });
-  const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
-  mesh(box(0.9, 0.55, 1.0), dark, 0, 0.55, -0.45, body); // abdomen
-  mesh(box(0.6, 0.45, 0.5), dark2, 0, 0.5, 0.25, body); // tórax
-  const head = mesh(box(0.55, 0.45, 0.4), dark, 0, 0.52, 0.65, body);
-  for (const [x, y] of [[-0.15, 0.08], [0.15, 0.08], [-0.2, -0.05], [0.2, -0.05]]) mesh(box(0.08, 0.08, 0.02), eyes, x, y, 0.21, head);
-  const legs: THREE.Group[] = [];
-  for (const side of [-1, 1]) for (let i = 0; i < 4; i++) {
-    const g = joint(side * 0.3, 0.55, 0.45 - i * 0.28, body);
-    const l = mesh(box(1.0, 0.09, 0.09), dark2, side * 0.5, 0, 0, g);
-    l.rotation.z = side * -0.5;
-    legs.push(g);
-  }
-  return { root, body, legs, walk: 0, mats: [dark, dark2] };
-}
-export function animateSpider(s: Spider, speed: number, dt: number, hit: boolean, reduceMotion: boolean) {
-  s.walk += dt * (6 + speed * 2);
-  const k = Math.min(1, speed / 3);
-  s.legs.forEach((l, i) => { l.rotation.y = reduceMotion ? 0 : Math.sin(s.walk + i * 1.6) * 0.45 * k; });
-  for (const m of s.mats) m.emissive.setRGB(hit ? 0.8 : 0, hit ? 0.1 : 0, hit ? 0.1 : 0);
 }
