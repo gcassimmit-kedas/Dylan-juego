@@ -62,3 +62,13 @@ test('la lista de mundos descarta fichas que no tienen buena forma', () => {
   assert.deepEqual(parseCards('no es json'), []);
   assert.equal(parseCards(JSON.stringify(Array.from({ length: 20 }, () => good))).length, MAX_WORLDS);
 });
+
+test('tus brincones amigos siguen contigo al reanudar el mundo', () => {
+  const card = newCard(() => 0.3, 'Valle Dorado', false, 1000);
+  const g = startWorld(card, 'p1');
+  const p = getPlayer(g, 'p1')!;
+  g.mobs.push({ id: 5, kind: 'brincon', owner: 'p1', body: { ...p.body, x: p.body.x + 1 }, yaw: 0, hp: 16, cd: 0, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 });
+  g.mobs.push({ id: 6, kind: 'pedrusco', body: { ...p.body }, yaw: 0, hp: 20, cd: 0, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 });
+  const h = loadGame(card, JSON.parse(JSON.stringify(saveGame(g, 'p1'))), 'p1');
+  assert.deepEqual(h.mobs.map((m) => [m.kind, m.owner]), [['brincon', 'p1']]);
+});

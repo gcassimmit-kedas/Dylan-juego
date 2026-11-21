@@ -21,7 +21,7 @@ import type { MeshResult, Packed } from './mesh.worker.ts';
 import { buildAtlas, setAnisotropy, type TexName } from './textures.ts';
 import { itemIcon, itemModel } from './itemart.ts';
 import { makePerson, animatePerson, type Person } from './models.ts';
-import { makeCreature, animateCreature, type Creature } from './criaturas.ts';
+import { makeCreature, animateCreature, setFriend, type Creature } from './criaturas.ts';
 import { worldName, newCard, startWorld, saveGame, loadGame, parseCards, MAX_WORLDS, type WorldCard } from './save.ts';
 import { fpInput, applyLook } from './controls.ts';
 import { sfx, unlock, isMuted, setMuted } from '../shooter/audio.ts';
@@ -239,7 +239,7 @@ let playing = false, paused = false;
 let me: { body: Body; hp: number; alive: boolean; inv: Slot[]; sel: number; mine: [number, number, number, number] | null } =
   { body: { x: 48, y: 40, z: 48, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: 40 }, hp: MAX_HP, alive: true, inv: [], sel: 0, mine: null };
 let others: NetP[] = [];
-let mobs: { id: number; kind: MobKind; x: number; y: number; z: number; yaw: number; hit: boolean }[] = [];
+let mobs: { id: number; kind: MobKind; x: number; y: number; z: number; yaw: number; hit: boolean; pet: boolean }[] = [];
 let arrows: number[] = [];
 let time = 0;
 const names = new Map<string, string>();
@@ -684,7 +684,13 @@ function flushEvents(evs: GEvent[]) {
         if (mine) sfx.kill(); else sfx.hit();
         break;
       case 'place': if (!mine) sfx.hit(); break;
-      case 'pickup': if (mine) { sfx.pickup(); if (ev.item >= 100) toast(`+${ev.n} ${itemName(ev.item)}`); } break;
+      case 'pickup':
+        if (mine) {
+          sfx.pickup();
+          if (ev.item === 109 && readStr('bloques.pistaBayas') !== '1') { writeStr('bloques.pistaBayas', '1'); toast('Bayas: dáselas de día a un brincón y será tu amigo'); }
+          else if (ev.item >= 100) toast(`+${ev.n} ${itemName(ev.item)}`);
+        }
+        break;
       case 'craft': if (mine) { sfx.wave(); toast(`Has fabricado: ${itemName(ev.item)}`); renderInventory(); } break;
       case 'hurt':
         if (mine) { sfx.hurt(); hurtFlash.classList.add('on'); setTimeout(() => hurtFlash.classList.remove('on'), 90); shake = Math.max(shake, 0.25); }
@@ -699,6 +705,10 @@ function flushEvents(evs: GEvent[]) {
       case 'mobDie': fx.debris(ev.x, ev.y + 0.8, ev.z, ev.mob === 'pedrusco' ? 0x8a8c8e : ev.mob === 'espino' ? 0x3f8a3a : 0x7a4fd0, 12, 5, 0.18); fx.smoke(ev.x, ev.y + 0.5, ev.z, 4, 0x6b6b6b, 0.9, 1); sfx.kill(); break;
       case 'shoot': sfx.enemyShoot(); break;
       case 'smelt': if (Math.hypot(ev.x - me.body.x, ev.z - me.body.z) < 8) sfx.pickup(); if (!$('box').hidden) renderBox(); break;
+      case 'tame':
+        fx.debris(ev.x, ev.y + 0.9, ev.z, 0xff6f9c, 14, 3, 0.1);
+        if (mine) { sfx.wave(); banner('Brincón amigo', 'Nuevo compañero', 'Te sigue y te defiende de las criaturas de la noche.'); }
+        break;
       case 'eat': if (mine) { sfx.pickup(); toast(`Te has comido: ${itemName(ev.item).toLowerCase()}`); } break;
       case 'join': if (ev.pid !== myId && mode === 'multi') toast(`${names.get(ev.pid) ?? 'Alguien'} ha entrado en el mundo`); break;
       case 'leave': if (mode === 'multi') toast(`${names.get(ev.pid) ?? 'Alguien'} ha salido`); break;
@@ -767,7 +777,7 @@ function syncSolo() {
   const g = game!, p = g.players[0];
   me = { body: p.body, hp: p.hp, alive: p.alive, inv: p.inv, sel: p.sel, mine: p.mine && Number.isFinite(p.mine.need) ? [p.mine.x, p.mine.y, p.mine.z, Math.min(1, p.mine.t / p.mine.need)] : null };
   others = [];
-  mobs = g.mobs.map((m) => ({ id: m.id, kind: m.kind, x: m.body.x, y: m.body.y, z: m.body.z, yaw: m.yaw, hit: m.flash > 0 }));
+  mobs = g.mobs.map((m) => ({ id: m.id, kind: m.kind, x: m.body.x, y: m.body.y, z: m.body.z, yaw: m.yaw, hit: m.flash > 0, pet: !!m.owner }));
   arrows = g.arrows.flatMap((a) => [a.x, a.y, a.z, a.vx, a.vy, a.vz]);
   time = g.time;
 }
@@ -872,7 +882,7 @@ function multiFrame(dt: number, inp: Inp) {
   if (s.me.sel !== me.sel && performance.now() - lastSlotChange > 400) me.sel = s.me.sel;
   others = s.P.filter((p) => p.id !== myId);
   mobs = [];
-  for (let i = 0; i < s.M.length; i += 7) mobs.push({ id: s.M[i], kind: MOB_KINDS[s.M[i + 1]], x: s.M[i + 2], y: s.M[i + 3], z: s.M[i + 4], yaw: s.M[i + 5], hit: !!s.M[i + 6] });
+  for (let i = 0; i < s.M.length; i += 7) mobs.push({ id: s.M[i], kind: MOB_KINDS[s.M[i + 1]], x: s.M[i + 2], y: s.M[i + 3], z: s.M[i + 4], yaw: s.M[i + 5], hit: !!(s.M[i + 6] & 1), pet: !!(s.M[i + 6] & 2) });
   arrows = s.A;
   time = s.time;
   // Mi movimiento: predicción local con la misma física, y corrección suave hacia lo que dice el servidor
@@ -1228,6 +1238,7 @@ function frame(now: number) {
     const speed = Math.hypot(root.position.x - v.px, root.position.z - v.pz) / Math.max(dt, 1e-3);
     v.px = root.position.x; v.pz = root.position.z;
     root.rotation.y = m.yaw;
+    setFriend(v.c, m.pet);
     animateCreature(v.c, Math.min(speed, 6), dt, now / 1000, m.hit, reduceMotion.matches);
   }
   for (const [id, v] of mobViews) if (!live.has(id)) { scene.remove(v.c.root); mobViews.delete(id); }

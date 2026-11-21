@@ -7,7 +7,7 @@
 // Hoja de pruebas de Bloques: las criaturas de la noche a su escala junto a un jugador (1,8 bloques),
 // y una construcción pequeña con losas y plantas dibujada con el mismo mallador que el juego.
 import * as THREE from 'three';
-import { makeCreature, animateCreature } from '/src/bloques/criaturas.ts';
+import { makeCreature, animateCreature, setFriend } from '/src/bloques/criaturas.ts';
 import { makePerson } from '/src/bloques/models.ts';
 import { World, B, BLOCKS } from '/src/bloques/voxel.ts';
 import { meshChunk } from '/src/bloques/mesher.ts';
@@ -18,7 +18,7 @@ const scene = new THREE.Scene(); scene.background = new THREE.Color(0x9fc6e8);
 const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100); camera.position.set(0, 3.4, 9.5); camera.lookAt(0, 0.8, -1.5);
 scene.add(new THREE.HemisphereLight(0xffffff, 0x556040, 1.2)); const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(3, 6, 5); scene.add(sun);
 const grid = new THREE.GridHelper(10, 10, 0x334422, 0x556644); scene.add(grid);
-const creatures = ['pedrusco', 'espino', 'brincon'].map((kind, i) => { const c = makeCreature(kind); c.root.position.x = -3 + i * 2; c.root.rotation.y = 0.5; scene.add(c.root); return c; });
+const creatures = ['pedrusco', 'espino', 'brincon', 'brincon'].map((kind, i) => { const c = makeCreature(kind); if (i === 3) setFriend(c, true); c.root.position.x = -3.4 + i * 1.7; c.root.rotation.y = 0.5; scene.add(c.root); return c; });
 const person = makePerson({ skin: 0xb5683c, hair: 0x1a1210, shirt: 0xeeeeee, pants: 0x22262c, shoes: 0x111111, curly: false, stripes: false, sleeves: true, collar: true, wide: 1 });
 person.root.position.x = 3; person.root.rotation.y = -0.4; scene.add(person.root);
 // Construcción de muestra: suelo de hierba, escalera de losas hasta un bloque, losas de piedra y plantas

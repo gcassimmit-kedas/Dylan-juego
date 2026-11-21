@@ -133,6 +133,7 @@ export function verity(text: string, ctx: VerityCtx): VerityReply {
   // Salir de un apuro
   if (has(t, 'sacame', 'superficie', 'atrapado', 'perdido', 'subeme', 'arriba', 'no puedo salir')) return r('Te subo a la superficie.', { k: 'superficie' });
   // Consejos
+  if (has(t, 'mascota', 'amigo', 'domar', 'domesticar', 'compañero', 'companero')) return r('De día salen brincones mansos a la hierba. Acércate con bayas en la mano y dáselas (como si colocaras un bloque): se hará tu amigo, te seguirá y te defenderá de noche. Puedes tener hasta 3.');
   if (has(t, 'monstruo', 'criatura', 'bicho', 'pedrusco', 'espino', 'brincon', 'miedo')) return r('De noche y en las cuevas salen tres criaturas: el pedrusco embiste, el espino lanza púas desde lejos y el brincón es pequeño y muy rápido. Construye un refugio, pon antorchas y lleva una espada. Con el sol, pedruscos y espinos se deshacen.');
   if (has(t, 'como empiezo', 'que hago', 'empezar', 'consejo', 'consejos')) return r('Rompe un tronco, haz tablas y una mesa de crafteo. Con la mesa haz un pico de madera y busca piedra. Antes de la noche, haz antorchas con carbón y palos.');
   // Quién es

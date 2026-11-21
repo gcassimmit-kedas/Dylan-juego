@@ -26,6 +26,8 @@ export interface Creature {
   /** Materiales que destellan al recibir un golpe. */
   mats: THREE.MeshStandardMaterial[];
   baseY: number; walk: number;
+  /** Pañuelo dorado del brincón amigo. */
+  scarf?: THREE.Object3D;
 }
 
 function makePedrusco(): Creature {
@@ -90,4 +92,16 @@ export function animateCreature(c: Creature, speed: number, dt: number, t: numbe
   else if (c.kind === 'espino') { c.body.rotation.z = reduceMotion ? 0 : Math.sin(t * 2.2) * 0.05 + s * 0.06 * k; c.body.position.y = c.baseY; } // se mece
   else c.body.position.y = c.baseY + Math.abs(Math.cos(c.walk)) * 0.04 * k;
   for (const m of c.mats) m.emissive.setRGB(hit ? 0.75 : 0, hit ? 0.12 : 0, hit ? 0.08 : 0);
+}
+
+/** Marca (o desmarca) a un brincón como amigo: lleva un pañuelo dorado al cuello. */
+export function setFriend(c: Creature, on: boolean) {
+  if (on === !!c.scarf?.visible) return;
+  if (!c.scarf) {
+    const gold = flat(0xffc83d, 0.6), g = new THREE.Group();
+    part(box(0.92, 0.1, 0.96), gold, 0, 0.07, 0, g); // alrededor del cuello, por debajo de los ojos
+    part(box(0.16, 0.16, 0.06), gold, 0.34, 0, 0.49, g); // el nudo
+    c.body.add(g); c.scarf = g;
+  }
+  c.scarf.visible = on;
 }

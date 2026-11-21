@@ -1,7 +1,7 @@
 // Mundos guardados de Bloques (un jugador): cada mundo se crea antes de jugar, con nombre automático, y se
 // guarda en el propio dispositivo (bloques cambiados, cofres y hornos, inventario, posición y hora).
 // Lógica pura: quien la usa decide dónde se guarda el texto. No hay datos personales ni nada sale del dispositivo.
-import { newGame, addPlayer, getPlayer, MAX_HP, type Game, type Box } from './game.ts';
+import { newGame, addPlayer, getPlayer, MAX_HP, MAX_PETS, type Game, type Box } from './game.ts';
 import { ITEMS, SLOTS, type Slot } from './items.ts';
 import { BLOCKS } from './voxel.ts';
 
@@ -11,6 +11,8 @@ export interface WorldCard { id: string; name: string; seed: number; peaceful: b
 export interface WorldSave {
   v: 1; time: number; edits: number[]; boxes: [number, Box][];
   player: { x: number; y: number; z: number; hp: number; sel: number; inv: Slot[] };
+  /** Dónde estaban tus brincones amigos. */
+  pets?: [number, number, number][];
 }
 
 const PLACES = ['Valle', 'Colina', 'Bosque', 'Prado', 'Cerro', 'Ribera', 'Llano', 'Risco', 'Claro', 'Monte'];
@@ -46,6 +48,7 @@ export function saveGame(g: Game, pid: string): WorldSave | null {
     v: 1, time: r(g.time), edits: [...g.world.edits].flat(),
     boxes: [...g.boxes].map(([k, b]) => [k, { ...b, slots: b.slots.map((s) => (s ? { ...s } : null)) }]),
     player: { x: r(p.body.x), y: r(p.body.y), z: r(p.body.z), hp: p.alive ? p.hp : MAX_HP, sel: p.sel, inv: p.inv.map((s) => (s ? { ...s } : null)) },
+    pets: g.mobs.filter((m) => m.owner === pid).map((m) => [r(m.body.x), r(m.body.y), r(m.body.z)]),
   };
 }
 
@@ -78,6 +81,10 @@ export function loadGame(card: WorldCard, save: unknown, pid: string, rand: () =
     if (typeof sp.hp === 'number') p.hp = Math.max(1, Math.min(MAX_HP, Math.floor(sp.hp)));
     if (typeof sp.sel === 'number') p.sel = Math.max(0, Math.min(8, Math.floor(sp.sel)));
     if (Array.isArray(sp.inv)) p.inv = Array.from({ length: SLOTS }, (_v, i) => okSlot(sp.inv[i]));
+  }
+  if (Array.isArray(s.pets)) for (const e of s.pets.slice(0, MAX_PETS)) {
+    if (!Array.isArray(e) || e.length !== 3 || !e.every((v) => typeof v === 'number' && Number.isFinite(v))) continue;
+    g.mobs.push({ id: g.nextId++, kind: 'brincon', owner: pid, body: { x: e[0], y: e[1] + 0.01, z: e[2], vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: e[1] }, yaw: 0, hp: 16, cd: 0, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 });
   }
   g.events.length = 0;
   return g;

@@ -56,7 +56,7 @@ export function encodeSnapshot(g: Game, tick: number, pid: string, events: GEven
       hp: p.hp, alive: p.alive, held: p.inv[p.sel]?.id ?? null, away: p.away,
       mine: p.mine && Number.isFinite(p.mine.need) ? [p.mine.x, p.mine.y, p.mine.z, r2(Math.min(1, p.mine.t / p.mine.need))] : null,
     })),
-    M: g.mobs.flatMap((m) => [m.id, MOB_KINDS.indexOf(m.kind), r2(m.body.x), r2(m.body.y), r2(m.body.z), r2(m.yaw), m.flash > 0 ? 1 : 0]),
+    M: g.mobs.flatMap((m) => [m.id, MOB_KINDS.indexOf(m.kind), r2(m.body.x), r2(m.body.y), r2(m.body.z), r2(m.yaw), (m.flash > 0 ? 1 : 0) | (m.owner ? 2 : 0)]),
     A: g.arrows.flatMap((a) => [r2(a.x), r2(a.y), r2(a.z), r2(a.vx), r2(a.vy), r2(a.vz)]),
     ch: changes.flat(),
     ev: events,

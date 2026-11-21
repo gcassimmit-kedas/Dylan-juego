@@ -339,3 +339,76 @@ test('cada criatura deja lo suyo: el espino palos, el pedrusco carbón y el brin
     assert.ok(count(p.inv, item) >= 1, kind);
   }
 });
+
+// ---------- Brincones amigos ----------
+import { MAX_PETS, isHostile, type Mob } from './game.ts';
+const brincon = (id: number, x: number, z: number, extra: Partial<Mob> = {}): Mob =>
+  ({ id, kind: 'brincon', body: { x, y: 11, z, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 }, yaw: 0, hp: 16, cd: 0, flash: 0, wanderT: 99, wx: 0, wz: 0, burn: 0, ...extra });
+/** Mirar a una criatura que está de pie en (x, z). */
+const lookAtMob = (p: Player, x: number, z: number) => { lookAt(p, Math.floor(x), 11, Math.floor(z), false); };
+
+test('de día el brincón es manso; de noche ataca, salvo en un mundo tranquilo', () => {
+  const { g, p } = flatGame();
+  const m = brincon(1, 22.5, 20.5);
+  g.mobs.push(m);
+  g.time = DAY_SECONDS * 0.2;
+  assert.equal(isHostile(g, m), false);
+  run(g, 3);
+  assert.equal(p.hp, MAX_HP);
+  g.time = DAY_SECONDS * 0.7;
+  assert.equal(isNight(g), true);
+  assert.equal(isHostile(g, m), true);
+  g.peaceful = true;
+  assert.equal(isHostile(g, m), false);
+});
+
+test('darle bayas a un brincón lo hace tu amigo: gasta una baya y ya no se le puede pegar', () => {
+  const { g, p } = flatGame();
+  g.time = DAY_SECONDS * 0.2;
+  const m = brincon(1, 22.5, 20.5);
+  g.mobs.push(m);
+  addItem(p.inv, I.Bayas, 2);
+  lookAtMob(p, 22.5, 20.5);
+  assert.equal(place(g, 'p1'), true);
+  assert.equal(m.owner, 'p1');
+  assert.equal(count(p.inv, I.Bayas), 1);
+  assert.ok(g.events.some((e) => e.kind === 'tame'));
+  p.input.attack = true;
+  run(g, 1);
+  assert.equal(m.hp, 16);
+});
+
+test('sin mirar a un brincón las bayas se comen, y no se pasa de 3 amigos', () => {
+  const { g, p } = flatGame();
+  g.time = DAY_SECONDS * 0.2;
+  addItem(p.inv, I.Bayas, 5);
+  p.hp = 10;
+  lookAt(p, 30, 11, 20, false);
+  assert.equal(place(g, 'p1'), true);
+  assert.equal(p.hp, 11);
+  for (let i = 0; i < MAX_PETS; i++) g.mobs.push(brincon(10 + i, 30.5, 30.5 + i, { owner: 'p1' }));
+  const wild = brincon(1, 22.5, 20.5);
+  g.mobs.push(wild);
+  p.hp = MAX_HP;
+  lookAtMob(p, 22.5, 20.5);
+  assert.equal(place(g, 'p1'), false);
+  assert.equal(wild.owner, undefined);
+});
+
+test('el brincón amigo te sigue, vuelve a tu lado si te alejas mucho y acaba con la criatura que te ataca', () => {
+  const { g, p } = flatGame();
+  g.time = DAY_SECONDS * 0.7; // de noche
+  const pet = brincon(1, 28.5, 20.5, { owner: 'p1' });
+  g.mobs.push(pet);
+  run(g, 3);
+  assert.ok(Math.hypot(pet.body.x - p.body.x, pet.body.z - p.body.z) < 4);
+  Object.assign(p.body, { x: 70.5, z: 70.5 });
+  run(g, 0.2);
+  assert.ok(Math.hypot(pet.body.x - p.body.x, pet.body.z - p.body.z) < 4);
+  p.invuln = 999;
+  const foe: Mob = { id: 2, kind: 'pedrusco', body: { x: 74.5, y: 11, z: 70.5, vx: 0, vy: 0, vz: 0, onGround: true, fallFrom: 11 }, yaw: 0, hp: 9, cd: 99, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 };
+  g.mobs.push(foe);
+  run(g, 8);
+  assert.ok(!g.mobs.includes(foe));
+  assert.ok(g.mobs.includes(pet));
+});

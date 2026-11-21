@@ -26,7 +26,13 @@ export interface Player {
 }
 /** Criaturas de la noche, propias de Bloques: el pedrusco (roca que anda y embiste), el espino (planta que lanza púas) y el brincón (pequeño y muy rápido). */
 export type MobKind = 'pedrusco' | 'espino' | 'brincon';
-export interface Mob { id: number; kind: MobKind; body: Body; yaw: number; hp: number; cd: number; flash: number; wanderT: number; wx: number; wz: number; burn: number }
+export interface Mob { id: number; kind: MobKind; body: Body; yaw: number; hp: number; cd: number; flash: number; wanderT: number; wx: number; wz: number; burn: number;
+  /** Brincón amigo: jugador al que sigue y defiende (se consigue dándole bayas). */
+  owner?: string }
+/** Cuántos brincones amigos puede tener cada jugador. */
+export const MAX_PETS = 3;
+/** ¿Ataca a los jugadores? Los brincones solo de noche y en mundos con criaturas; los amigos, nunca. */
+export const isHostile = (g: Game, m: Mob) => !m.owner && (m.kind !== 'brincon' || (isNight(g) && !g.peaceful));
 export interface Arrow { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number }
 
 export type GEvent =
@@ -37,7 +43,7 @@ export type GEvent =
   | { kind: 'swing'; pid: string } | { kind: 'craft'; pid: string; item: number } | { kind: 'shoot'; x: number; y: number; z: number }
   | { kind: 'pickup'; pid: string; item: number; n: number } | { kind: 'join'; pid: string } | { kind: 'leave'; pid: string }
   | { kind: 'smelt'; x: number; y: number; z: number; item: number } | { kind: 'open'; pid: string; what: 'mesa' | 'horno' | 'cofre' }
-  | { kind: 'eat'; pid: string; item: number } | { kind: 'verity'; pid: string; what: string };
+  | { kind: 'eat'; pid: string; item: number } | { kind: 'tame'; pid: string; id: number; x: number; y: number; z: number } | { kind: 'verity'; pid: string; what: string };
 
 const MOB: Record<MobKind, { hp: number; speed: number; dmg: number; hw: number; h: number; range: number }> = {
   pedrusco: { hp: 20, speed: 2.6, dmg: 3, hw: 0.3, h: 1.9, range: 1.3 },
@@ -143,9 +149,11 @@ export function moveSlot(g: Game, pid: string, a: number, b: number) {
 }
 
 /** Primer criatura que corta el rayo de la mirada antes de `max`. */
-function rayMob(g: Game, ox: number, oy: number, oz: number, d: [number, number, number], max: number): { mob: Mob; dist: number } | null {
+function rayMob(g: Game, ox: number, oy: number, oz: number, d: [number, number, number], max: number, wild = false): { mob: Mob; dist: number } | null {
   let best: { mob: Mob; dist: number } | null = null;
   for (const m of g.mobs) {
+    if (m.owner && !wild) continue; // a los amigos no se les pega
+    if (wild && (m.owner || m.kind !== 'brincon')) continue;
     const s = MOB_SIZE[m.kind];
     const min = [m.body.x - s.hw, m.body.y, m.body.z - s.hw], mx = [m.body.x + s.hw, m.body.y + s.h, m.body.z + s.hw];
     let t0 = 0, t1 = max;
@@ -168,6 +176,7 @@ export function place(g: Game, pid: string): boolean {
   const p = getPlayer(g, pid);
   if (!p || !p.alive) return false;
   const item = held(p), def = item !== null ? ITEMS.get(item) : undefined;
+  if (item === I.Bayas && tame(g, p)) return true;
   if (item !== null && FOOD[item]) return eat(g, p, item);
   if (!def?.block) return false;
   const d = lookDir(p.input.yaw, Math.max(-1.55, Math.min(1.55, p.input.pitch))); // la mirada más reciente
@@ -189,6 +198,21 @@ export function place(g: Game, pid: string): boolean {
   setBlock(g, hit.px, hit.py, hit.pz, b);
   if (b === B.Horno || b === B.Cofre) g.boxes.set(key(hit.px, hit.py, hit.pz), newBox(b));
   g.events.push({ kind: 'place', pid, x: hit.px, y: hit.py, z: hit.pz, b });
+  return true;
+}
+
+/** Dar bayas al brincón silvestre que se mira de cerca: se hace amigo, sigue al jugador y le defiende. */
+function tame(g: Game, p: Player): boolean {
+  if (g.mobs.filter((m) => m.owner === p.id).length >= MAX_PETS) return false;
+  const d = lookDir(p.input.yaw, Math.max(-1.55, Math.min(1.55, p.input.pitch)));
+  const ex = p.body.x, ey = p.body.y + EYE, ez = p.body.z;
+  const wall = raycast(g.world, ex, ey, ez, d[0], d[1], d[2], REACH, true);
+  const hit = rayMob(g, ex, ey, ez, d, Math.min(3.5, wall ? wall.dist : 3.5), true);
+  if (!hit) return false;
+  const m = hit.mob;
+  m.owner = p.id; m.hp = MOB.brincon.hp; m.cd = 0; m.burn = 0;
+  removeItem(p.inv, I.Bayas, 1);
+  g.events.push({ kind: 'tame', pid: p.id, id: m.id, x: m.body.x, y: m.body.y, z: m.body.z });
   return true;
 }
 
@@ -305,9 +329,20 @@ function dark(g: Game, x: number, y: number, z: number): boolean {
 
 function trySpawn(g: Game) {
   const targets = g.players.filter((p) => p.alive && !p.away);
-  if (!targets.length || g.peaceful) return;
-  if (g.mobs.length >= 4 + targets.length * 4) return;
+  if (!targets.length) return;
   const p = targets[Math.floor(g.rand() * targets.length)];
+  // De día salen brincones silvestres a la hierba: son mansos y se les puede dar bayas
+  if (!isNight(g) && g.rand() < 0.5 && g.mobs.filter((m) => m.kind === 'brincon' && !m.owner).length < 2 + targets.length) {
+    for (let t = 0; t < 6; t++) {
+      const a = g.rand() * Math.PI * 2, r = 14 + g.rand() * 12;
+      const x = Math.floor(p.body.x + Math.cos(a) * r), z = Math.floor(p.body.z + Math.sin(a) * r), y0 = g.world.top(x, z) + 1;
+      if (y0 >= H - 2 || g.world.get(x, y0 - 1, z) !== B.Hierba || !isFree(g.world.get(x, y0, z))) continue;
+      g.mobs.push({ id: g.nextId++, kind: 'brincon', body: { x: x + 0.5, y: y0, z: z + 0.5, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: y0 }, yaw: 0, hp: MOB.brincon.hp, cd: 1, flash: 0, wanderT: 0, wx: 0, wz: 0, burn: 0 });
+      return;
+    }
+  }
+  if (g.peaceful) return;
+  if (g.mobs.filter((m) => !m.owner).length >= 4 + targets.length * 4) return;
   for (let t = 0; t < 10; t++) {
     const a = g.rand() * Math.PI * 2, r = 14 + g.rand() * 14;
     const x = Math.floor(p.body.x + Math.cos(a) * r), z = Math.floor(p.body.z + Math.sin(a) * r);
@@ -325,13 +360,48 @@ function trySpawn(g: Game) {
   }
 }
 
+/** ¿Tiene un bloque delante que le corta el paso? (entonces salta) */
+function mobBlocked(g: Game, m: Mob, wx: number, wz: number, hw: number) {
+  const ax = m.body.x + Math.sign(wx) * (hw + 0.2), az = m.body.z + Math.sign(wz) * (hw + 0.2);
+  return isSolid(g.world.get(Math.floor(ax), Math.floor(m.body.y), Math.floor(m.body.z))) || isSolid(g.world.get(Math.floor(m.body.x), Math.floor(m.body.y), Math.floor(az)));
+}
+
+/** Brincón amigo: sigue a su jugador, ataca a las criaturas que se le acercan y vuelve a su lado si se queda atrás. */
+function stepPet(g: Game, m: Mob, dt: number) {
+  const s = MOB.brincon, o = getPlayer(g, m.owner!);
+  if (!o) { m.owner = undefined; return; } // su jugador se ha ido: vuelve a ser silvestre
+  m.cd -= dt; m.flash -= dt; m.hp = s.hp;
+  const dx = o.body.x - m.body.x, dz = o.body.z - m.body.z, d = Math.hypot(dx, dz);
+  if (d > 24 || Math.abs(o.body.y - m.body.y) > 12) { Object.assign(m.body, { x: o.body.x, y: o.body.y + 0.1, z: o.body.z, vx: 0, vy: 0, vz: 0, fallFrom: o.body.y }); return; }
+  let foe: Mob | null = null, best = 9;
+  if (o.alive) for (const f of g.mobs) {
+    if (f.hp <= 0 || !isHostile(g, f) || Math.hypot(f.body.x - o.body.x, f.body.z - o.body.z) > 12 || Math.abs(f.body.y - m.body.y) > 3) continue;
+    const fd = Math.hypot(f.body.x - m.body.x, f.body.z - m.body.z);
+    if (fd < best) { best = fd; foe = f; }
+  }
+  let wx = 0, wz = 0;
+  if (foe) {
+    const fx = foe.body.x - m.body.x, fz = foe.body.z - m.body.z, fd = Math.hypot(fx, fz) || 1;
+    m.yaw = Math.atan2(fx, fz);
+    if (fd > 1.1) { wx = (fx / fd) * s.speed * 1.2; wz = (fz / fd) * s.speed * 1.2; }
+    if (fd < 1.7 && m.cd <= 0) { m.cd = 0.8; hitMob(g, foe, 3, m.body.x, m.body.z, m.owner!); }
+  } else if (d > 3) {
+    const k = d > 9 ? 1.5 : 1;
+    wx = (dx / d) * s.speed * k; wz = (dz / d) * s.speed * k;
+    m.yaw = Math.atan2(dx, dz);
+  }
+  moveBody(g.world, m.body, wx, wz, (wx !== 0 || wz !== 0) && m.body.onGround && mobBlocked(g, m, wx, wz, s.hw), dt, s.hw, s.h);
+}
+
 function stepMob(g: Game, m: Mob, dt: number) {
+  if (m.owner) { stepPet(g, m, dt); return; }
   const s = MOB[m.kind];
   m.cd -= dt; m.flash -= dt;
+  const hostile = isHostile(g, m);
   // Objetivo: el jugador vivo más cercano que no esté en pausa
   let tgt: Player | null = null, best = m.kind === 'brincon' ? 20 : 16;
   for (const p of g.players) {
-    if (!p.alive || p.away) continue;
+    if (!hostile || !p.alive || p.away) continue;
     const d = Math.hypot(p.body.x - m.body.x, p.body.y - m.body.y, p.body.z - m.body.z);
     if (d < best) { best = d; tgt = p; }
   }
@@ -383,7 +453,7 @@ export function step(g: Game, dt: number) {
   if (g.spawnT <= 0) { g.spawnT = 2; trySpawn(g); }
   for (const m of g.mobs) stepMob(g, m, dt);
   // Se van los muertos y los que se quedan muy lejos de todos
-  g.mobs = g.mobs.filter((m) => m.hp > 0 && g.players.some((p) => Math.hypot(p.body.x - m.body.x, p.body.z - m.body.z) < 48));
+  g.mobs = g.mobs.filter((m) => m.hp > 0 && (m.owner !== undefined || g.players.some((p) => Math.hypot(p.body.x - m.body.x, p.body.z - m.body.z) < 48)));
   for (const a of g.arrows) {
     a.vy -= 12 * dt;
     a.x += a.vx * dt; a.y += a.vy * dt; a.z += a.vz * dt; a.life -= dt;
