@@ -10,7 +10,7 @@ export interface WorldCard { id: string; name: string; seed: number; peaceful: b
 /** Lo que se guarda de una partida. */
 export interface WorldSave {
   v: 1; time: number; edits: number[]; boxes: [number, Box][];
-  player: { x: number; y: number; z: number; hp: number; sel: number; inv: Slot[] };
+  player: { x: number; y: number; z: number; hp: number; sel: number; inv: Slot[]; armor?: (number | null)[] };
   /** Dónde estaban tus brincones amigos. */
   pets?: [number, number, number][];
 }
@@ -47,7 +47,7 @@ export function saveGame(g: Game, pid: string): WorldSave | null {
   return {
     v: 1, time: r(g.time), edits: [...g.world.edits].flat(),
     boxes: [...g.boxes].map(([k, b]) => [k, { ...b, slots: b.slots.map((s) => (s ? { ...s } : null)) }]),
-    player: { x: r(p.body.x), y: r(p.body.y), z: r(p.body.z), hp: p.alive ? p.hp : MAX_HP, sel: p.sel, inv: p.inv.map((s) => (s ? { ...s } : null)) },
+    player: { x: r(p.body.x), y: r(p.body.y), z: r(p.body.z), hp: p.alive ? p.hp : MAX_HP, sel: p.sel, inv: p.inv.map((s) => (s ? { ...s } : null)), armor: [...p.armor] },
     pets: g.mobs.filter((m) => m.owner === pid).map((m) => [r(m.body.x), r(m.body.y), r(m.body.z)]),
   };
 }
@@ -81,6 +81,8 @@ export function loadGame(card: WorldCard, save: unknown, pid: string, rand: () =
     if (typeof sp.hp === 'number') p.hp = Math.max(1, Math.min(MAX_HP, Math.floor(sp.hp)));
     if (typeof sp.sel === 'number') p.sel = Math.max(0, Math.min(8, Math.floor(sp.sel)));
     if (Array.isArray(sp.inv)) p.inv = Array.from({ length: SLOTS }, (_v, i) => okSlot(sp.inv[i]));
+    // Cada pieza, solo en su sitio (un casco nunca vale de botas)
+    if (Array.isArray(sp.armor)) p.armor = [0, 1, 2].map((i) => { const id = sp.armor![i]; return typeof id === 'number' && ITEMS.get(id)?.armor?.piece === i ? id : null; });
   }
   if (Array.isArray(s.pets)) for (const e of s.pets.slice(0, MAX_PETS)) {
     if (!Array.isArray(e) || e.length !== 3 || !e.every((v) => typeof v === 'number' && Number.isFinite(v))) continue;

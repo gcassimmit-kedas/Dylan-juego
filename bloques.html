@@ -44,7 +44,7 @@
   <div id="banner" aria-live="polite"><div class="kicker" id="bannerKicker"></div><div class="title" id="bannerTitle"></div><div class="sub" id="bannerSub"></div></div>
   <div id="lockHint" hidden><span data-icon="crosshair"></span> Haz clic para jugar</div>
   <div id="bottom">
-    <div class="bars"><div id="hearts" role="meter" aria-label="Vida" aria-valuemin="0" aria-valuemax="20"></div></div>
+    <div class="bars"><div id="hearts" role="meter" aria-label="Vida" aria-valuemin="0" aria-valuemax="20"></div><div id="armor" role="meter" aria-label="Armadura: daño que te quita" aria-valuemin="0" aria-valuemax="50" hidden><span data-icon="armadura"></span><b></b></div></div>
     <div id="hotbar" role="toolbar" aria-label="Barra rápida"></div>
     <div id="heldName" aria-live="polite"></div>
   </div>
@@ -68,6 +68,7 @@
         <section class="inv-slots" aria-labelledby="slotsTitle">
           <h3 id="slotsTitle">Tus cosas</h3>
           <p class="help" id="slotsHelp">Toca una casilla y luego otra para cambiarlas de sitio. La fila de abajo es tu barra rápida.</p>
+          <div class="armor-box"><span class="f-lbl">Armadura</span><div id="armorRow" class="armor-row"></div><span class="help">Elige una pieza de tu mochila y toca aquí para ponértela. Toca una puesta para quitártela.</span></div>
           <div id="invGrid" class="slot-grid"></div>
           <div id="invHotbar" class="slot-grid hot"></div>
         </section>

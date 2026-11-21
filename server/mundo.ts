@@ -3,7 +3,7 @@
 // Un mundo vacío se guarda 10 minutos en memoria por si alguien vuelve con el enlace; después desaparece.
 import { WebSocket } from 'ws';
 import { randomBytes } from 'node:crypto';
-import { newGame, addPlayer, removePlayer, step, place, craft, selectSlot, moveSlot, respawn, getPlayer, verityCommand, boxMove, getBox, type Game, type Look, type VerityCmd } from '../src/bloques/game.ts';
+import { newGame, addPlayer, removePlayer, step, place, craft, selectSlot, moveSlot, equip, unequip, respawn, getPlayer, verityCommand, boxMove, getBox, type Game, type Look, type VerityCmd } from '../src/bloques/game.ts';
 import { encodeSnapshot, clampMInput, MAX_PLAYERS, TICK_HZ, type MClientMsg, type MServerMsg, type WorldInfo } from '../src/bloques/protocol.ts';
 import { randomServerName, roomPaused, reportsToKick } from '../src/shooter/protocol.ts';
 
@@ -121,6 +121,7 @@ export function onWorldMessage(c: MClient, m: MClientMsg, save: (entry: object) 
     case 'mcraft': if (g && typeof m.r === 'string') craft(g, c.pid, m.r); return true;
     case 'mslot': if (g) selectSlot(g, c.pid, Number(m.s)); return true;
     case 'mswap': if (g) moveSlot(g, c.pid, Math.floor(Number(m.a)), Math.floor(Number(m.b))); return true;
+    case 'marmor': if (g) { if (m.op === 'on') equip(g, c.pid, Math.floor(Number(m.i))); else unequip(g, c.pid, Math.floor(Number(m.i))); } return true;
     case 'mrespawn': if (g) respawn(g, c.pid); return true;
     case 'mpause': c.paused = !!m.v; return true;
     case 'mleave': leave(c); return true;

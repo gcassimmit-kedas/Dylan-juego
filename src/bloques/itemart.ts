@@ -29,6 +29,19 @@ function pixels(id: number): (string | null)[][] {
     }
     return g;
   }
+  if (def?.armor) {
+    const c = ['#d8d8dc', '#ffd23a', '#5ee8df'][def.armor.mat], d = shadeHex(c, 0.68), l = shadeHex(c, 1.12);
+    if (def.armor.piece === 0) { // casco: cúpula con visera
+      for (let y = 3; y < 12; y++) for (let x = 3; x < 13; x++) if (Math.hypot(x - 7.5, (y - 8) * 1.1) < 5.2 && !(y > 8 && x > 5 && x < 10)) put(x, y, y < 5 ? l : y > 9 ? d : c);
+      for (let x = 2; x < 14; x++) put(x, 12, d);
+    } else if (def.armor.piece === 1) { // peto: hombreras y pecho
+      for (let y = 2; y < 14; y++) for (let x = 2; x < 14; x++) if ((y < 5 && (x < 6 || x > 9)) || (y >= 5 && x > 3 && x < 12)) put(x, y, x === 7 || x === 8 ? l : y > 11 ? d : c);
+      for (let x = 5; x < 11; x++) put(x, 8, d);
+    } else { // botas: dos, de perfil
+      for (const ox of [2, 9]) for (let y = 4; y < 13; y++) for (let x = 0; x < 5; x++) if (x < 3 || y > 9) put(ox + x, y, y === 12 ? d : y < 6 ? l : c);
+    }
+    return g;
+  }
   switch (id) {
     case I.Palo: for (let i = 0; i < 12; i++) { put(2 + i, 13 - i, HANDLE); put(3 + i, 13 - i, '#4a321c'); } break;
     case I.Carbon: for (let y = 4; y < 13; y++) for (let x = 3; x < 13; x++) if (Math.hypot(x - 7.5, y - 8.5) < 4.6) put(x, y, (x + y) % 3 ? '#2a2a2c' : '#4a4a50'); break;

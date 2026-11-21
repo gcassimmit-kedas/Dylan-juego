@@ -72,3 +72,14 @@ test('tus brincones amigos siguen contigo al reanudar el mundo', () => {
   const h = loadGame(card, JSON.parse(JSON.stringify(saveGame(g, 'p1'))), 'p1');
   assert.deepEqual(h.mobs.map((m) => [m.kind, m.owner]), [['brincon', 'p1']]);
 });
+
+test('la armadura puesta se guarda, y una pieza en el sitio que no es suyo se descarta', async () => {
+  const { armorId } = await import('./items.ts');
+  const card = newCard(() => 0.3, 'Valle Dorado', false, 1000);
+  const g = startWorld(card, 'p1');
+  getPlayer(g, 'p1')!.armor = [armorId('casco', 'oro'), null, armorId('botas', 'diamante')];
+  const data = JSON.parse(JSON.stringify(saveGame(g, 'p1')));
+  assert.deepEqual(getPlayer(loadGame(card, data, 'p1'), 'p1')!.armor, [armorId('casco', 'oro'), null, armorId('botas', 'diamante')]);
+  data.player.armor = [armorId('botas', 'oro'), 7, 'x'];
+  assert.deepEqual(getPlayer(loadGame(card, data, 'p1'), 'p1')!.armor, [null, null, null]);
+});

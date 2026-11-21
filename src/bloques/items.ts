@@ -15,7 +15,18 @@ export type Tier = (typeof TIERS)[number];
 /** Id de una herramienta: 110 + tipo x 4 + material (0 madera ... 3 diamante). */
 export const toolId = (type: ToolType, tier: Tier) => 110 + TOOL_TYPES.indexOf(type) * 4 + TIERS.indexOf(tier);
 
-export interface ItemDef { id: number; name: string; stack: number; block?: number; tool?: { type: ToolType; tier: number } }
+/** Armadura: tres piezas (casco, peto, botas) en tres materiales. Cada punto de defensa quita un 5 % del daño. */
+export const ARMOR_PIECES = ['casco', 'peto', 'botas'] as const;
+export const ARMOR_MATS = ['hierro', 'oro', 'diamante'] as const;
+export type ArmorPiece = (typeof ARMOR_PIECES)[number];
+export type ArmorMat = (typeof ARMOR_MATS)[number];
+/** Id de una pieza: 130 + pieza x 3 + material. */
+export const armorId = (piece: ArmorPiece, mat: ArmorMat) => 130 + ARMOR_PIECES.indexOf(piece) * 3 + ARMOR_MATS.indexOf(mat);
+/** Puntos de defensa de cada pieza según el material: el oro protege poco, el diamante mucho; el peto, más que el resto. */
+const DEFENSE: Record<ArmorMat, [number, number, number]> = { hierro: [2, 3, 2], oro: [1, 2, 1], diamante: [3, 4, 3] };
+export const DEFENSE_STEP = 0.05;
+
+export interface ItemDef { id: number; name: string; stack: number; block?: number; tool?: { type: ToolType; tier: number }; armor?: { piece: number; mat: number; defense: number } }
 const TIER_NAME: Record<Tier, string> = { madera: 'de madera', piedra: 'de piedra', hierro: 'de hierro', diamante: 'de diamante' };
 const TYPE_NAME: Record<ToolType, string> = { pico: 'Pico', hacha: 'Hacha', pala: 'Pala', espada: 'Espada' };
 
@@ -28,6 +39,15 @@ for (const type of TOOL_TYPES) for (const tier of TIERS) {
   const id = toolId(type, tier);
   ITEMS.set(id, { id, name: `${TYPE_NAME[type]} ${TIER_NAME[tier]}`, stack: 1, tool: { type, tier: TIERS.indexOf(tier) + 1 } });
 }
+const PIECE_NAME: Record<ArmorPiece, string> = { casco: 'Casco', peto: 'Peto', botas: 'Botas' };
+for (const piece of ARMOR_PIECES) for (const mat of ARMOR_MATS) {
+  const id = armorId(piece, mat), pi = ARMOR_PIECES.indexOf(piece);
+  ITEMS.set(id, { id, name: `${PIECE_NAME[piece]} de ${mat}`, stack: 1, armor: { piece: pi, mat: ARMOR_MATS.indexOf(mat), defense: DEFENSE[mat][pi] } });
+}
+/** Defensa total de lo que se lleva puesto (ids de casco, peto y botas, o null). */
+export const defenseOf = (armor: (number | null)[]) => armor.reduce<number>((a, id) => a + (id !== null ? ITEMS.get(id)?.armor?.defense ?? 0 : 0), 0);
+/** Daño que queda después de la armadura (siempre al menos medio corazón). */
+export const afterArmor = (dmg: number, armor: (number | null)[]) => (dmg <= 0 ? 0 : Math.max(1, Math.round(dmg * (1 - defenseOf(armor) * DEFENSE_STEP))));
 export const itemName = (id: number) => ITEMS.get(id)?.name ?? 'Objeto';
 
 // ---------- Minar y luchar ----------
@@ -66,6 +86,8 @@ const TOOL_COST: Record<ToolType, number> = { pico: 3, hacha: 3, pala: 1, espada
 const TOOL_STICKS: Record<ToolType, number> = { pico: 2, hacha: 2, pala: 2, espada: 1 };
 const TIER_MAT: Record<Tier, number> = { madera: B.Tablas, piedra: B.Adoquin, hierro: I.LingoteHierro, diamante: I.Diamante };
 
+const ARMOR_MAT: Record<ArmorMat, number> = { hierro: I.LingoteHierro, oro: I.LingoteOro, diamante: I.Diamante };
+
 export const RECIPES: Recipe[] = [
   R('tablas', B.Tablas, 4, [[B.Tronco, 1]]),
   R('palos', I.Palo, 4, [[B.Tablas, 2]]),
@@ -74,6 +96,7 @@ export const RECIPES: Recipe[] = [
   R('horno', B.Horno, 1, [[B.Adoquin, 8]], 'mesa'),
   ...TIERS.flatMap((tier) => TOOL_TYPES.map((type) => R(`${type}-${tier}`, toolId(type, tier), 1, [[TIER_MAT[tier], TOOL_COST[type]], [I.Palo, TOOL_STICKS[type]]], 'mesa'))),
   R('cofre', B.Cofre, 1, [[B.Tablas, 8]], 'mesa'),
+  ...ARMOR_MATS.flatMap((mat) => ARMOR_PIECES.map((piece, i) => R(`${piece}-${mat}`, armorId(piece, mat), 1, [[ARMOR_MAT[mat], [4, 6, 3][i]]], 'mesa'))),
   R('losa-tablas', B.LosaTablas, 6, [[B.Tablas, 3]], 'mesa'),
   R('losa-piedra', B.LosaPiedra, 6, [[B.Adoquin, 3]], 'mesa'),
 ];

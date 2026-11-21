@@ -12,7 +12,7 @@ export type MClientMsg =
   | { t: 'mhost' }
   | { t: 'mjoin'; world: string }
   | { t: 'min'; i: unknown }
-  | { t: 'mplace' } | { t: 'mcraft'; r: string } | { t: 'mslot'; s: number } | { t: 'mswap'; a: number; b: number } | { t: 'mrespawn' }
+  | { t: 'mplace' } | { t: 'mcraft'; r: string } | { t: 'mslot'; s: number } | { t: 'mswap'; a: number; b: number } | { t: 'marmor'; op: 'on' | 'off'; i: number } | { t: 'mrespawn' }
   | { t: 'mpause'; v: boolean } | { t: 'mleave' }
   | { t: 'mreport'; pid: string }
   /** Orden de Verity (ya entendida en el dispositivo: el texto escrito no se envía). */
@@ -21,7 +21,7 @@ export type MClientMsg =
   | { t: 'mopen'; x: number; y: number; z: number } | { t: 'mclose' } | { t: 'mbox'; x: number; y: number; z: number; op: 'put' | 'take'; i: number };
 
 /** Jugador tal como viaja por la red. */
-export interface NetP { id: string; name: string; look: Look; x: number; y: number; z: number; yaw: number; pitch: number; hp: number; alive: boolean; held: number | null; away: boolean; mine: [number, number, number, number] | null }
+export interface NetP { id: string; name: string; look: Look; x: number; y: number; z: number; yaw: number; pitch: number; hp: number; alive: boolean; held: number | null; armor: (number | null)[]; away: boolean; mine: [number, number, number, number] | null }
 export interface MSnapshot {
   tick: number; time: number;
   P: NetP[];
@@ -53,7 +53,7 @@ export function encodeSnapshot(g: Game, tick: number, pid: string, events: GEven
     tick, time: r2(g.time),
     P: g.players.map((p) => ({
       id: p.id, name: p.name, look: p.look, x: r2(p.body.x), y: r2(p.body.y), z: r2(p.body.z), yaw: r2(p.yaw), pitch: r2(p.pitch),
-      hp: p.hp, alive: p.alive, held: p.inv[p.sel]?.id ?? null, away: p.away,
+      hp: p.hp, alive: p.alive, held: p.inv[p.sel]?.id ?? null, armor: [...p.armor], away: p.away,
       mine: p.mine && Number.isFinite(p.mine.need) ? [p.mine.x, p.mine.y, p.mine.z, r2(Math.min(1, p.mine.t / p.mine.need))] : null,
     })),
     M: g.mobs.flatMap((m) => [m.id, MOB_KINDS.indexOf(m.kind), r2(m.body.x), r2(m.body.y), r2(m.body.z), r2(m.yaw), (m.flash > 0 ? 1 : 0) | (m.owner ? 2 : 0)]),

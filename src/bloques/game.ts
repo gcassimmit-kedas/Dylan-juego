@@ -2,7 +2,7 @@
 // daño por caída, regeneración, día y noche, criaturas y muerte. Lógica pura: la ejecutan el navegador
 // (un jugador, sin conexión) y el servidor (mundos compartidos, donde manda el servidor).
 import { generate, spawnPoint, raycast, moveBody, bodyBlocked, isSolid, isFree, isPlant, growsOn, World, B, H, BLOCKS, USABLE, lightOf, key, unkey, type Body } from './voxel.ts';
-import { newInventory, addItem, removeItem, breakTime, dropOf, attackDamage, recipeById, craft as craftInv, cannotCraft, ITEMS, HOTBAR, swapSlots, FOOD, I, SMELT, FUEL, SMELT_SECONDS, type Slot, type Station } from './items.ts';
+import { newInventory, addItem, removeItem, breakTime, dropOf, attackDamage, afterArmor, recipeById, craft as craftInv, cannotCraft, ITEMS, HOTBAR, swapSlots, FOOD, I, SMELT, FUEL, SMELT_SECONDS, type Slot, type Station } from './items.ts';
 import { JUMP_SPEED } from './voxel.ts';
 
 export const MAX_HP = 20; // 10 corazones
@@ -18,6 +18,8 @@ export type Look = 'coloso' | 'halcon';
 export interface Player {
   id: string; name: string; look: Look; body: Body; yaw: number; pitch: number;
   hp: number; alive: boolean; inv: Slot[]; sel: number; input: PInput;
+  /** Armadura puesta: casco, peto y botas (id del objeto o null). */
+  armor: (number | null)[];
   /** Bloque que está rompiendo y cuánto lleva (segundos). */
   mine: { x: number; y: number; z: number; t: number; need: number } | null;
   invuln: number; calm: number; regenT: number; attackCd: number;
@@ -43,7 +45,7 @@ export type GEvent =
   | { kind: 'swing'; pid: string } | { kind: 'craft'; pid: string; item: number } | { kind: 'shoot'; x: number; y: number; z: number }
   | { kind: 'pickup'; pid: string; item: number; n: number } | { kind: 'join'; pid: string } | { kind: 'leave'; pid: string }
   | { kind: 'smelt'; x: number; y: number; z: number; item: number } | { kind: 'open'; pid: string; what: 'mesa' | 'horno' | 'cofre' }
-  | { kind: 'eat'; pid: string; item: number } | { kind: 'tame'; pid: string; id: number; x: number; y: number; z: number } | { kind: 'verity'; pid: string; what: string };
+  | { kind: 'eat'; pid: string; item: number } | { kind: 'equip'; pid: string; item: number } | { kind: 'tame'; pid: string; id: number; x: number; y: number; z: number } | { kind: 'verity'; pid: string; what: string };
 
 const MOB: Record<MobKind, { hp: number; speed: number; dmg: number; hw: number; h: number; range: number }> = {
   pedrusco: { hp: 20, speed: 2.6, dmg: 3, hw: 0.3, h: 1.9, range: 1.3 },
@@ -90,7 +92,7 @@ export function addPlayer(g: Game, id: string, name: string, look: Look = 'colos
   const [x, y, z] = spawnFor(g, g.players.length);
   const p: Player = {
     id, name, look, body: { x, y, z, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: y }, yaw: Math.PI, pitch: 0,
-    hp: MAX_HP, alive: true, inv: newInventory(), sel: 0, input: { ...IDLE, yaw: Math.PI }, mine: null,
+    hp: MAX_HP, alive: true, inv: newInventory(), sel: 0, armor: [null, null, null], input: { ...IDLE, yaw: Math.PI }, mine: null,
     invuln: 3, calm: 0, regenT: 0, attackCd: 0, away: false,
   };
   g.players.push(p);
@@ -143,6 +145,25 @@ export function selectSlot(g: Game, pid: string, slot: number) {
   const p = getPlayer(g, pid);
   if (p && Number.isInteger(slot) && slot >= 0 && slot < HOTBAR) { p.sel = slot; p.mine = null; }
 }
+/** Ponerse la pieza de armadura que hay en una casilla del inventario; la que llevaba puesta vuelve a esa casilla. */
+export function equip(g: Game, pid: string, slot: number): boolean {
+  const p = getPlayer(g, pid), s = p && Number.isInteger(slot) ? p.inv[slot] : undefined;
+  const a = s ? ITEMS.get(s.id)?.armor : undefined;
+  if (!p || !p.alive || !s || !a) return false;
+  const old = p.armor[a.piece];
+  p.armor[a.piece] = s.id;
+  p.inv[slot] = old !== null ? { id: old, n: 1 } : null;
+  g.events.push({ kind: 'equip', pid, item: s.id });
+  return true;
+}
+/** Quitarse una pieza (0 casco, 1 peto, 2 botas): vuelve al inventario si hay sitio. */
+export function unequip(g: Game, pid: string, piece: number): boolean {
+  const p = getPlayer(g, pid), id = p && Number.isInteger(piece) ? p.armor[piece] : undefined;
+  if (!p || id === null || id === undefined) return false;
+  if (addItem(p.inv, id, 1) > 0) return false;
+  p.armor[piece] = null;
+  return true;
+}
 export function moveSlot(g: Game, pid: string, a: number, b: number) {
   const p = getPlayer(g, pid);
   if (p) swapSlots(p.inv, a, b);
@@ -176,6 +197,7 @@ export function place(g: Game, pid: string): boolean {
   const p = getPlayer(g, pid);
   if (!p || !p.alive) return false;
   const item = held(p), def = item !== null ? ITEMS.get(item) : undefined;
+  if (def?.armor) return equip(g, pid, p.sel);
   if (item === I.Bayas && tame(g, p)) return true;
   if (item !== null && FOOD[item]) return eat(g, p, item);
   if (!def?.block) return false;
@@ -228,6 +250,7 @@ function eat(g: Game, p: Player, item: number): boolean {
 
 function hurt(g: Game, p: Player, dmg: number, kx = 0, kz = 0) {
   if (!p.alive || p.away || p.invuln > 0 || dmg <= 0) return;
+  dmg = afterArmor(dmg, p.armor);
   p.hp = Math.max(0, p.hp - dmg);
   p.invuln = 0.5; p.calm = 0;
   p.body.vx += kx; p.body.vz += kz;

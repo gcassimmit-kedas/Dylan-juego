@@ -412,3 +412,50 @@ test('el brincón amigo te sigue, vuelve a tu lado si te alejas mucho y acaba co
   assert.ok(!g.mobs.includes(foe));
   assert.ok(g.mobs.includes(pet));
 });
+
+// ---------- Armadura ----------
+import { equip, unequip } from './game.ts';
+import { armorId, defenseOf, afterArmor, ARMOR_PIECES, ARMOR_MATS, ITEMS as ALL_ITEMS } from './items.ts';
+
+test('hay 9 piezas de armadura y todas se fabrican en la mesa con su material', () => {
+  for (const piece of ARMOR_PIECES) for (const mat of ARMOR_MATS) {
+    const id = armorId(piece, mat);
+    assert.ok(ALL_ITEMS.get(id)?.armor, `${piece} de ${mat}`);
+    assert.equal(RECIPES.find((r) => r.out === id)?.station, 'mesa');
+  }
+  assert.ok(defenseOf([armorId('casco', 'diamante'), null, null]) > defenseOf([armorId('casco', 'hierro'), null, null]));
+  assert.ok(defenseOf([armorId('casco', 'hierro'), null, null]) > defenseOf([armorId('casco', 'oro'), null, null]));
+});
+
+test('la armadura se pone con el botón de colocar y quita daño: con todo de hierro, un golpe de 6 se queda en 4', () => {
+  const { g, p } = flatGame();
+  for (const piece of ARMOR_PIECES) {
+    p.inv[p.sel] = { id: armorId(piece, 'hierro'), n: 1 };
+    assert.equal(place(g, 'p1'), true);
+    assert.equal(p.inv[p.sel], null);
+  }
+  assert.deepEqual(p.armor, [armorId('casco', 'hierro'), armorId('peto', 'hierro'), armorId('botas', 'hierro')]);
+  assert.equal(afterArmor(6, p.armor), 4);
+  assert.equal(afterArmor(1, p.armor), 1); // nunca baja de medio corazón
+  // Caída de 9 bloques: sin armadura quita 6; con ella, 4
+  Object.assign(p.body, { y: 20, onGround: false, fallFrom: 20 });
+  run(g, 3);
+  assert.equal(p.hp, MAX_HP - 4);
+});
+
+test('al ponerse otra pieza del mismo sitio, la anterior vuelve a la mano; y se puede quitar si hay sitio', () => {
+  const { g, p } = flatGame();
+  p.inv[0] = { id: armorId('peto', 'oro'), n: 1 }; p.inv[5] = { id: armorId('peto', 'diamante'), n: 1 };
+  assert.equal(equip(g, 'p1', 0), true);
+  assert.equal(equip(g, 'p1', 5), true);
+  assert.equal(p.armor[1], armorId('peto', 'diamante'));
+  assert.deepEqual(p.inv[5], { id: armorId('peto', 'oro'), n: 1 });
+  assert.equal(equip(g, 'p1', 2), false); // casilla vacía
+  addItem(p.inv, B.Tablas, 1);
+  assert.equal(equip(g, 'p1', 0), false); // unas tablas no son armadura
+  assert.equal(unequip(g, 'p1', 1), true);
+  assert.equal(p.armor[1], null);
+  assert.equal(count(p.inv, armorId('peto', 'diamante')), 1);
+  assert.equal(unequip(g, 'p1', 1), false);
+  assert.equal(unequip(g, 'p1', 7), false);
+});

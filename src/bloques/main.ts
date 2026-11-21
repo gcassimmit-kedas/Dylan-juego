@@ -8,10 +8,10 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { World, generate, spawnPoint, raycast, moveBody, BLOCKS, B, USABLE, lightOf, heightOf, unkey, CHUNK, type Tex, type Body } from './voxel.ts';
-import { step, place, craft, selectSlot, moveSlot, respawn, lookDir, sunLight, isNight, dayPhase, stationsNear, verityCommand, boxMove, getBox, FURNACE, type Box,
+import { step, place, craft, selectSlot, moveSlot, equip, unequip, respawn, lookDir, sunLight, isNight, dayPhase, stationsNear, verityCommand, boxMove, getBox, FURNACE, type Box,
   WALK, DAY_SECONDS, MAX_HP, EYE, REACH, type Game, type GEvent, type Look, type MobKind, type VerityCmd } from './game.ts';
 import { verity } from './verity.ts';
-import { ITEMS, RECIPES, HOTBAR, SLOTS, count, cannotCraft, itemName, toolId, SMELT, FUEL, SMELT_SECONDS, type Slot, type Station, type Recipe } from './items.ts';
+import { ITEMS, RECIPES, HOTBAR, SLOTS, count, cannotCraft, itemName, toolId, SMELT, FUEL, SMELT_SECONDS, defenseOf, DEFENSE_STEP, type Slot, type Station, type Recipe } from './items.ts';
 import type { IconName } from '../ui/icons.ts';
 import { MOB_KINDS, type NetP, type WorldInfo } from './protocol.ts';
 import { WorldNet } from './net.ts';
@@ -21,6 +21,7 @@ import type { MeshResult, Packed } from './mesh.worker.ts';
 import { buildAtlas, setAnisotropy, type TexName } from './textures.ts';
 import { itemIcon, itemModel } from './itemart.ts';
 import { makePerson, animatePerson, type Person } from './models.ts';
+import { dressPerson } from './armadura.ts';
 import { makeCreature, animateCreature, setFriend, type Creature } from './criaturas.ts';
 import { worldName, newCard, startWorld, saveGame, loadGame, parseCards, MAX_WORLDS, type WorldCard } from './save.ts';
 import { fpInput, applyLook } from './controls.ts';
@@ -236,8 +237,8 @@ let myId = 'p1';
 let yaw = Math.PI, pitch = 0;
 let playing = false, paused = false;
 /** Mi estado (en solo, el de la partida; en línea, mi predicción local y lo que dice el servidor). */
-let me: { body: Body; hp: number; alive: boolean; inv: Slot[]; sel: number; mine: [number, number, number, number] | null } =
-  { body: { x: 48, y: 40, z: 48, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: 40 }, hp: MAX_HP, alive: true, inv: [], sel: 0, mine: null };
+let me: { body: Body; hp: number; alive: boolean; inv: Slot[]; sel: number; armor: (number | null)[]; mine: [number, number, number, number] | null } =
+  { body: { x: 48, y: 40, z: 48, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: 40 }, hp: MAX_HP, alive: true, inv: [], sel: 0, armor: [null, null, null], mine: null };
 let others: NetP[] = [];
 let mobs: { id: number; kind: MobKind; x: number; y: number; z: number; yaw: number; hit: boolean; pet: boolean }[] = [];
 let arrows: number[] = [];
@@ -423,6 +424,12 @@ function doCraft(r: Recipe) {
   if (mode === 'solo' && game) { if (craft(game, myId, r.id)) flushEvents(game.events.splice(0)); }
   else net.send({ t: 'mcraft', r: r.id });
 }
+/** Ponerse la armadura de una casilla, o quitarse una pieza (0 casco, 1 peto, 2 botas). */
+function doArmor(op: 'on' | 'off', i: number) {
+  if (mode === 'solo' && game) { if (op === 'on') equip(game, myId, i); else if (!unequip(game, myId, i)) toast('No te cabe en la mochila'); flushEvents(game.events.splice(0)); syncSolo(); }
+  else net.send({ t: 'marmor', op, i });
+  renderInventory(); hudKey = '';
+}
 function doSwap(a: number, b: number) {
   if (mode === 'solo' && game) moveSlot(game, myId, a, b);
   else { const s = me.inv[a]; me.inv[a] = me.inv[b]; me.inv[b] = s; net.send({ t: 'mswap', a, b }); }
@@ -459,7 +466,7 @@ function slotHtml(s: Slot, key?: number) {
 }
 let hudKey = '';
 function hud() {
-  const key = `${me.hp}|${me.sel}|${me.inv.map((s) => (s ? `${s.id}:${s.n}` : '')).join(',')}`;
+  const key = `${me.hp}|${me.armor.join('.')}|${me.sel}|${me.inv.map((s) => (s ? `${s.id}:${s.n}` : '')).join(',')}`;
   if (key === hudKey) return;
   hudKey = key;
   [...heartsEl.children].forEach((h, i) => {
@@ -469,6 +476,10 @@ function hud() {
   heartsEl.classList.toggle('low', me.hp > 0 && me.hp <= 6);
   heartsEl.setAttribute('aria-valuenow', String(me.hp));
   heartsEl.setAttribute('aria-label', `Vida: ${me.hp / 2} de 10 corazones`);
+  const def = defenseOf(me.armor), armorEl = $('armor');
+  armorEl.hidden = def === 0;
+  armorEl.querySelector('b')!.textContent = `${Math.round(def * DEFENSE_STEP * 100)} %`;
+  armorEl.setAttribute('aria-valuenow', String(Math.round(def * DEFENSE_STEP * 100)));
   hotbarEl.innerHTML = '';
   for (let i = 0; i < HOTBAR; i++) {
     const s = me.inv[i] ?? null, b = document.createElement('button');
@@ -512,6 +523,7 @@ $('inviteBtn').addEventListener('click', () => { setPaused(true); $<HTMLInputEle
 
 // ---------- Inventario y crafteo ----------
 let picked: number | null = null;
+const ARMOR_LABEL = ['Casco', 'Peto', 'Botas'], ARMOR_ICON: IconName[] = ['userRound', 'armadura', 'footprints'];
 function nearStations(): Set<Station> {
   if (mode === 'solo' && game) return stationsNear(game, game.players[0]);
   // En línea se calcula igual con el mundo y la posición propios (el servidor lo vuelve a comprobar)
@@ -532,6 +544,21 @@ function renderInventory() {
     });
     (i < HOTBAR ? hot : grid).appendChild(b);
   }
+  const row = $('armorRow');
+  row.innerHTML = '';
+  ARMOR_LABEL.forEach((label, i) => {
+    const id = me.armor[i] ?? null, b = document.createElement('button');
+    b.className = `slot${id === null ? ' empty' : ''}`;
+    b.innerHTML = id !== null ? `<img src="${itemIcon(id, atlas)}" alt="" />` : `<span class="ph">${icon(ARMOR_ICON[i])}</span>`;
+    b.setAttribute('aria-label', `${label}: ${id !== null ? `${itemName(id)}. Toca para quitártelo` : 'sin poner'}`);
+    b.addEventListener('click', () => {
+      // Con una pieza elegida en la mochila, se pone; si no, se quita la que hay
+      const sel = picked !== null ? me.inv[picked] : null;
+      if (picked !== null && sel && ITEMS.get(sel.id)?.armor) { const a = picked; picked = null; doArmor('on', a); }
+      else { picked = null; if (id !== null) doArmor('off', i); else renderInventory(); }
+    });
+    row.appendChild(b);
+  });
   const near = nearStations();
   $('stations').innerHTML = `Cerca: ${near.has('mesa') ? '<b>mesa de crafteo</b>' : 'sin mesa de crafteo'} · ${near.has('horno') ? '<b>horno</b>' : 'sin horno'}`;
   const list = $('recipes');
@@ -572,7 +599,7 @@ function closeInventory() { $('inventory').hidden = true; picked = null; lockPoi
 $('invClose').addEventListener('click', closeInventory);
 
 // ---------- Escena: personajes, criaturas, púas, selección ----------
-const persons = new Map<string, Person & { heldId: number | null }>();
+const persons = new Map<string, Person & { heldId: number | null; armorKey: string }>();
 const mobViews = new Map<number, { c: Creature; px: number; pz: number }>();
 const arrowGroup = new THREE.Group(); scene.add(arrowGroup);
 // Púas que lanza el espino
@@ -600,7 +627,7 @@ function crackAt(i: number) {
 }
 function personFor(p: NetP) {
   let v = persons.get(p.id);
-  if (!v) { v = Object.assign(makePerson(p.look), { heldId: null as number | null }); v.root.position.set(p.x, p.y, p.z); scene.add(v.root); persons.set(p.id, v); v.px = p.x; v.pz = p.z; }
+  if (!v) { v = Object.assign(makePerson(p.look), { heldId: null as number | null, armorKey: '' }); v.root.position.set(p.x, p.y, p.z); scene.add(v.root); persons.set(p.id, v); v.px = p.x; v.pz = p.z; }
   const text = shownName(p);
   if (v.labelText !== text) {
     if (v.label) scene.remove(v.label);
@@ -608,6 +635,8 @@ function personFor(p: NetP) {
     v.label.scale.multiplyScalar(0.55);
     scene.add(v.label);
   }
+  const ak = (p.armor ?? []).join('.');
+  if (v.armorKey !== ak) { v.armorKey = ak; dressPerson(v, p.armor ?? []); }
   if (v.heldId !== p.held) {
     v.heldId = p.held;
     v.hand.clear();
@@ -709,6 +738,7 @@ function flushEvents(evs: GEvent[]) {
         fx.debris(ev.x, ev.y + 0.9, ev.z, 0xff6f9c, 14, 3, 0.1);
         if (mine) { sfx.wave(); banner('Brincón amigo', 'Nuevo compañero', 'Te sigue y te defiende de las criaturas de la noche.'); }
         break;
+      case 'equip': if (mine) { sfx.pickup(); toast(`Te has puesto: ${itemName(ev.item).toLowerCase()}`); hudKey = ''; } break;
       case 'eat': if (mine) { sfx.pickup(); toast(`Te has comido: ${itemName(ev.item).toLowerCase()}`); } break;
       case 'join': if (ev.pid !== myId && mode === 'multi') toast(`${names.get(ev.pid) ?? 'Alguien'} ha entrado en el mundo`); break;
       case 'leave': if (mode === 'multi') toast(`${names.get(ev.pid) ?? 'Alguien'} ha salido`); break;
@@ -775,7 +805,7 @@ function startSolo(c: WorldCard, fresh: boolean) {
 /** Copia el estado de la partida local a lo que se dibuja. */
 function syncSolo() {
   const g = game!, p = g.players[0];
-  me = { body: p.body, hp: p.hp, alive: p.alive, inv: p.inv, sel: p.sel, mine: p.mine && Number.isFinite(p.mine.need) ? [p.mine.x, p.mine.y, p.mine.z, Math.min(1, p.mine.t / p.mine.need)] : null };
+  me = { body: p.body, hp: p.hp, alive: p.alive, inv: p.inv, sel: p.sel, armor: p.armor, mine: p.mine && Number.isFinite(p.mine.need) ? [p.mine.x, p.mine.y, p.mine.z, Math.min(1, p.mine.t / p.mine.need)] : null };
   others = [];
   mobs = g.mobs.map((m) => ({ id: m.id, kind: m.kind, x: m.body.x, y: m.body.y, z: m.body.z, yaw: m.yaw, hit: m.flash > 0, pet: !!m.owner }));
   arrows = g.arrows.flatMap((a) => [a.x, a.y, a.z, a.vx, a.vy, a.vz]);
@@ -827,7 +857,7 @@ net.onJoined = () => {
   wd.applyEdits(net.edits);
   loadWorld(wd);
   const [sx, sy, sz] = spawnPoint(wd);
-  me = { body: { x: sx, y: sy, z: sz, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: 0 }, hp: MAX_HP, alive: true, inv: [], sel: 0, mine: null };
+  me = { body: { x: sx, y: sy, z: sz, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: 0 }, hp: MAX_HP, alive: true, inv: [], sel: 0, armor: [null, null, null], mine: null };
   firstSnap = true;
   document.body.classList.add('multi');
   $<HTMLInputElement>('inviteLink').value = inviteLink();
@@ -873,7 +903,7 @@ function multiFrame(dt: number, inp: Inp) {
     if (firstSnap || !mine.alive || Math.hypot(mine.x - me.body.x, mine.y - me.body.y, mine.z - me.body.z) > 3) {
       Object.assign(me.body, { x: mine.x, y: mine.y, z: mine.z, vx: 0, vy: 0, vz: 0 }); firstSnap = false;
     }
-    me.hp = mine.hp; me.mine = mine.mine;
+    me.hp = mine.hp; me.mine = mine.mine; me.armor = mine.armor ?? [null, null, null];
     if (me.alive && !mine.alive) showDeath();
     if (!me.alive && mine.alive) $('death').hidden = true;
     me.alive = mine.alive;

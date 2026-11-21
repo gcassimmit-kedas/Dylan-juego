@@ -269,3 +269,16 @@ body.terror .verity-log li.v { background: rgba(120, 10, 14, 0.25); border-color
 #newWorld { z-index: 8; }
 .nw-panel .cs-foot button { white-space: nowrap; }
 @media (max-width: 560px) { .nw-panel .cs-foot .primary.big { font-size: 1.05rem; padding-left: 14px; padding-right: 14px; } .nw-name { flex-wrap: wrap; } }
+
+/* ---------- Armadura ---------- */
+#armor { display: flex; align-items: center; gap: 5px; padding: 2px 8px 2px 6px; background: rgba(0, 0, 0, 0.45); font-family: var(--display); font-size: 0.95rem; color: var(--text);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%); }
+#armor[hidden] { display: none; }
+#armor .ic { width: 16px; height: 16px; color: var(--accent); }
+.armor-box { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: center; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.armor-box .f-lbl { grid-column: 1 / -1; }
+.armor-box .help { margin: 0; font-size: 0.82rem; }
+.armor-row { display: flex; gap: 3px; }
+.armor-row .slot { width: 42px; height: 42px; }
+.armor-row .slot .ph { display: grid; place-items: center; width: 100%; height: 100%; opacity: 0.35; }
+.armor-row .slot .ph .ic { width: 22px; height: 22px; }

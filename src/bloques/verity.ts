@@ -3,7 +3,7 @@
 // Todo se entiende en el propio dispositivo: el texto no sale de él. Al servidor solo llega la orden.
 // Lógica pura y testeable.
 import { World, B, BLOCKS, H } from './voxel.ts';
-import { ITEMS, RECIPES, I, toolId, itemName, TIERS, SMELT, type ToolType, type Tier } from './items.ts';
+import { ITEMS, RECIPES, I, toolId, armorId, ARMOR_PIECES, ARMOR_MATS, itemName, TIERS, SMELT, type ToolType, type Tier } from './items.ts';
 import { DAY_SECONDS, dayPhase, isNight, type VerityCmd } from './game.ts';
 
 export interface VerityCtx { world: World; x: number; y: number; z: number; yaw: number; time: number }
@@ -25,6 +25,9 @@ const NAMES: [string, number][] = [
   ['diamante', I.Diamante], ['mesa de crafteo', B.Mesa], ['mesa', B.Mesa], ['horno', B.Horno], ['antorcha', B.Antorcha], ['cofre', B.Cofre], ['baul', B.Cofre], ['losa de piedra', B.LosaPiedra], ['losa de tabla', B.LosaTablas], ['losa de madera', B.LosaTablas], ['losa', B.LosaTablas], ['bayas', I.Bayas], ['baya', I.Bayas], ['flor de sol', B.FlorSol], ['flor de fuego', B.FlorFuego], ['flor', B.FlorSol],
   ['manzana', I.Manzana], ['carne asada', I.CarneAsada], ['carne', I.CarneAsada], ['comida', I.CarneAsada],
 ];
+// Armadura: "casco de hierro", "botas de diamante"... y "armadura" a secas da un peto de hierro
+for (const piece of ARMOR_PIECES) for (const mat of ARMOR_MATS) NAMES.unshift([`${piece === 'botas' ? 'bota' : piece} de ${mat}`, armorId(piece, mat)]);
+NAMES.push(['casco', armorId('casco', 'hierro')], ['peto', armorId('peto', 'hierro')], ['bota', armorId('botas', 'hierro')], ['armadura', armorId('peto', 'hierro')]);
 const TOOL_WORDS: [string, ToolType][] = [['pico', 'pico'], ['hacha', 'hacha'], ['pala', 'pala'], ['espada', 'espada']];
 const TIER_WORDS: [string, Tier][] = [['madera', 'madera'], ['piedra', 'piedra'], ['hierro', 'hierro'], ['diamante', 'diamante'], ['oro', 'hierro']];
 const ORE_FOR: [string, number][] = [['diamante', B.Diamante], ['oro', B.Oro], ['hierro', B.Hierro], ['carbon', B.Carbon], ['arbol', B.Tronco], ['madera', B.Tronco], ['tronco', B.Tronco], ['arena', B.Arena], ['cueva', B.Aire]];
