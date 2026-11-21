@@ -329,3 +329,49 @@ test('no se puede usar un horno desde lejos (lo comprueba el servidor)', () => {
   p.body.x = 40;
   assert.equal(boxMove(g, 'p1', 22, 11, 20, 'put', p.inv.findIndex((s) => s?.id === B.Hierro)), false);
 });
+
+test('las plantas se rompen al instante: la flor se recoge, la hierba alta no deja nada y el arbusto da 2 bayas', () => {
+  const { g, p } = flatGame();
+  for (const [x, b] of [[21, B.FlorSol], [22, B.HierbaAlta], [23, B.ArbustoBayas]] as const) { g.world.set(x, 10, 20, B.Hierba); g.world.set(x, 11, 20, b); }
+  for (const x of [21, 22, 23]) { lookAt(p, x, 11, 20); run(g, 0.1); assert.equal(g.world.get(x, 11, 20), B.Aire); }
+  assert.equal(count(p.inv, B.FlorSol), 1);
+  assert.equal(count(p.inv, B.HierbaAlta), 0);
+  assert.equal(count(p.inv, I.Bayas), 2);
+});
+
+test('una planta solo se planta sobre hierba o tierra, y se pierde si le quitan el suelo', () => {
+  const { g, p } = flatGame();
+  addItem(p.inv, B.FlorFuego, 2);
+  lookAt(p, 22, 10, 20, false);
+  assert.equal(place(g, 'p1'), false); // sobre piedra, no
+  g.world.set(22, 10, 20, B.Tierra);
+  assert.equal(place(g, 'p1'), true);
+  assert.equal(g.world.get(22, 11, 20), B.FlorFuego);
+  assert.equal(count(p.inv, B.FlorFuego), 1);
+  lookAt(p, 22, 10, 21); // romper la tierra desde un lado: la flor desaparece con ella
+  g.world.set(22, 10, 21, B.Aire); g.world.set(22, 10, 22, B.Aire);
+  Object.assign(p.body, { x: 22.5, y: 10, z: 22.5 });
+  g.world.set(22, 9, 22, B.Piedra);
+  lookAt(p, 22, 10, 20);
+  run(g, 1.2);
+  assert.equal(g.world.get(22, 10, 20), B.Aire);
+  assert.equal(g.world.get(22, 11, 20), B.Aire);
+});
+
+test('se puede construir encima de una planta: el bloque ocupa su sitio', () => {
+  const { g, p } = flatGame();
+  g.world.set(22, 10, 20, B.Hierba); g.world.set(22, 11, 20, B.HierbaAlta);
+  addItem(p.inv, B.Tablas, 1);
+  lookAt(p, 22, 11, 20, false);
+  assert.equal(place(g, 'p1'), true);
+  assert.equal(g.world.get(22, 11, 20), B.Tablas);
+});
+
+test('las bayas se comen', () => {
+  const { g, p } = flatGame();
+  addItem(p.inv, I.Bayas, 1);
+  p.hp = 10;
+  assert.equal(place(g, 'p1'), true);
+  assert.equal(p.hp, 11);
+  assert.equal(count(p.inv, I.Bayas), 0);
+});

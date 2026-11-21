@@ -1,7 +1,7 @@
 // Supervivencia de Bloques: jugadores (moverse, saltar, minar con su tiempo, colocar, luchar), 10 corazones,
 // daño por caída, regeneración, día y noche, monstruos y muerte. Lógica pura: la ejecutan el navegador
 // (un jugador, sin conexión) y el servidor (mundos compartidos, donde manda el servidor).
-import { generate, spawnPoint, raycast, moveBody, bodyBlocked, isSolid, World, B, H, BLOCKS, USABLE, lightOf, key, unkey, type Body } from './voxel.ts';
+import { generate, spawnPoint, raycast, moveBody, bodyBlocked, isSolid, isFree, isPlant, growsOn, World, B, H, BLOCKS, USABLE, lightOf, key, unkey, type Body } from './voxel.ts';
 import { newInventory, addItem, removeItem, breakTime, dropOf, attackDamage, recipeById, craft as craftInv, cannotCraft, ITEMS, HOTBAR, swapSlots, FOOD, I, SMELT, FUEL, SMELT_SECONDS, type Slot, type Station } from './items.ts';
 import { JUMP_SPEED } from './voxel.ts';
 
@@ -189,15 +189,17 @@ export function place(g: Game, pid: string): boolean {
   if (!def?.block) return false;
   const d = lookDir(p.input.yaw, Math.max(-1.55, Math.min(1.55, p.input.pitch))); // la mirada más reciente
   const hit = raycast(g.world, p.body.x, p.body.y + EYE, p.body.z, d[0], d[1], d[2], REACH);
-  if (!hit || hit.py < 0 || hit.py >= H || g.world.get(hit.px, hit.py, hit.pz) !== B.Aire) return false;
+  if (!hit || hit.py < 0 || hit.py >= H || !isFree(g.world.get(hit.px, hit.py, hit.pz))) return false;
   if (USABLE.has(g.world.get(hit.x, hit.y, hit.z))) return false; // se usa, no se construye encima
   const b = def.block;
   if (b === B.Antorcha && !isSolid(g.world.get(hit.px, hit.py - 1, hit.pz)) && !isSolid(g.world.get(hit.x, hit.y, hit.z))) return false;
+  if (isPlant(b) && (isPlant(g.world.get(hit.px, hit.py, hit.pz)) || !growsOn(g.world.get(hit.px, hit.py - 1, hit.pz)))) return false; // las plantas, sobre hierba o tierra
   if (BLOCKS[b].solid) {
+    const was = g.world.get(hit.px, hit.py, hit.pz);
     g.world.set(hit.px, hit.py, hit.pz, b, false); // comprobar que no atrapa a nadie
     const trapped = g.players.some((q) => q.alive && bodyBlocked(g.world, q.body.x, q.body.y, q.body.z, 0.3, 1.8))
       || g.mobs.some((m) => bodyBlocked(g.world, m.body.x, m.body.y, m.body.z, MOB_SIZE[m.kind].hw, MOB_SIZE[m.kind].h));
-    g.world.set(hit.px, hit.py, hit.pz, B.Aire, false);
+    g.world.set(hit.px, hit.py, hit.pz, was, false);
     if (trapped) return false;
   }
   removeItem(p.inv, b, 1);
@@ -287,7 +289,9 @@ function stepPlayer(g: Game, p: Player, dt: number) {
   const d = lookDir(p.yaw, p.pitch);
   const ex = p.body.x, ey = p.body.y + EYE, ez = p.body.z;
   const hit = raycast(g.world, ex, ey, ez, d[0], d[1], d[2], REACH);
-  const mob = rayMob(g, ex, ey, ez, d, Math.min(3.5, hit ? hit.dist : 3.5));
+  // La hierba y las flores no protegen a un monstruo: el golpe solo lo paran los bloques de verdad
+  const wall = hit && isPlant(g.world.get(hit.x, hit.y, hit.z)) ? raycast(g.world, ex, ey, ez, d[0], d[1], d[2], REACH, true) : hit;
+  const mob = rayMob(g, ex, ey, ez, d, Math.min(3.5, wall ? wall.dist : 3.5));
   if (mob) {
     p.mine = null;
     if (p.attackCd <= 0) {
@@ -307,8 +311,11 @@ function stepPlayer(g: Game, p: Player, dt: number) {
     const bi = key(hit.x, hit.y, hit.z), box = g.boxes.get(bi);
     if (box) { for (const s of box.slots) if (s) addItem(p.inv, s.id, s.n); g.boxes.delete(bi); }
     // Una antorcha sin apoyo cae con el bloque
-    if (g.world.get(hit.x, hit.y + 1, hit.z) === B.Antorcha) { setBlock(g, hit.x, hit.y + 1, hit.z, B.Aire); addItem(p.inv, B.Antorcha, 1); }
-    if (drop !== null) { addItem(p.inv, drop, 1); g.events.push({ kind: 'pickup', pid: p.id, item: drop, n: 1 }); }
+    const above = g.world.get(hit.x, hit.y + 1, hit.z);
+    if (above === B.Antorcha) { setBlock(g, hit.x, hit.y + 1, hit.z, B.Aire); addItem(p.inv, B.Antorcha, 1); }
+    // Una planta sin su suelo se pierde
+    else if (isPlant(above)) setBlock(g, hit.x, hit.y + 1, hit.z, B.Aire);
+    if (drop !== null) { const n = b === B.ArbustoBayas ? 2 : 1; addItem(p.inv, drop, n); g.events.push({ kind: 'pickup', pid: p.id, item: drop, n }); }
     if (b === B.Hojas && g.rand() < 0.08) { addItem(p.inv, I.Manzana, 1); g.events.push({ kind: 'pickup', pid: p.id, item: I.Manzana, n: 1 }); }
     g.events.push({ kind: 'break', pid: p.id, x: hit.x, y: hit.y, z: hit.z, b });
     p.mine = null;
@@ -348,7 +355,7 @@ function trySpawn(g: Game) {
     const cave = g.rand() < 0.5;
     const y0 = cave ? Math.floor(p.body.y) + Math.floor(g.rand() * 9) - 4 : g.world.top(x, z) + 1;
     if (y0 < 1 || y0 >= H - 2) continue;
-    if (!isSolid(g.world.get(x, y0 - 1, z)) || g.world.get(x, y0, z) !== B.Aire || g.world.get(x, y0 + 1, z) !== B.Aire) continue;
+    if (!isSolid(g.world.get(x, y0 - 1, z)) || !isFree(g.world.get(x, y0, z)) || !isFree(g.world.get(x, y0 + 1, z))) continue;
     if (!dark(g, x, y0, z)) continue;
     const roll = g.rand();
     const kind: MobKind = roll < 0.45 ? 'zombi' : roll < 0.75 ? 'esqueleto' : 'arana';

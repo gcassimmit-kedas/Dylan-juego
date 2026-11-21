@@ -63,7 +63,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 setAnisotropy(Math.min(8, renderer.capabilities.getMaxAnisotropy()));
 const scene = new THREE.Scene();
-const DAY_SKY = new THREE.Color(0x2f7fd6), NIGHT_SKY = new THREE.Color(0x060a18), DAY_FOG = new THREE.Color(0xbfdcf0), NIGHT_FOG = new THREE.Color(0x0b1020), DUSK = new THREE.Color(0xf0a070);
+const DAY_SKY = new THREE.Color(0x2c8ff0), NIGHT_SKY = new THREE.Color(0x060a18), DAY_FOG = new THREE.Color(0xc4e6fb), NIGHT_FOG = new THREE.Color(0x0b1020), DUSK = new THREE.Color(0xf0a070);
 const fogColor = DAY_FOG.clone();
 scene.background = fogColor;
 scene.fog = new THREE.Fog(fogColor, 50, 95);
@@ -683,9 +683,10 @@ function setViewModel(item: number | null) {
 }
 
 // ---------- Eventos ----------
-const BLOCK_COLOR: Partial<Record<number, number>> = { [B.Hierba]: 0x6e9e3a, [B.Tierra]: 0x7a5a3c, [B.Piedra]: 0x8a8c8e, [B.Adoquin]: 0x7c7e80, [B.Tronco]: 0x6b4c2e,
+const BLOCK_COLOR: Partial<Record<number, number>> = { [B.Hierba]: 0x66ac3e, [B.Tierra]: 0x946440, [B.Piedra]: 0x94989e, [B.Adoquin]: 0x7c7e80, [B.Tronco]: 0x6b4c2e,
   [B.Hojas]: 0x3f7a2e, [B.Tablas]: 0xa8834e, [B.Arena]: 0xdccb98, [B.Grava]: 0x7a7470, [B.Carbon]: 0x3a3a3c, [B.Hierro]: 0xd8a880, [B.Oro]: 0xfcde50, [B.Diamante]: 0x60e8e2,
-  [B.Mesa]: 0x9a6a3a, [B.Antorcha]: 0xffc85a, [B.Horno]: 0x6a6a6c, [B.HornoEncendido]: 0x6a6a6c, [B.Cofre]: 0x8a6236 };
+  [B.Mesa]: 0x9a6a3a, [B.Antorcha]: 0xffc85a, [B.Horno]: 0x6a6a6c, [B.HornoEncendido]: 0x6a6a6c, [B.Cofre]: 0x8a6236,
+  [B.HierbaAlta]: 0x6cb440, [B.FlorSol]: 0xffce3e, [B.FlorFuego]: 0xe84a38, [B.ArbustoBayas]: 0x3c8232 };
 let shake = 0;
 function flushEvents(evs: GEvent[]) {
   for (const ev of evs) {

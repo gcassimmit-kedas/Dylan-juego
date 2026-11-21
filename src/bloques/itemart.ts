@@ -33,6 +33,9 @@ function pixels(id: number): (string | null)[][] {
     case I.Palo: for (let i = 0; i < 12; i++) { put(2 + i, 13 - i, HANDLE); put(3 + i, 13 - i, '#4a321c'); } break;
     case I.Carbon: for (let y = 4; y < 13; y++) for (let x = 3; x < 13; x++) if (Math.hypot(x - 7.5, y - 8.5) < 4.6) put(x, y, (x + y) % 3 ? '#2a2a2c' : '#4a4a50'); break;
     case I.Diamante: for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) if (Math.abs(x - 7.5) + Math.abs(y - 7.5) < 5) put(x, y, x + y < 14 ? '#b8fff9' : '#3ec8c0'); break;
+    case I.Bayas: for (const [bx, by] of [[5, 9], [10, 8], [8, 12]]) for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) if (Math.hypot(x, y) < 2.4) put(bx + x, by + y, x + y < -1 ? '#ff7f9c' : x + y > 1 ? '#a81f46' : '#e2345a');
+      for (let i = 0; i < 4; i++) { put(7 + i, 5 - i, '#4e9638'); put(6, 6 + (i % 2), '#4e9638'); }
+      break;
     case I.Esmeralda: for (let y = 2; y < 14; y++) for (let x = 4; x < 12; x++) if (Math.abs(x - 7.5) * 1.6 + Math.abs(y - 7.5) < 6.5) put(x, y, x + y < 15 ? '#9dffc0' : '#1f9e55'); break;
     default: { // lingotes
       const c = id === I.LingoteOro ? '#ffd23a' : '#d8d8dc';
@@ -69,6 +72,19 @@ const pixelMat = new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.1
 /** Modelo 3D del objeto, de 1 x 1 de tamaño, centrado. */
 export function itemModel(id: number, atlas: Atlas): THREE.Object3D {
   const def = ITEMS.get(id);
+  if (def?.block !== undefined && BLOCKS[def.block].plant) {
+    // Planta en la mano: su dibujo en dos planos cruzados
+    const [u0, v0, u1, v1] = atlas.uv(BLOCKS[def.block].tex[1] as TexName);
+    const mat = new THREE.MeshStandardMaterial({ map: atlas.map, roughness: 0.9, alphaTest: 0.5, side: THREE.DoubleSide });
+    const g = new THREE.Group();
+    for (const rot of [Math.PI / 4, -Math.PI / 4]) {
+      const geo = new THREE.PlaneGeometry(1, 1);
+      const uv = geo.attributes.uv as THREE.BufferAttribute;
+      for (let i = 0; i < 4; i++) uv.setXY(i, uv.getX(i) ? u1 : u0, uv.getY(i) ? v0 : v1);
+      const m = new THREE.Mesh(geo, mat); m.rotation.y = rot; g.add(m);
+    }
+    return g;
+  }
   if (def?.block !== undefined) {
     const b = BLOCKS[def.block];
     const geo = new THREE.BoxGeometry(1, 1, 1);

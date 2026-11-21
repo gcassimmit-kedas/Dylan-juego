@@ -7,12 +7,12 @@
 export const B = {
   Aire: 0, Hierba: 1, Tierra: 2, Piedra: 3, Adoquin: 4, Tronco: 5, Hojas: 6, Tablas: 7, Arena: 8, Grava: 9,
   Carbon: 10, Hierro: 11, Oro: 12, Diamante: 13, RocaBase: 14, Mesa: 15, Antorcha: 16, Horno: 17, Cofre: 18, HornoEncendido: 19,
-  Esmeralda: 20, Nieve: 21, PiedraNevada: 22,
+  Esmeralda: 20, Nieve: 21, PiedraNevada: 22, HierbaAlta: 23, FlorSol: 24, FlorFuego: 25, ArbustoBayas: 26,
 } as const;
 export type Tex =
   | 'grass' | 'grassSide' | 'dirt' | 'stone' | 'cobble' | 'planks' | 'log' | 'logTop' | 'leaves' | 'sand' | 'gravel'
   | 'oreCoal' | 'oreIron' | 'oreGold' | 'oreDiamond' | 'bedrock' | 'tableTop' | 'tableSide' | 'torch' | 'furnace' | 'furnaceTop'
-  | 'furnaceOn' | 'chest' | 'chestTop' | 'oreEmerald' | 'snow' | 'snowSide';
+  | 'furnaceOn' | 'chest' | 'chestTop' | 'oreEmerald' | 'snow' | 'snowSide' | 'tallGrass' | 'flowerSun' | 'flowerFire' | 'berryBush';
 /** Herramienta que va mejor para cada bloque. */
 export type ToolKind = 'pico' | 'hacha' | 'pala' | null;
 
@@ -32,6 +32,8 @@ export interface BlockDef {
   see: boolean;
   /** Luz que da (antorcha). */
   light?: number;
+  /** Planta: se dibuja como dos planos cruzados, se atraviesa, se rompe al instante y solo vive sobre hierba o tierra. */
+  plant?: boolean;
 }
 const D = (name: string, hardness: number, tool: ToolKind, tex: Tex | [Tex, Tex, Tex], o: Partial<BlockDef> = {}): BlockDef =>
   ({ name, hardness, tool, needs: 0, tex: typeof tex === 'string' ? [tex, tex, tex] : tex, solid: true, see: false, ...o });
@@ -60,12 +62,21 @@ export const BLOCKS: BlockDef[] = [
   D('Mineral de esmeralda', 3, 'pico', 'oreEmerald', { needs: 3, drop: 108 }), // suelta una esmeralda
   D('Nieve', 0.2, 'pala', 'snow'),
   D('Piedra nevada', 1.5, 'pico', ['snow', 'snowSide', 'stone'], { needs: 1, drop: B.Adoquin }),
+  D('Hierba alta', 0, null, 'tallGrass', { solid: false, see: true, plant: true, drop: null }),
+  D('Flor de sol', 0, null, 'flowerSun', { solid: false, see: true, plant: true }),
+  D('Flor de fuego', 0, null, 'flowerFire', { solid: false, see: true, plant: true }),
+  D('Arbusto de bayas', 0, null, 'berryBush', { solid: false, see: true, plant: true, drop: 109 }), // suelta bayas
 ];
 /** Bloques que se usan (se abren) en vez de colocar algo encima. */
 export const USABLE = new Set<number>([B.Mesa, B.Horno, B.HornoEncendido, B.Cofre]);
 export const lightOf = (b: number) => BLOCKS[b]?.light ?? 0;
 export const isSolid = (b: number) => BLOCKS[b]?.solid ?? false;
 export const isSee = (b: number) => BLOCKS[b]?.see ?? true;
+export const isPlant = (b: number) => BLOCKS[b]?.plant ?? false;
+/** Hueco libre: aire o una planta (las plantas se atraviesan y se pueden sustituir por otro bloque). */
+export const isFree = (b: number) => b === B.Aire || isPlant(b);
+/** Suelo donde vive una planta. */
+export const growsOn = (b: number) => b === B.Hierba || b === B.Tierra;
 
 // ---------- Ruido determinista ----------
 
@@ -208,6 +219,18 @@ export function generateChunk(seed: number, cx: number, cz: number): Uint8Array 
       }
     }
   }
+  // Plantas sobre la hierba: hierba alta suelta, flores en corros y algún arbusto de bayas en el bosque.
+  for (let lx = 0; lx < CHUNK; lx++) for (let lz = 0; lz < CHUNK; lz++) {
+    const h = heights[lx * CHUNK + lz], bio = biomes[lx * CHUNK + lz];
+    if (h + 1 >= H || c[idx(lx, h, lz)] !== B.Hierba || c[idx(lx, h + 1, lz)] !== B.Aire) continue;
+    const x = x0 + lx, z = z0 + lz, r = hash3(x, 11, z, seed + 600);
+    const meadow = noise2(x / 13, z / 13, seed + 71);
+    let plant: number = B.Aire;
+    if (meadow > 0.7 && r < 0.3) plant = noise2(x / 40, z / 40, seed + 73) > 0.5 ? B.FlorSol : B.FlorFuego;
+    else if (bio === 'bosque' && r > 0.992) plant = B.ArbustoBayas;
+    else if (r < (bio === 'bosque' ? 0.07 : 0.13)) plant = B.HierbaAlta;
+    if (plant !== B.Aire) c[idx(lx, h + 1, lz)] = plant;
+  }
   return c;
 }
 
@@ -296,7 +319,7 @@ export function spawnPoint(w: World): [number, number, number] {
 export interface Hit { x: number; y: number; z: number; /** Bloque vacío delante de la cara tocada (donde se colocaría uno nuevo). */ px: number; py: number; pz: number; dist: number }
 
 /** Recorre los bloques que cruza un rayo (algoritmo DDA) y devuelve el primero sólido o visible a menos de `max`. */
-export function raycast(w: World, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, max: number): Hit | null {
+export function raycast(w: World, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, max: number, skipPlants = false): Hit | null {
   const len = Math.hypot(dx, dy, dz) || 1;
   dx /= len; dy /= len; dz /= len;
   let x = Math.floor(ox), y = Math.floor(oy), z = Math.floor(oz);
@@ -308,7 +331,7 @@ export function raycast(w: World, ox: number, oy: number, oz: number, dx: number
   let px = x, py = y, pz = z, t = 0;
   while (t <= max) {
     const b = w.get(x, y, z);
-    if (b !== B.Aire) return { x, y, z, px, py, pz, dist: t };
+    if (b !== B.Aire && !(skipPlants && isPlant(b))) return isPlant(b) ? { x, y, z, px: x, py: y, pz: z, dist: t } : { x, y, z, px, py, pz, dist: t }; // sobre una planta se coloca en su sitio
     px = x; py = y; pz = z;
     if (tx < ty && tx < tz) { x += sx; t = tx; tx += tdx; } else if (ty < tz) { y += sy; t = ty; ty += tdy; } else { z += sz; t = tz; tz += tdz; }
   }

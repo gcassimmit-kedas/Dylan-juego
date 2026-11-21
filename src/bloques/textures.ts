@@ -6,7 +6,7 @@ export type TexName =
   | 'grass' | 'grassSide' | 'dirt' | 'stone' | 'cobble' | 'planks' | 'log' | 'logTop' | 'leaves'
   | 'sand' | 'crate' | 'metal' | 'metalDark' | 'gold' | 'brick' | 'glow'
   | 'gravel' | 'oreCoal' | 'oreIron' | 'oreGold' | 'oreDiamond' | 'bedrock' | 'tableTop' | 'tableSide' | 'torch' | 'furnace' | 'furnaceTop'
-  | 'furnaceOn' | 'chest' | 'chestTop' | 'oreEmerald' | 'snow' | 'snowSide';
+  | 'furnaceOn' | 'chest' | 'chestTop' | 'oreEmerald' | 'snow' | 'snowSide' | 'tallGrass' | 'flowerSun' | 'flowerFire' | 'berryBush';
 
 const N = 16;
 type RGB = [number, number, number];
@@ -25,26 +25,29 @@ interface Px { c: RGB; h: number; a?: number }
 type Painter = (x: number, y: number, r: () => number) => Px;
 
 const PAINT: Record<TexName, Painter> = {
-  grass: (_x, _y, r) => {
-    const v = r();
-    const base: RGB = v < 0.15 ? [70, 112, 44] : v < 0.6 ? [82, 126, 50] : v < 0.9 ? [94, 138, 56] : [112, 154, 66];
-    return { c: shade(base, 0.92 + r() * 0.12), h: v };
+  grass: (x, y, r) => {
+    // Manchas anchas de dos tonos y briznas claras sueltas: se lee limpio de cerca y de lejos
+    const v = cell(x, y, 2, 1), blade = cell(x, y, 1, 2) < 0.07;
+    const base: RGB = v < 0.3 ? [92, 158, 58] : v < 0.8 ? [102, 172, 62] : [114, 184, 68];
+    return { c: blade ? [146, 208, 84] : shade(base, 0.98 + r() * 0.04), h: blade ? 1 : 0.4 + v * 0.3 };
   },
-  grassSide: (_x, y, r) => {
-    const edge = 3 + Math.floor(r() * 3);
-    if (y < edge) return PAINT.grass(_x, y, r);
-    return PAINT.dirt(_x, y, r);
+  grassSide: (x, y, r) => {
+    const edge = 3 + Math.floor(cell(x, 0, 1, 3) * 3);
+    if (y < edge) return PAINT.grass(x, y, r);
+    const p = PAINT.dirt(x, y, r);
+    return y === edge ? { c: shade(p.c, 0.8), h: p.h } : p; // sombra bajo el césped
   },
-  dirt: (_x, _y, r) => {
-    const v = r();
-    const base: RGB = v < 0.2 ? [104, 74, 50] : v < 0.75 ? [122, 88, 60] : v < 0.95 ? [138, 102, 70] : [92, 92, 92];
-    return { c: shade(base, 0.92 + r() * 0.12), h: v * 0.8 };
+  dirt: (x, y, r) => {
+    const v = cell(x, y, 2, 4), pebble = cell(x, y, 1, 5) < 0.045;
+    const base: RGB = v < 0.3 ? [134, 90, 58] : v < 0.8 ? [148, 100, 64] : [160, 110, 72];
+    return { c: pebble ? [186, 146, 108] : shade(base, 0.98 + r() * 0.04), h: pebble ? 1 : v * 0.6 };
   },
   stone: (x, y, r) => {
-    const v = r();
+    // Losas grandes de tonos parecidos con alguna grieta fina
+    const v = cell(x, y, 4, 6);
     const crack = (x * 7 + y * 3) % 23 === 0 || (x + y * 5) % 29 === 0;
-    const base: RGB = crack ? [92, 94, 96] : v < 0.3 ? [118, 120, 122] : v < 0.85 ? [132, 134, 136] : [150, 152, 154];
-    return { c: shade(base, 0.94 + r() * 0.1), h: crack ? 0 : 0.5 + v * 0.5 };
+    const base: RGB = v < 0.35 ? [136, 140, 146] : v < 0.8 ? [148, 152, 158] : [160, 164, 170];
+    return { c: crack ? [108, 112, 120] : shade(base, 0.98 + r() * 0.04), h: crack ? 0 : 0.5 + v * 0.4 };
   },
   cobble: (x, y, r) => {
     // Piedras redondeadas separadas por juntas oscuras
@@ -74,11 +77,11 @@ const PAINT: Record<TexName, Painter> = {
     const ring = Math.floor(d) % 2 === 0;
     return { c: shade([182, 146, 96], ring ? 0.82 : 1), h: ring ? 0.4 : 0.6 };
   },
-  leaves: (_x, _y, r) => {
-    const v = r();
-    if (v < 0.12) return { c: [0, 0, 0], h: 0, a: 0 };
-    const base: RGB = v < 0.4 ? [52, 108, 40] : v < 0.85 ? [64, 126, 46] : [86, 150, 58];
-    return { c: shade(base, 0.9 + r() * 0.15), h: v };
+  leaves: (x, y, r) => {
+    const v = cell(x, y, 2, 7);
+    if (cell(x, y, 1, 8) < 0.09) return { c: [0, 0, 0], h: 0, a: 0 };
+    const base: RGB = v < 0.3 ? [58, 128, 48] : v < 0.8 ? [70, 146, 54] : [90, 168, 62];
+    return { c: shade(base, 0.97 + r() * 0.06), h: v };
   },
   sand: (_x, _y, r) => {
     const v = r();
@@ -176,7 +179,40 @@ const PAINT: Record<TexName, Painter> = {
     const p = PAINT.planks(x, y, r);
     return rim ? { c: shade([96, 66, 34], 0.9), h: 1 } : { c: shade(p.c, 0.9), h: p.h };
   },
+  tallGrass: (x, y) => {
+    // Briznas que salen del suelo, cada una con su altura
+    const top = [9, 4, 11, 6, 2, 8, 5, 12, 3, 7, 10, 4, 8, 6, 11, 5][x];
+    if (x % 2 === 1 && x % 5 !== 0) return CLEAR;
+    if (y < top) return CLEAR;
+    return { c: y < top + 2 ? [150, 212, 88] : y > 12 ? [84, 148, 54] : [108, 180, 64], h: 1 };
+  },
+  flowerSun: (x, y) => flower(x, y, [255, 206, 62], [255, 240, 170], [236, 150, 40]),
+  flowerFire: (x, y) => flower(x, y, [232, 74, 56], [255, 190, 90], [176, 44, 44]),
+  berryBush: (x, y) => {
+    const d = Math.hypot(x - 7.5, (y - 9.5) * 1.15);
+    if (d > 6.6 || y > 15) return CLEAR;
+    if (((x * 5 + y * 7) % 11 === 0 && d < 5.5) || (x === 5 && y === 6) || (x === 10 && y === 11)) return { c: (x + y) % 2 ? [226, 52, 84] : [176, 34, 70], h: 1 };
+    const v = cell(x, y, 2, 9);
+    return { c: d > 5.6 ? [48, 108, 44] : v < 0.4 ? [60, 130, 50] : [76, 150, 58], h: 0.6 };
+  },
 };
+const CLEAR: Px = { c: [0, 0, 0], h: 0, a: 0 };
+/** Valor fijo (0 a 1) de la celda de `size` píxeles en la que cae (x, y): manchas que se repiten sin costura. */
+function cell(x: number, y: number, size: number, k: number) {
+  const n = N / size, cx = Math.floor(x / size) % n, cy = Math.floor(y / size) % n;
+  let h = (cx * 374761393 + cy * 668265263 + k * 362437) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+/** Flor: tallo con dos hojas y una corola de pétalos alrededor de un centro. */
+function flower(x: number, y: number, petal: RGB, heart: RGB, dark: RGB): Px {
+  const d = Math.hypot(x - 7.5, y - 4.5);
+  if (d < 1.2) return { c: heart, h: 1 };
+  if (d < 3.4 && !(Math.abs(x - 7.5) > 2 && Math.abs(y - 4.5) > 2)) return { c: d > 2.6 ? dark : petal, h: 0.8 };
+  if ((x === 7 || x === 8) && y >= 7) return { c: x === 7 ? [78, 150, 56] : [60, 122, 46], h: 0.5 };
+  if ((y === 11 && (x === 5 || x === 6)) || (y === 10 && x === 5) || (y === 12 && (x === 9 || x === 10)) || (y === 11 && x === 10)) return { c: [98, 172, 62], h: 0.5 };
+  return CLEAR;
+}
 /** Mineral: piedra con manchas de color. */
 function ore(x: number, y: number, r: () => number, color: RGB, k: number): Px {
   const spot = ((x * k + y * 3) % 13 < 3 && (x + y * k) % 5 < 3) || ((x * 3 + y * k) % 17 < 2);
@@ -229,7 +265,7 @@ const SEED: Record<TexName, number> = {
   grass: 11, grassSide: 12, dirt: 13, stone: 14, cobble: 15, planks: 16, log: 17, logTop: 18, leaves: 19,
   sand: 20, crate: 21, metal: 22, metalDark: 23, gold: 24, brick: 25, glow: 26,
   gravel: 27, oreCoal: 28, oreIron: 29, oreGold: 30, oreDiamond: 31, bedrock: 32, tableTop: 33, tableSide: 34, torch: 35, furnace: 36, furnaceTop: 37,
-  furnaceOn: 38, chest: 39, chestTop: 40, oreEmerald: 41, snow: 42, snowSide: 43,
+  furnaceOn: 38, chest: 39, chestTop: 40, oreEmerald: 41, snow: 42, snowSide: 43, tallGrass: 44, flowerSun: 45, flowerFire: 46, berryBush: 47,
 };
 const RELIEF: Partial<Record<TexName, number>> = {
   oreCoal: 2, oreIron: 2, oreGold: 2, oreDiamond: 2, gravel: 1.6, bedrock: 1.4, furnace: 1.8, cobble: 2.2, brick: 2, planks: 1.6, crate: 1.8, metal: 1.6, metalDark: 1.6, stone: 1.4, log: 1.6 };

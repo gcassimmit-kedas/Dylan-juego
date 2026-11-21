@@ -49,3 +49,13 @@ test('el mundo generado se convierte en malla sin errores y en un tiempo razonab
   assert.ok(n > 10000);
   assert.ok(performance.now() - t < 20000);
 });
+
+test('una planta no tapa la luz del suelo y se dibuja con dos planos cruzados', () => {
+  const w = World.empty(1);
+  w.set(5, 30, 5, B.Hierba);
+  w.set(5, 31, 5, B.FlorSol);
+  const m = meshChunk(w, 0, 0, uv);
+  assert.equal(faces(m.solid), 6);
+  assert.ok(Math.min(...m.solid.col.filter((_c, i) => m.solid.pos[Math.floor(i / 3) * 3 + 1] === 31)) > DARK + 0.1);
+  assert.equal(faces(m.see), 4);
+});

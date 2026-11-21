@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generate, generateChunk, spawnPoint, raycast, moveBody, biomeAt, surfaceHeight, key, unkey, World, B, H, CHUNK, BLOCKS, type Body } from './voxel.ts';
+import { generate, generateChunk, spawnPoint, raycast, moveBody, biomeAt, surfaceHeight, key, unkey, World, B, H, CHUNK, BLOCKS, isPlant, isSolid, type Body } from './voxel.ts';
 
 const world = generate(12345);
 /** Cuenta bloques en una zona de 8 x 8 trozos alrededor del origen. */
@@ -132,4 +132,27 @@ test('el servidor olvida los trozos lejos de todos los jugadores, no los de cerc
   w.unloadAwayFrom([[0, 0], [2000, 0]], 2);
   assert.ok(w.hasChunk(0, 0) && w.hasChunk(125, 0));
   assert.equal(w.hasChunk(-250, 18), false);
+});
+
+test('hay hierba alta, flores y arbustos de bayas, siempre sobre hierba y sin estorbar el paso', () => {
+  const w = generate(1);
+  const found = new Set<number>();
+  for (let x = -160; x < 160; x++) for (let z = -160; z < 160; z++) {
+    const t = w.top(x, z), b = w.get(x, t + 1, z);
+    if (!isPlant(b)) continue;
+    found.add(b);
+    assert.equal(w.get(x, t, z), B.Hierba);
+    assert.equal(isSolid(b), false);
+  }
+  for (const b of [B.HierbaAlta, B.FlorSol, B.FlorFuego, B.ArbustoBayas]) assert.ok(found.has(b), BLOCKS[b].name);
+});
+
+test('el rayo sobre una planta coloca en su sitio; para pegar a un monstruo, la planta no cuenta', () => {
+  const w = World.empty(1);
+  for (let x = 0; x < 8; x++) w.set(x, 10, 5, B.Hierba);
+  w.set(3, 11, 5, B.FlorSol);
+  w.set(6, 11, 5, B.Piedra);
+  const hit = raycast(w, 0.5, 11.5, 5.5, 1, 0, 0, 8)!;
+  assert.deepEqual([hit.x, hit.px, hit.py], [3, 3, 11]);
+  assert.equal(raycast(w, 0.5, 11.5, 5.5, 1, 0, 0, 8, true)!.x, 6);
 });

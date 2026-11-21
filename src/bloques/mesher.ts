@@ -28,6 +28,7 @@ for (const f of FACES) (f as { ao?: number[][] }).ao = f.c.map(([ox, oy, oz]) =>
 export const DARK = 0.16;
 /** Luz de cada tipo de bloque (tabla para leerla deprisa). */
 const LIGHT = BLOCKS.map((b) => b.light ?? 0);
+const PLANT = BLOCKS.map((b) => !!b.plant);
 
 /** Luz de las antorchas en un punto (0 a 1): baja con la distancia y no atraviesa la piedra en esta versión simple. */
 function torchLight(torches: [number, number, number, number][], x: number, y: number, z: number) {
@@ -58,7 +59,7 @@ export function meshChunk(w: World, cx: number, cz: number, uvOf: UV): { solid: 
   const top = (x: number, z: number) => {
     const k = (x - x0 + 64) * 256 + (z - z0 + 64);
     let t = topOf.get(k);
-    if (t === undefined) { t = -1; for (let y = H - 1; y >= 0; y--) { const b = get(x, y, z); if (b !== B.Aire && b !== B.Antorcha) { t = y; break; } } topOf.set(k, t); }
+    if (t === undefined) { t = -1; for (let y = H - 1; y >= 0; y--) { const b = get(x, y, z); if (b !== B.Aire && b !== B.Antorcha && !PLANT[b]) { t = y; break; } } topOf.set(k, t); }
     return t;
   };
   const torches: [number, number, number, number][] = [];
@@ -78,7 +79,13 @@ export function meshChunk(w: World, cx: number, cz: number, uvOf: UV): { solid: 
     const b = get(x, y, z);
     if (b === B.Aire) continue;
     const def = BLOCKS[b];
-    if (b === B.Antorcha) { torchMesh(see, x, y, z, uvOf(def.tex[1])); continue; }
+    if (b === B.Antorcha) { crossMesh(see, x, y, z, uvOf(def.tex[1]), 0.15, 0, 0, 1, 1); continue; }
+    if (def.plant) {
+      // Cada planta un poco movida de su casilla, para que un prado no parezca una cuadrícula
+      const j = ((x * 73856093) ^ (z * 19349663)) >>> 0, ox = ((j % 7) - 3) * 0.035, oz = (((j >> 3) % 7) - 3) * 0.035;
+      crossMesh(see, x, y, z, uvOf(def.tex[1]), 0.1, ox, oz, light(x, y, z), torches.length ? torchLight(torches, x + 0.5, y + 0.5, z + 0.5) : 0);
+      continue;
+    }
     const out = def.see ? see : solid;
     for (const f of FACES) {
       const nx = x + f.n[0], ny = y + f.n[1], nz = z + f.n[2];
@@ -112,13 +119,14 @@ export function meshChunk(w: World, cx: number, cz: number, uvOf: UV): { solid: 
   return { solid, see };
 }
 
-/** Antorcha: dos planos cruzados con la textura (con transparencia). */
-function torchMesh(m: MeshData, x: number, y: number, z: number, [u0, v0, u1, v1]: [number, number, number, number]) {
-  for (const [ax, az, bx, bz] of [[0.15, 0.15, 0.85, 0.85], [0.85, 0.15, 0.15, 0.85]]) {
+/** Antorcha o planta: dos planos cruzados con la textura (con transparencia). `inset` los separa del borde de la casilla. */
+function crossMesh(m: MeshData, x: number, y: number, z: number, [u0, v0, u1, v1]: [number, number, number, number], inset: number, ox: number, oz: number, L: number, glow: number) {
+  const a = inset, b = 1 - inset;
+  for (const [ax, az, bx, bz] of [[a, a, b, b], [b, a, a, b]]) {
     for (const flip of [false, true]) {
       const base = m.pos.length / 3;
       const p = [[ax, 0, az], [bx, 0, bz], [bx, 1, bz], [ax, 1, az]];
-      for (const [px, py, pz] of p) { m.pos.push(x + px, y + py, z + pz); m.nrm.push(0, 1, 0); m.col.push(1, 1, 1); m.glow.push(1); }
+      for (const [px, py, pz] of p) { m.pos.push(x + px + ox, y + py, z + pz + oz); m.nrm.push(0, 1, 0); m.col.push(L, L, L); m.glow.push(glow); }
       m.uv.push(u0, v1, u1, v1, u1, v0, u0, v0);
       if (flip) m.idx.push(base, base + 2, base + 1, base, base + 3, base + 2); else m.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
     }
