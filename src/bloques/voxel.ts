@@ -7,12 +7,12 @@
 export const B = {
   Aire: 0, Hierba: 1, Tierra: 2, Piedra: 3, Adoquin: 4, Tronco: 5, Hojas: 6, Tablas: 7, Arena: 8, Grava: 9,
   Carbon: 10, Hierro: 11, Oro: 12, Diamante: 13, RocaBase: 14, Mesa: 15, Antorcha: 16, Horno: 17, Cofre: 18, HornoEncendido: 19,
-  Esmeralda: 20, Nieve: 21, PiedraNevada: 22,
+  Esmeralda: 20, Nieve: 21, PiedraNevada: 22, PiedraPulida: 23, LadrillosPiedra: 24,
 } as const;
 export type Tex =
   | 'grass' | 'grassSide' | 'dirt' | 'stone' | 'cobble' | 'planks' | 'log' | 'logTop' | 'leaves' | 'sand' | 'gravel'
   | 'oreCoal' | 'oreIron' | 'oreGold' | 'oreDiamond' | 'bedrock' | 'tableTop' | 'tableSide' | 'torch' | 'furnace' | 'furnaceTop'
-  | 'furnaceOn' | 'chest' | 'chestTop' | 'oreEmerald' | 'snow' | 'snowSide';
+  | 'furnaceOn' | 'chest' | 'chestTop' | 'oreEmerald' | 'snow' | 'snowSide' | 'polished' | 'stoneBrick';
 /** Herramienta que va mejor para cada bloque. */
 export type ToolKind = 'pico' | 'hacha' | 'pala' | null;
 
@@ -60,6 +60,8 @@ export const BLOCKS: BlockDef[] = [
   D('Mineral de esmeralda', 3, 'pico', 'oreEmerald', { needs: 3, drop: 108 }), // suelta una esmeralda
   D('Nieve', 0.2, 'pala', 'snow'),
   D('Piedra nevada', 1.5, 'pico', ['snow', 'snowSide', 'stone'], { needs: 1, drop: B.Adoquin }),
+  D('Piedra pulida', 1.5, 'pico', 'polished', { needs: 1 }),
+  D('Ladrillos de piedra', 2, 'pico', 'stoneBrick', { needs: 1 }),
 ];
 /** Bloques que se usan (se abren) en vez de colocar algo encima. */
 export const USABLE = new Set<number>([B.Mesa, B.Horno, B.HornoEncendido, B.Cofre]);

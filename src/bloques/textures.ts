@@ -6,7 +6,7 @@ export type TexName =
   | 'grass' | 'grassSide' | 'dirt' | 'stone' | 'cobble' | 'planks' | 'log' | 'logTop' | 'leaves'
   | 'sand' | 'crate' | 'metal' | 'metalDark' | 'gold' | 'brick' | 'glow'
   | 'gravel' | 'oreCoal' | 'oreIron' | 'oreGold' | 'oreDiamond' | 'bedrock' | 'tableTop' | 'tableSide' | 'torch' | 'furnace' | 'furnaceTop'
-  | 'furnaceOn' | 'chest' | 'chestTop' | 'oreEmerald' | 'snow' | 'snowSide';
+  | 'furnaceOn' | 'chest' | 'chestTop' | 'oreEmerald' | 'snow' | 'snowSide' | 'polished' | 'stoneBrick';
 
 const N = 16;
 type RGB = [number, number, number];
@@ -171,6 +171,22 @@ const PAINT: Record<TexName, Painter> = {
   oreEmerald: (x, y, r) => ore(x, y, r, [60, 220, 110], 11),
   snow: (_x, _y, r) => { const v = r(); return { c: v < 0.15 ? [222, 232, 240] : [244, 248, 252], h: v * 0.4 }; },
   snowSide: (x, y, r) => (y < 3 + Math.floor(r() * 2) ? PAINT.snow(x, y, r) : PAINT.stone(x, y, r)),
+  polished: (x, y, r) => {
+    // Losa lisa: canto biselado (luz arriba y a la izquierda, sombra abajo y a la derecha) y un veteado muy suave
+    const light = x === 0 || y === 0, dark = x === 15 || y === 15;
+    const vein = (x * 3 + y * 5) % 19 === 0;
+    const base: RGB = [156, 160, 166];
+    return { c: shade(base, light ? 1.12 : dark ? 0.72 : (vein ? 0.93 : 1) * (0.97 + r() * 0.05)), h: light ? 0.9 : dark ? 0 : 0.75 };
+  },
+  stoneBrick: (x, y, r) => {
+    // Sillares grandes a soga: dos hiladas por bloque, con la junta hundida
+    const row = Math.floor(y / 8), lx = (x + row * 8) % 16, ly = y % 8;
+    const joint = ly === 7 || lx === 15;
+    const top = ly === 0 || lx === 0;
+    const tint = 0.92 + ((Math.floor((x + row * 8) / 16) * 5 + row * 3) % 4) / 30;
+    const base: RGB = [140, 143, 148];
+    return { c: joint ? [78, 80, 84] : shade(base, (top ? 1.1 : 1) * tint * (0.95 + r() * 0.08)), h: joint ? 0 : top ? 0.9 : 0.7 };
+  },
   chestTop: (x, y, r) => {
     const rim = x === 0 || x === 15 || y === 0 || y === 15;
     const p = PAINT.planks(x, y, r);
@@ -229,10 +245,10 @@ const SEED: Record<TexName, number> = {
   grass: 11, grassSide: 12, dirt: 13, stone: 14, cobble: 15, planks: 16, log: 17, logTop: 18, leaves: 19,
   sand: 20, crate: 21, metal: 22, metalDark: 23, gold: 24, brick: 25, glow: 26,
   gravel: 27, oreCoal: 28, oreIron: 29, oreGold: 30, oreDiamond: 31, bedrock: 32, tableTop: 33, tableSide: 34, torch: 35, furnace: 36, furnaceTop: 37,
-  furnaceOn: 38, chest: 39, chestTop: 40, oreEmerald: 41, snow: 42, snowSide: 43,
+  furnaceOn: 38, chest: 39, chestTop: 40, oreEmerald: 41, snow: 42, snowSide: 43, polished: 44, stoneBrick: 45,
 };
 const RELIEF: Partial<Record<TexName, number>> = {
-  oreCoal: 2, oreIron: 2, oreGold: 2, oreDiamond: 2, gravel: 1.6, bedrock: 1.4, furnace: 1.8, cobble: 2.2, brick: 2, planks: 1.6, crate: 1.8, metal: 1.6, metalDark: 1.6, stone: 1.4, log: 1.6 };
+  oreCoal: 2, oreIron: 2, oreGold: 2, oreDiamond: 2, gravel: 1.6, bedrock: 1.4, furnace: 1.8, cobble: 2.2, brick: 2, planks: 1.6, crate: 1.8, metal: 1.6, metalDark: 1.6, stone: 1.4, log: 1.6, polished: 1.2, stoneBrick: 2 };
 
 const cache = new Map<string, THREE.MeshStandardMaterial>();
 let anisotropy = 1;

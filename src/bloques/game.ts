@@ -2,7 +2,7 @@
 // daño por caída, regeneración, día y noche, monstruos y muerte. Lógica pura: la ejecutan el navegador
 // (un jugador, sin conexión) y el servidor (mundos compartidos, donde manda el servidor).
 import { generate, spawnPoint, raycast, moveBody, bodyBlocked, isSolid, World, B, H, BLOCKS, USABLE, lightOf, key, unkey, type Body } from './voxel.ts';
-import { newInventory, addItem, removeItem, breakTime, dropOf, attackDamage, recipeById, craft as craftInv, cannotCraft, ITEMS, HOTBAR, swapSlots, FOOD, I, SMELT, FUEL, SMELT_SECONDS, type Slot, type Station } from './items.ts';
+import { newInventory, addItem, removeItem, count, breakTime, dropOf, attackDamage, recipeById, craft as craftInv, cannotCraft, ITEMS, HOTBAR, swapSlots, FOOD, I, SMELT, FUEL, SMELT_SECONDS, type Slot, type Station } from './items.ts';
 import { JUMP_SPEED } from './voxel.ts';
 
 export const MAX_HP = 20; // 10 corazones
@@ -14,14 +14,19 @@ export const STATION_RANGE = 4.5;
 export const MAX_FOOD = 20;
 
 /** Mods: cambian las reglas del mundo. Los elige quien crea el mundo; valen para todos los que entran. */
-export type ModId = 'terror' | 'supervivencia' | 'heroes';
-export const MODS: ModId[] = ['terror', 'supervivencia', 'heroes'];
+export type ModId = 'construccion' | 'terror' | 'supervivencia' | 'heroes';
+export const MODS: ModId[] = ['construccion', 'terror', 'supervivencia', 'heroes'];
 export const isMod = (v: unknown): v is ModId => typeof v === 'string' && (MODS as string[]).includes(v);
 export const MOD_INFO: Record<ModId, { name: string; desc: string }> = {
+  construccion: { name: 'Construcción libre', desc: 'Sin monstruos ni daño. Rompes los bloques al instante, no se gastan al colocarlos y empiezas con materiales para construir.' },
   terror: { name: 'Terror', desc: 'Noches mucho más oscuras y con niebla, el doble de monstruos y más rápidos. Algo te observa desde lejos y desaparece si lo miras.' },
   supervivencia: { name: 'Supervivencia extrema', desc: 'Tienes hambre: come manzanas o carne asada. Los monstruos pegan más y al morir pierdes todo.' },
   heroes: { name: 'Superhéroes', desc: 'Saltas muy alto, corres más, rompes y golpeas con superfuerza y no te haces daño al caer.' },
 };
+/** Materiales con los que se empieza en construcción libre (la barra rápida completa). */
+export const BUILD_KIT: number[] = [B.PiedraPulida, B.LadrillosPiedra, B.Tablas, B.Piedra, B.Adoquin, B.Tronco, B.Hierba, B.Arena, B.Antorcha];
+/** Segundos que tarda en romperse cualquier bloque en construcción libre. */
+export const BUILD_BREAK = 0.2;
 /** Velocidad al andar y fuerza del salto según los mods (también la usa la predicción del cliente). */
 export const walkSpeed = (mods: Iterable<ModId>) => ([...mods].includes('heroes') ? WALK * 1.7 : WALK);
 export const jumpSpeed = (mods: Iterable<ModId>) => ([...mods].includes('heroes') ? JUMP_SPEED * 1.75 : JUMP_SPEED);
@@ -104,6 +109,7 @@ export function addPlayer(g: Game, id: string, name: string, look: Look = 'colos
     hp: MAX_HP, alive: true, inv: newInventory(), sel: 0, input: { ...IDLE, yaw: Math.PI }, mine: null,
     invuln: 3, calm: 0, regenT: 0, attackCd: 0, away: false, food: MAX_FOOD, foodT: 0,
   };
+  if (g.mods.has('construccion')) BUILD_KIT.forEach((b, i) => { p.inv[i] = { id: b, n: 64 }; });
   g.players.push(p);
   g.events.push({ kind: 'join', pid: id });
   return p;
@@ -200,7 +206,7 @@ export function place(g: Game, pid: string): boolean {
     g.world.set(hit.px, hit.py, hit.pz, B.Aire, false);
     if (trapped) return false;
   }
-  removeItem(p.inv, b, 1);
+  if (!g.mods.has('construccion')) removeItem(p.inv, b, 1); // en construcción libre los bloques no se gastan
   setBlock(g, hit.px, hit.py, hit.pz, b);
   if (b === B.Horno || b === B.Cofre) g.boxes.set(key(hit.px, hit.py, hit.pz), newBox(b));
   g.events.push({ kind: 'place', pid, x: hit.px, y: hit.py, z: hit.pz, b });
@@ -218,7 +224,7 @@ function eat(g: Game, p: Player, item: number): boolean {
 }
 
 function hurt(g: Game, p: Player, dmg: number, kx = 0, kz = 0) {
-  if (!p.alive || p.away || p.invuln > 0 || dmg <= 0) return;
+  if (!p.alive || p.away || p.invuln > 0 || dmg <= 0 || g.mods.has('construccion')) return;
   p.hp = Math.max(0, p.hp - dmg);
   p.invuln = 0.5; p.calm = 0;
   p.body.vx += kx; p.body.vz += kz;
@@ -269,7 +275,7 @@ function stepPlayer(g: Game, p: Player, dt: number) {
   const inp = p.away ? { ...IDLE, yaw: p.yaw, pitch: p.pitch } : p.input;
   p.yaw = inp.yaw; p.pitch = Math.max(-1.55, Math.min(1.55, inp.pitch));
   const fall = movePlayer(g, p, inp, dt);
-  const heroes = g.mods.has('heroes'), survival = g.mods.has('supervivencia');
+  const heroes = g.mods.has('heroes'), build = g.mods.has('construccion'), survival = g.mods.has('supervivencia') && !build;
   if (fall > 3.5 && !heroes) hurt(g, p, Math.floor(fall - 3));
   // Hambre (supervivencia extrema): baja poco a poco; con hambre no te curas y sin comida pierdes vida
   if (survival) {
@@ -299,17 +305,21 @@ function stepPlayer(g: Game, p: Player, dt: number) {
   }
   if (!hit) { p.mine = null; return; }
   const b = g.world.get(hit.x, hit.y, hit.z);
-  if (!p.mine || p.mine.x !== hit.x || p.mine.y !== hit.y || p.mine.z !== hit.z) p.mine = { x: hit.x, y: hit.y, z: hit.z, t: 0, need: breakTime(b, held(p)) };
+  if (!p.mine || p.mine.x !== hit.x || p.mine.y !== hit.y || p.mine.z !== hit.z) {
+    const need = breakTime(b, held(p));
+    p.mine = { x: hit.x, y: hit.y, z: hit.z, t: 0, need: build && Number.isFinite(need) ? Math.min(need, BUILD_BREAK) : need };
+  }
   p.mine.t += dt * (heroes ? 3 : 1);
   if (p.mine.t >= p.mine.need) {
-    const drop = dropOf(b, held(p));
+    // Construcción libre: te llevas el bloque tal cual (una vez; ya no se gasta), sin necesitar herramienta
+    const drop = build ? (ITEMS.has(b) && count(p.inv, b) === 0 ? b : null) : dropOf(b, held(p));
     setBlock(g, hit.x, hit.y, hit.z, B.Aire);
     const bi = key(hit.x, hit.y, hit.z), box = g.boxes.get(bi);
     if (box) { for (const s of box.slots) if (s) addItem(p.inv, s.id, s.n); g.boxes.delete(bi); }
     // Una antorcha sin apoyo cae con el bloque
     if (g.world.get(hit.x, hit.y + 1, hit.z) === B.Antorcha) { setBlock(g, hit.x, hit.y + 1, hit.z, B.Aire); addItem(p.inv, B.Antorcha, 1); }
     if (drop !== null) { addItem(p.inv, drop, 1); g.events.push({ kind: 'pickup', pid: p.id, item: drop, n: 1 }); }
-    if (b === B.Hojas && g.rand() < 0.08) { addItem(p.inv, I.Manzana, 1); g.events.push({ kind: 'pickup', pid: p.id, item: I.Manzana, n: 1 }); }
+    if (b === B.Hojas && !build && g.rand() < 0.08) { addItem(p.inv, I.Manzana, 1); g.events.push({ kind: 'pickup', pid: p.id, item: I.Manzana, n: 1 }); }
     g.events.push({ kind: 'break', pid: p.id, x: hit.x, y: hit.y, z: hit.z, b });
     p.mine = null;
   }
@@ -327,7 +337,7 @@ function dark(g: Game, x: number, y: number, z: number): boolean {
 function trySpawn(g: Game) {
   const targets = g.players.filter((p) => p.alive && !p.away);
   const terror = g.mods.has('terror');
-  if (!targets.length) return;
+  if (!targets.length || g.mods.has('construccion')) return; // construcción libre: sin monstruos
   // Terror: de noche, a veces aparece la sombra lejos de alguien, en la superficie
   if (terror && isNight(g) && !g.mobs.some((m) => m.kind === 'sombra') && g.rand() < 0.35) {
     const p = targets[Math.floor(g.rand() * targets.length)];

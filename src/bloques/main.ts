@@ -764,7 +764,7 @@ function startSolo(mods: ModId[] = chosenMods()) {
   loadWorld(game.world);
   syncSolo();
   beginPlaying();
-  banner('Bloques', mods.length ? `Mods: ${mods.map((m) => MOD_INFO[m].name).join(', ')}` : 'Mundo nuevo', 'Rompe un tronco para empezar. Mantén pulsado: cada bloque tarda su tiempo.');
+  banner('Bloques', mods.length ? `Mods: ${mods.map((m) => MOD_INFO[m].name).join(', ')}` : 'Mundo nuevo', hasMod('construccion') ? 'Tienes materiales en la barra. Coloca y rompe bloques al instante: no se gastan.' : 'Rompe un tronco para empezar. Mantén pulsado: cada bloque tarda su tiempo.');
 }
 /** Copia el estado de la partida local a lo que se dibuja. */
 function syncSolo() {
@@ -1315,7 +1315,7 @@ Object.assign(window, {
 
 
 // ---------- Mods ----------
-const MOD_ICON: Record<ModId, IconName> = { terror: 'skull', supervivencia: 'tentTree', heroes: 'zap' };
+const MOD_ICON: Record<ModId, IconName> = { construccion: 'brickWall', terror: 'skull', supervivencia: 'tentTree', heroes: 'zap' };
 let pickedMods = new Set<ModId>((() => { try { return (JSON.parse(readStr('bloques.mods') || '[]') as string[]).filter((m): m is ModId => (MODS as string[]).includes(m)); } catch { return []; } })());
 const chosenMods = () => [...pickedMods];
 let modsDone: () => void = () => {};

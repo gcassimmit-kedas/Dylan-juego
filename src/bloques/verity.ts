@@ -19,7 +19,7 @@ const NUM_WORDS: Record<string, number> = {
 
 /** Nombres que entiende para cada objeto (en singular y sin tildes). */
 const NAMES: [string, number][] = [
-  ['tabla', B.Tablas], ['madera', B.Tablas], ['tronco', B.Tronco], ['palo', I.Palo], ['piedra', B.Adoquin], ['adoquin', B.Adoquin], ['roca', B.Adoquin],
+  ['piedra pulida', B.PiedraPulida], ['losa', B.PiedraPulida], ['ladrillo', B.LadrillosPiedra], ['tabla', B.Tablas], ['madera', B.Tablas], ['tronco', B.Tronco], ['palo', I.Palo], ['piedra', B.Adoquin], ['adoquin', B.Adoquin], ['roca', B.Adoquin],
   ['tierra', B.Tierra], ['arena', B.Arena], ['grava', B.Grava], ['hoja', B.Hojas], ['hierba', B.Hierba], ['cesped', B.Hierba],
   ['carbon', I.Carbon], ['lingote de hierro', I.LingoteHierro], ['hierro', I.LingoteHierro], ['lingote de oro', I.LingoteOro], ['oro', I.LingoteOro],
   ['diamante', I.Diamante], ['mesa de crafteo', B.Mesa], ['mesa', B.Mesa], ['horno', B.Horno], ['antorcha', B.Antorcha], ['cofre', B.Cofre], ['baul', B.Cofre],

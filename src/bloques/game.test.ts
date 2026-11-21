@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { newGame, addPlayer, step, place, craft, respawn, MAX_HP, EYE, IDLE, DAY_SECONDS, isNight, type Game, type Player } from './game.ts';
+import { newGame, addPlayer, step, place, craft, respawn, BUILD_KIT, BUILD_BREAK, MAX_HP, EYE, IDLE, DAY_SECONDS, isNight, type Game, type Player } from './game.ts';
 import { World, B } from './voxel.ts';
 const W = 96; // zona de pruebas
 import { addItem, count, breakTime, toolId, RECIPES, I } from './items.ts';
@@ -328,4 +328,71 @@ test('no se puede usar un horno desde lejos (lo comprueba el servidor)', () => {
   addItem(p.inv, B.Hierro, 1);
   p.body.x = 40;
   assert.equal(boxMove(g, 'p1', 22, 11, 20, 'put', p.inv.findIndex((s) => s?.id === B.Hierro)), false);
+});
+
+// ---------- Construcción libre ----------
+
+function buildGame(): { g: Game; p: Player } {
+  const g = newGame(1, () => 0.5, ['construccion']);
+  const w = World.empty(1);
+  for (let x = 0; x < W; x++) for (let z = 0; z < W; z++) for (let y = 0; y <= 10; y++) w.set(x, y, z, B.Piedra);
+  g.world = w;
+  const p = addPlayer(g, 'p1', 'Tú');
+  Object.assign(p.body, { x: 20.5, y: 11, z: 20.5, onGround: true, fallFrom: 11 });
+  p.invuln = 0;
+  return { g, p };
+}
+
+test('construcción libre: se empieza con la barra llena de materiales', () => {
+  const { p } = buildGame();
+  assert.deepEqual(p.inv.slice(0, BUILD_KIT.length).map((s) => s?.id), BUILD_KIT);
+  assert.equal(flatGame().p.inv.every((s) => s === null), true); // sin el mod, con las manos vacías
+});
+
+test('construcción libre: colocar un bloque no lo gasta', () => {
+  const { g, p } = buildGame();
+  p.sel = BUILD_KIT.indexOf(B.PiedraPulida);
+  g.world.set(20, 11, 24, B.Piedra); // un muro delante: se coloca contra su cara
+  lookAt(p, 20, 11, 24, false);
+  assert.equal(place(g, 'p1'), true);
+  assert.equal(g.world.get(20, 11, 23), B.PiedraPulida);
+  assert.equal(count(p.inv, B.PiedraPulida), 64);
+});
+
+test('construcción libre: cualquier bloque se rompe al instante y sin herramienta', () => {
+  const { g, p } = buildGame();
+  g.world.set(20, 11, 23, B.Diamante);
+  p.sel = BUILD_KIT.indexOf(B.Tablas);
+  lookAt(p, 20, 11, 23);
+  run(g, BUILD_BREAK + 0.1);
+  assert.equal(g.world.get(20, 11, 23), B.Aire);
+  assert.equal(count(p.inv, B.Diamante), 1); // se lleva el bloque tal cual
+});
+
+test('construcción libre: la roca base sigue sin poder romperse', () => {
+  const { g, p } = buildGame();
+  g.world.set(20, 11, 23, B.RocaBase);
+  lookAt(p, 20, 11, 23);
+  run(g, 3);
+  assert.equal(g.world.get(20, 11, 23), B.RocaBase);
+});
+
+test('construcción libre: no aparecen monstruos de noche ni hace daño caer', () => {
+  const { g, p } = buildGame();
+  g.time = DAY_SECONDS * 0.75;
+  run(g, 30);
+  assert.equal(g.mobs.length, 0);
+  Object.assign(p.body, { y: 40, onGround: false, fallFrom: 40 });
+  run(g, 5);
+  assert.equal(p.hp, MAX_HP);
+});
+
+test('piedra pulida y ladrillos de piedra se fabrican en la mesa', () => {
+  const { g, p } = flatGame();
+  g.world.set(21, 11, 20, B.Mesa);
+  addItem(p.inv, B.Piedra, 4);
+  assert.equal(craft(g, 'p1', 'piedra-pulida'), true);
+  assert.equal(count(p.inv, B.PiedraPulida), 4);
+  assert.equal(craft(g, 'p1', 'ladrillos-piedra'), true);
+  assert.equal(count(p.inv, B.LadrillosPiedra), 4);
 });

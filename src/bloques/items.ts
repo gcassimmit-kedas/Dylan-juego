@@ -74,6 +74,8 @@ export const RECIPES: Recipe[] = [
   R('horno', B.Horno, 1, [[B.Adoquin, 8]], 'mesa'),
   ...TIERS.flatMap((tier) => TOOL_TYPES.map((type) => R(`${type}-${tier}`, toolId(type, tier), 1, [[TIER_MAT[tier], TOOL_COST[type]], [I.Palo, TOOL_STICKS[type]]], 'mesa'))),
   R('cofre', B.Cofre, 1, [[B.Tablas, 8]], 'mesa'),
+  R('piedra-pulida', B.PiedraPulida, 4, [[B.Piedra, 4]], 'mesa'),
+  R('ladrillos-piedra', B.LadrillosPiedra, 4, [[B.PiedraPulida, 4]], 'mesa'),
 ];
 export const recipeById = new Map(RECIPES.map((r) => [r.id, r]));
 
