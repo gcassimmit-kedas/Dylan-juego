@@ -1,8 +1,9 @@
 // Controles en primera persona: convierte la mirada (giro) y el joystick en la entrada que entiende la simulación.
 // Lógica pura (sin DOM ni Three.js) para poder probarla.
-import type { Input } from '../shooter/sim.ts';
+/** Entrada de movimiento: hacia dónde andar (en el plano) y hacia dónde se mira. */
+export interface Input { moveX: number; moveZ: number; aimX: number; aimZ: number; fire: boolean }
 
-/** Inclinación máxima de la mirada hacia arriba o abajo (radianes). Los disparos van siempre en horizontal. */
+/** Inclinación máxima de la mirada hacia arriba o abajo (radianes). */
 export const PITCH_LIMIT = 0.45;
 export const DEADZONE = 0.12;
 

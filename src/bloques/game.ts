@@ -14,7 +14,7 @@ export const STATION_RANGE = 4.5;
 export interface PInput { mx: number; mz: number; jump: boolean; attack: boolean; yaw: number; pitch: number }
 export const IDLE: PInput = { mx: 0, mz: 0, jump: false, attack: false, yaw: 0, pitch: 0 };
 
-export type Look = 'coloso' | 'halcon';
+export type Look = 'roble' | 'brisa';
 export interface Player {
   id: string; name: string; look: Look; body: Body; yaw: number; pitch: number;
   hp: number; alive: boolean; inv: Slot[]; sel: number; input: PInput;
@@ -88,7 +88,7 @@ function spawnFor(g: Game, k: number): [number, number, number] {
   return [x + 0.5, g.world.top(x, z) + 1.01, z + 0.5];
 }
 
-export function addPlayer(g: Game, id: string, name: string, look: Look = 'coloso'): Player {
+export function addPlayer(g: Game, id: string, name: string, look: Look = 'roble'): Player {
   const [x, y, z] = spawnFor(g, g.players.length);
   const p: Player = {
     id, name, look, body: { x, y, z, vx: 0, vy: 0, vz: 0, onGround: false, fallFrom: y }, yaw: Math.PI, pitch: 0,

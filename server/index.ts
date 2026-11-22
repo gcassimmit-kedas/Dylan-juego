@@ -323,7 +323,7 @@ const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 4096 })
 wss.on('connection', (ws) => {
   const pid = makeId();
   const c: Client = { ws, pid, name: 'Soldado', character: 'sargento', room: null, msgs: 0, lastInput: 0, paused: false,
-    m: { ws, pid, name: 'Jugador', look: 'coloso', world: null, paused: false, lastInput: 0 } };
+    m: { ws, pid, name: 'Jugador', look: 'roble', world: null, paused: false, lastInput: 0 } };
   const reset = setInterval(() => (c.msgs = 0), 1000);
   ws.on('message', (data) => onMessage(c, data.toString()));
   ws.on('close', () => { clearInterval(reset); leaveRoom(c); leaveWorld(c.m); });

@@ -25,10 +25,9 @@ const assets = join(outDir, 'assets');
 const files = readdirSync(assets);
 const css = files.filter((f) => f.endsWith('.css')).map((f) => readFileSync(join(assets, f), 'utf8')).join('\n');
 const js = files.filter((f) => f.endsWith('.js')).map((f) => readFileSync(join(assets, f), 'utf8')).join('\n');
-const emblem = 'data:image/svg+xml;base64,' + readFileSync(join(root, 'public/icons/emblema.svg')).toString('base64');
 
 let body = html.slice(html.indexOf('<body>') + 6, html.lastIndexOf('</body>'));
-body = body.replace(/<script[\s\S]*?<\/script>/g, '').replace(/\.\/icons\/emblema\.svg/g, emblem)
+body = body.replace(/<script[\s\S]*?<\/script>/g, '')
   .replace('<span class="version">v2.0.0</span>', `<span class="version">v${version}</span>`);
 
 const page = `<title>Bloques ${version}</title>

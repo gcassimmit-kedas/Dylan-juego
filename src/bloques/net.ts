@@ -1,6 +1,14 @@
 // Cliente de red de los mundos compartidos de Bloques: conexión, instantáneas del servidor y envío de la entrada.
-import { serverUrl } from '../shooter/net.ts';
 import type { MClientMsg, MServerMsg, MSnapshot, WorldInfo } from './protocol.ts';
+
+/** Dirección del servidor de mundos: ?servidor=wss://..., VITE_SERVER_URL al compilar, o el mismo sitio que sirve la web. */
+export function serverUrl(): string {
+  const q = new URLSearchParams(location.search).get('servidor');
+  const env = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_SERVER_URL;
+  if (q) return q;
+  if (env) return env;
+  return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+}
 
 export class WorldNet {
   ws: WebSocket | null = null;

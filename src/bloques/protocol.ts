@@ -72,4 +72,9 @@ export function clampMInput(i: unknown): PInput {
   const yaw = num(a[4], -100, 100);
   return { mx: num(a[0], -1, 1), mz: num(a[1], -1, 1), jump: !!a[2], attack: !!a[3], yaw: Math.atan2(Math.sin(yaw), Math.cos(yaw)), pitch: num(a[5], -1.55, 1.55) };
 }
-export const isLook = (v: unknown): v is Look => v === 'coloso' || v === 'halcon';
+export const isLook = (v: unknown): v is Look => v === 'roble' || v === 'brisa';
+
+/** El mundo se detiene solo si todos los que están dentro han pausado. */
+export const worldPaused = (paused: boolean[]) => paused.length > 0 && paused.every(Boolean);
+/** Denuncias de jugadores distintos que hacen falta para sacar a alguien del mundo: entre 2 y 3, según cuántos haya. */
+export const reportsToKick = (players: number) => Math.max(2, Math.min(3, Math.max(1, players - 1)));

@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fpInput, applyLook, PITCH_LIMIT } from './controls.ts';
-import { newWorld, step } from '../shooter/sim.ts';
 
 const close = (a: number, b: number) => Math.abs(a - b) < 1e-9;
 
@@ -39,11 +38,4 @@ test('la zona muerta ignora un joystick casi quieto', () => {
 test('la mirada no da la vuelta hacia arriba ni hacia abajo', () => {
   assert.equal(applyLook(0, 0, 0, -10000, 0.01)[1], PITCH_LIMIT);
   assert.equal(applyLook(0, 0, 0, 10000, 0.01)[1], -PITCH_LIMIT);
-});
-
-test('en la simulación, el jugador dispara en la dirección en la que mira', () => {
-  const w = newWorld(() => 0.5, false, [{ id: 'p1', name: 'Tú' }], 'bloques');
-  w.wave = 1; w.toSpawn = 1; w.spawnTimer = 999;
-  step(w, fpInput(1.2, 0, 0, false), 1 / 60);
-  assert.ok(close(w.player.angle, 1.2));
 });

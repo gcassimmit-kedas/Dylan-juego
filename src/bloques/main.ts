@@ -20,16 +20,14 @@ import MeshWorker from './mesh.worker.ts?worker&inline';
 import type { MeshResult, Packed } from './mesh.worker.ts';
 import { buildAtlas, setAnisotropy, type TexName } from './textures.ts';
 import { itemIcon, itemModel } from './itemart.ts';
-import { makePerson, animatePerson, type Person } from './models.ts';
+import { makePerson, animatePerson, makeLabel, type Person } from './models.ts';
 import { dressPerson } from './armadura.ts';
 import { makeCreature, animateCreature, setFriend, type Creature } from './criaturas.ts';
 import { worldName, newCard, startWorld, saveGame, loadGame, parseCards, MAX_WORLDS, type WorldCard } from './save.ts';
 import { fpInput, applyLook } from './controls.ts';
-import { sfx, unlock, isMuted, setMuted } from '../shooter/audio.ts';
-import { normalizeForFilter } from '../shooter/moderation.ts';
-import { Effects } from '../shooter/fx.ts';
-import { makeLabel } from '../shooter/models.ts';
-import { settings, type Quality } from '../shooter/settings.ts';
+import { sfx, unlock, isMuted, setMuted } from './audio.ts';
+import { Effects } from './efectos.ts';
+import { settings, type Quality } from './ajustes.ts';
 import { icon, hydrateIcons } from '../ui/icons.ts';
 import '../ui/pwa.ts';
 
@@ -244,8 +242,10 @@ let mobs: { id: number; kind: MobKind; x: number; y: number; z: number; yaw: num
 let arrows: number[] = [];
 let time = 0;
 const names = new Map<string, string>();
-const blocked = new Set<string>((() => { try { return JSON.parse(readStr('shooter.bloqueados') || '[]') as string[]; } catch { return []; } })());
-const isBlocked = (name: string) => blocked.has(normalizeForFilter(name));
+/** Los nombres son automáticos ("Jugador 3"): para compararlos basta con ignorar mayúsculas y espacios. */
+const sameName = (name: string) => name.trim().toLowerCase();
+const blocked = new Set<string>((() => { try { return JSON.parse(readStr('bloques.bloqueados') || '[]') as string[]; } catch { return []; } })());
+const isBlocked = (name: string) => blocked.has(sameName(name));
 const shownName = (p: { name: string }) => (isBlocked(p.name) ? 'Jugador bloqueado' : p.name);
 const fx = new Effects(scene);
 
@@ -409,11 +409,11 @@ function doPlace() {
   if (!playing || inMenu() || !me.alive) return;
   // Usar una mesa, un horno o un cofre en vez de colocar algo
   const use = usableAhead();
-  if (use) { placeSwing = 1; sfx.pickup(); if (use.what === 'mesa') openInventory(true); else openBox(use.what, use.x, use.y, use.z); return; }
+  if (use) { placeSwing = 1; sfx.recoger(); if (use.what === 'mesa') openInventory(true); else openBox(use.what, use.x, use.y, use.z); return; }
   if (mode === 'solo' && game) {
     const p = game.players[0];
     p.input = { ...p.input, yaw, pitch };
-    if (place(game, myId)) { sfx.hit(); placeSwing = 1; }
+    if (place(game, myId)) { sfx.golpe(); placeSwing = 1; }
   } else {
     net.send({ t: 'min', i: [0, 0, 0, 0, Math.round(yaw * 100) / 100, Math.round(pitch * 100) / 100] });
     net.send({ t: 'mplace' });
@@ -631,8 +631,7 @@ function personFor(p: NetP) {
   const text = shownName(p);
   if (v.labelText !== text) {
     if (v.label) scene.remove(v.label);
-    v.label = makeLabel(text, 0x5d7a3e, isBlocked(p.name)); v.labelText = text;
-    v.label.scale.multiplyScalar(0.55);
+    v.label = makeLabel(text, isBlocked(p.name)); v.labelText = text;
     scene.add(v.label);
   }
   const ak = (p.armor ?? []).join('.');
@@ -673,7 +672,7 @@ function clearScene() {
 const view = new THREE.Group(); camera.add(view);
 const viewArm = new THREE.Group(); viewArm.scale.setScalar(0.62); view.add(viewArm);
 let viewItem: number | null | undefined, viewLook: Look | null = null, swingT = 0, bobT = 0;
-const myLook: Look = 'coloso';
+const myLook: Look = 'roble';
 function setViewModel(item: number | null) {
   if (viewItem === item && viewLook === myLook) return;
   viewItem = item; viewLook = myLook;
@@ -710,36 +709,36 @@ function flushEvents(evs: GEvent[]) {
     switch (ev.kind) {
       case 'break':
         fx.debris(ev.x + 0.5, ev.y + 0.5, ev.z + 0.5, BLOCK_COLOR[ev.b] ?? 0x888888, 10, 3.5, 0.12);
-        if (mine) sfx.kill(); else sfx.hit();
+        if (mine) sfx.romper(); else sfx.golpe();
         break;
-      case 'place': if (!mine) sfx.hit(); break;
+      case 'place': if (!mine) sfx.golpe(); break;
       case 'pickup':
         if (mine) {
-          sfx.pickup();
+          sfx.recoger();
           if (ev.item === 109 && readStr('bloques.pistaBayas') !== '1') { writeStr('bloques.pistaBayas', '1'); toast('Bayas: dáselas de día a un brincón y será tu amigo'); }
           else if (ev.item >= 100) toast(`+${ev.n} ${itemName(ev.item)}`);
         }
         break;
-      case 'craft': if (mine) { sfx.wave(); toast(`Has fabricado: ${itemName(ev.item)}`); renderInventory(); } break;
+      case 'craft': if (mine) { sfx.logro(); toast(`Has fabricado: ${itemName(ev.item)}`); renderInventory(); } break;
       case 'hurt':
-        if (mine) { sfx.hurt(); hurtFlash.classList.add('on'); setTimeout(() => hurtFlash.classList.remove('on'), 90); shake = Math.max(shake, 0.25); }
+        if (mine) { sfx.dano(); hurtFlash.classList.add('on'); setTimeout(() => hurtFlash.classList.remove('on'), 90); shake = Math.max(shake, 0.25); }
         break;
       case 'death':
-        if (mine) { sfx.gameover(); showDeath(); }
+        if (mine) { sfx.caer(); showDeath(); }
         else toast(`${names.get(ev.pid) ?? 'Un jugador'} ha muerto`);
         break;
       case 'respawn': if (mine) { $('death').hidden = true; lockPointer(); } break;
       case 'swing': { const v = persons.get(ev.pid); if (v) v.swing = 1; break; }
-      case 'mobHurt': sfx.hit(); break;
-      case 'mobDie': fx.debris(ev.x, ev.y + 0.8, ev.z, ev.mob === 'pedrusco' ? 0x8a8c8e : ev.mob === 'espino' ? 0x3f8a3a : 0x7a4fd0, 12, 5, 0.18); fx.smoke(ev.x, ev.y + 0.5, ev.z, 4, 0x6b6b6b, 0.9, 1); sfx.kill(); break;
-      case 'shoot': sfx.enemyShoot(); break;
-      case 'smelt': if (Math.hypot(ev.x - me.body.x, ev.z - me.body.z) < 8) sfx.pickup(); if (!$('box').hidden) renderBox(); break;
+      case 'mobHurt': sfx.golpe(); break;
+      case 'mobDie': fx.debris(ev.x, ev.y + 0.8, ev.z, ev.mob === 'pedrusco' ? 0x8a8c8e : ev.mob === 'espino' ? 0x3f8a3a : 0x7a4fd0, 12, 5, 0.18); fx.smoke(ev.x, ev.y + 0.5, ev.z, 4, 0x6b6b6b, 0.9, 1); sfx.romper(); break;
+      case 'shoot': sfx.pua(); break;
+      case 'smelt': if (Math.hypot(ev.x - me.body.x, ev.z - me.body.z) < 8) sfx.recoger(); if (!$('box').hidden) renderBox(); break;
       case 'tame':
         fx.debris(ev.x, ev.y + 0.9, ev.z, 0xff6f9c, 14, 3, 0.1);
-        if (mine) { sfx.wave(); banner('Brincón amigo', 'Nuevo compañero', 'Te sigue y te defiende de las criaturas de la noche.'); }
+        if (mine) { sfx.logro(); banner('Brincón amigo', 'Nuevo compañero', 'Te sigue y te defiende de las criaturas de la noche.'); }
         break;
-      case 'equip': if (mine) { sfx.pickup(); toast(`Te has puesto: ${itemName(ev.item).toLowerCase()}`); hudKey = ''; } break;
-      case 'eat': if (mine) { sfx.pickup(); toast(`Te has comido: ${itemName(ev.item).toLowerCase()}`); } break;
+      case 'equip': if (mine) { sfx.recoger(); toast(`Te has puesto: ${itemName(ev.item).toLowerCase()}`); hudKey = ''; } break;
+      case 'eat': if (mine) { sfx.recoger(); toast(`Te has comido: ${itemName(ev.item).toLowerCase()}`); } break;
       case 'join': if (ev.pid !== myId && mode === 'multi') toast(`${names.get(ev.pid) ?? 'Alguien'} ha entrado en el mundo`); break;
       case 'leave': if (mode === 'multi') toast(`${names.get(ev.pid) ?? 'Alguien'} ha salido`); break;
     }
@@ -1013,9 +1012,9 @@ function renderTeam() {
     bb.className = 'ghost small'; bb.innerHTML = `${icon('ban')} ${isB ? 'Desbloquear' : 'Bloquear'}`;
     bb.setAttribute('aria-label', `${isB ? 'Desbloquear' : 'Bloquear'} a ${shownName(q)}`);
     bb.addEventListener('click', () => {
-      const k = normalizeForFilter(q.name);
+      const k = sameName(q.name);
       if (blocked.has(k)) blocked.delete(k); else blocked.add(k);
-      writeStr('shooter.bloqueados', JSON.stringify([...blocked]));
+      writeStr('bloques.bloqueados', JSON.stringify([...blocked]));
       toast(blocked.has(k) ? 'Jugador bloqueado. Ya no verás su nombre.' : 'Jugador desbloqueado');
       teamKey = ''; renderTeam();
     });
@@ -1290,7 +1289,7 @@ function frame(now: number) {
     c.visible = true; c.position.set(x + 0.5, y + ch / 2, z + 0.5);
     (c.material as THREE.MeshBasicMaterial).map = crackTex[Math.min(9, Math.floor(prog * 10))];
   });
-  if (me.mine && playing && (mineSoundT -= dt) <= 0) { mineSoundT = 0.24; sfx.hit(); }
+  if (me.mine && playing && (mineSoundT -= dt) <= 0) { mineSoundT = 0.24; sfx.golpe(); }
 
   // Cámara en primera persona
   const moving = me.alive && Math.hypot(me.body.vx, me.body.vz) > 0.5 && me.body.onGround;
@@ -1473,9 +1472,9 @@ $('boxClose').addEventListener('click', () => closeBox());
 function moveBox(op: 'put' | 'take', i: number) {
   if (!openAt) return;
   const { x, y, z } = openAt;
-  if (mode === 'solo' && game) { if (boxMove(game, myId, x, y, z, op, i)) { sfx.pickup(); hudKey = ''; } else sfx.hit(); renderBox(); return; }
+  if (mode === 'solo' && game) { if (boxMove(game, myId, x, y, z, op, i)) { sfx.recoger(); hudKey = ''; } else sfx.golpe(); renderBox(); return; }
   net.send({ t: 'mbox', x, y, z, op, i });
-  sfx.pickup();
+  sfx.recoger();
 }
 function slotButton(s: Slot, label: string, onClick: () => void, dim = false) {
   const b = document.createElement('button');

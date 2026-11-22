@@ -4,8 +4,8 @@
 import { WebSocket } from 'ws';
 import { randomBytes } from 'node:crypto';
 import { newGame, addPlayer, removePlayer, step, place, craft, selectSlot, moveSlot, equip, unequip, respawn, getPlayer, verityCommand, boxMove, getBox, type Game, type Look, type VerityCmd } from '../src/bloques/game.ts';
-import { encodeSnapshot, clampMInput, MAX_PLAYERS, TICK_HZ, type MClientMsg, type MServerMsg, type WorldInfo } from '../src/bloques/protocol.ts';
-import { randomServerName, roomPaused, reportsToKick } from '../src/shooter/protocol.ts';
+import { encodeSnapshot, clampMInput, MAX_PLAYERS, TICK_HZ, worldPaused, reportsToKick, type MClientMsg, type MServerMsg, type WorldInfo } from '../src/bloques/protocol.ts';
+import { worldName } from '../src/bloques/save.ts';
 
 export interface MClient { ws: WebSocket; pid: string; name: string; look: Look; world: WorldRoom | null; paused: boolean; lastInput: number;
   /** Horno o cofre que tiene abierto (para mandarle lo que hay dentro). */
@@ -22,7 +22,7 @@ export const worldList = () => [...worlds.values()].filter((r) => r.clients.size
 
 function createWorld(): WorldRoom {
   const taken = new Set([...worlds.values()].map((r) => r.name));
-  const r: WorldRoom = { id: randomBytes(5).toString('hex'), name: randomServerName(Math.random, taken), game: newGame(Math.floor(Math.random() * 2 ** 31), Math.random), clients: new Map(), tick: 0, emptySince: 0, reports: new Map() };
+  const r: WorldRoom = { id: randomBytes(5).toString('hex'), name: worldName(Math.random, taken), game: newGame(Math.floor(Math.random() * 2 ** 31), Math.random), clients: new Map(), tick: 0, emptySince: 0, reports: new Map() };
   worlds.set(r.id, r);
   return r;
 }
@@ -34,7 +34,7 @@ function join(c: MClient, r: WorldRoom) {
   const used = new Set([...r.clients.values()].map((x) => x.name));
   let n = 1; while (used.has(`Jugador ${n}`)) n++;
   c.name = `Jugador ${n}`;
-  c.look = n % 2 ? 'coloso' : 'halcon';
+  c.look = n % 2 ? 'roble' : 'brisa';
   r.clients.set(c.pid, c); c.world = r; c.paused = false; c.lastInput = Date.now();
   addPlayer(r.game, c.pid, c.name, c.look);
   r.emptySince = 0;
@@ -63,7 +63,7 @@ function tick(r: WorldRoom) {
     if (now - c.lastInput > 1500) { p.input.mx = 0; p.input.mz = 0; p.input.attack = false; p.input.jump = false; } // red caída o pestaña oculta
   }
   // Si todos los que están en el mundo han pausado, el mundo se detiene de verdad.
-  if (!roomPaused([...r.clients.values()].map((x) => x.paused))) step(g, 1 / TICK_HZ);
+  if (!worldPaused([...r.clients.values()].map((x) => x.paused))) step(g, 1 / TICK_HZ);
   r.tick++;
   // Cada 10 s, olvidar los trozos lejos de todos (el mundo no tiene bordes; los cambios se guardan aparte)
   if (r.tick % (TICK_HZ * 10) === 0) g.world.unloadAwayFrom(g.players.map((p) => [p.body.x, p.body.z]), 8);
@@ -95,7 +95,7 @@ function report(c: MClient, targetPid: string, save: (entry: object) => void) {
   if (!set) r.reports.set(targetPid, (set = new Set()));
   set.add(c.pid);
   send(c, { t: 'notice', msg: 'Denuncia enviada. Gracias por ayudar a que el juego sea un buen sitio.' });
-  if (set.size >= reportsToKick(r.clients.size, true) && r.clients.size > 1) {
+  if (set.size >= reportsToKick(r.clients.size) && r.clients.size > 1) {
     send(target, { t: 'kicked', msg: 'Has sido retirado del mundo por denuncias de otros jugadores.' });
     leave(target);
     for (const o of r.clients.values()) send(o, { t: 'notice', msg: `${target.name} ha sido retirado del mundo.` });
