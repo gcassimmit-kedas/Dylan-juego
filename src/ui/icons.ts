@@ -70,6 +70,8 @@ import puzzle from 'lucide-static/icons/puzzle.svg?raw';
 import tentTree from 'lucide-static/icons/tent-tree.svg?raw';
 import pointer from 'lucide-static/icons/pointer.svg?raw';
 import flame2 from 'lucide-static/icons/flame-kindling.svg?raw';
+import gamepad from 'lucide-static/icons/gamepad-2.svg?raw';
+import arrowLeftRight from 'lucide-static/icons/arrow-left-right.svg?raw';
 
 /** Extrae solo el contenido interior de un SVG de Lucide (sin comentario de licencia ni atributos). */
 const inner = (svg: string) => svg.replace(/<!--[\s\S]*?-->/g, '').replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '').trim();
@@ -115,6 +117,7 @@ const LUCIDE = {
   globe, search, lock, users, flag, copy, refreshCw, logIn, logOut, plus, wifiOff, ban, keyRound, handFist, blocks,
   pickaxe, box, chevronUp, backpack, userPlus, sun, moon,
   skull, drumstick, sparkles, send, externalLink, puzzle, tentTree, pointer, flameKindling: flame2,
+  gamepad, arrowLeftRight,
 };
 
 export type IconName = keyof typeof LUCIDE | keyof typeof CUSTOM;

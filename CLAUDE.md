@@ -32,7 +32,7 @@ Reglas obligatorias para cualquier cambio en este repositorio. Si una petición 
 ## 3. Juego en línea (cooperativo)
 
 - El servidor (`server/index.ts`) manda: la simulación corre allí y el cliente solo envía su entrada. Nunca confiar en lo que llega del cliente.
-- Con conexión, cada partida es un servidor público con nombre aleatorio (hasta 7 jugadores) que aparece en la lista de Multijugador; sin conexión se juega solo. Los jugadores no escriben nada: nombres automáticos y sin chat.
+- Con conexión, cada partida es un servidor público con nombre aleatorio (hasta 7 jugadores) que aparece en la lista de Multijugador; sin conexión se juega solo o con «2 jugadores» en el mismo dispositivo (sin servidor). Los jugadores no escriben nada: nombres automáticos y sin chat.
 - Si algún día se permite escribir (nombres, chat), debe pasar por `src/shooter/moderation.ts` en el servidor y actualizarse antes la política de privacidad.
 - **Bloques:** cada mundo es público (aparece en la lista) y se puede invitar con un enlace `bloques.html?mundo=<id>`. El enlace solo lleva el identificador aleatorio del mundo, nunca datos de nadie. El servidor (`server/mundo.ts`) simula todo: movimiento, minado, crafteo y monstruos.
 - **Verity (Bloques):** se le escribe, pero no es un chat: el texto se entiende en el propio dispositivo (`src/bloques/verity.ts`) y al servidor solo llega la orden ya entendida (`mcmd`), nunca el texto. Nadie más lo ve. Solo la versión Artifact puede preguntar a Claude lo que no entiende, con el permiso de quien juega en claude.ai. Conectar una IA en la web o en la app exige antes actualizar la política de privacidad y las fichas de las tiendas.
