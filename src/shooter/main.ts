@@ -9,6 +9,7 @@ import { sfx, unlock, isMuted, setMuted } from './audio.ts';
 import { MAT, makeSoldier, animateSoldier, showWeapon, makeRobot, animateRobot, makeTurret, makeDrone, makeMine, makeObstacle, makeSpikes, makeLabel, type Robot, type Soldier } from './models.ts';
 import { NetSession, serverUrl } from './net.ts';
 import { VISIT_KEY, visitsUrl, parseTotal, visitsLabel } from './visits.ts';
+import { initBoostShop } from './compras.ts';
 import { normalizeForFilter } from './moderation.ts';
 import type { RoomInfo } from './protocol.ts';
 import { Effects, SOFT } from './fx.ts';
@@ -587,7 +588,7 @@ const rapidTxt = $('rapidTxt'), boostTxt = $('boostTxt');
  */
 const BOOST_KEY = 'shooter.potencia';
 function savedBoost(): number {
-  try { const n = Number(localStorage.getItem(BOOST_KEY)); return Number.isFinite(n) ? Math.min(BOOST_SECONDS, Math.max(0, n)) : 0; } catch { return 0; }
+  try { const n = Number(localStorage.getItem(BOOST_KEY)); return Number.isFinite(n) ? Math.min(BOOST_SECONDS * 10, Math.max(0, n)) : 0; } catch { return 0; }
 }
 /** Partida sin conexión a la que se aplicó la doble potencia guardada (solo de ella se guarda lo que queda). */
 let boostWorld: World | null = null;
@@ -598,6 +599,30 @@ function storeBoost() {
   try { localStorage.setItem(BOOST_KEY, String(Math.ceil(p.boost))); } catch { /* sin almacenamiento */ }
 }
 setInterval(storeBoost, 5000);
+/** Compra pagada en Google Play: suma 25 minutos de doble potencia. */
+function grantBoost() {
+  storeBoost();
+  const total = Math.min(BOOST_SECONDS * 10, savedBoost() + BOOST_SECONDS);
+  try { localStorage.setItem(BOOST_KEY, String(total)); } catch { /* sin almacenamiento */ }
+  const p = boostWorld && getPlayer(boostWorld, 'p1');
+  if (p) p.boost = total;
+  toast('Doble potencia activada: 25 minutos');
+  boostInfo(`Activada. Te quedan ${Math.round(total / 60)} minutos de doble potencia.`);
+}
+/** En el título no se ven los avisos de partida: el estado de la compra se muestra bajo el botón. */
+const BOOST_INFO = 'Doble de velocidad y de disparo durante 25 minutos de juego, en partidas en solitario.';
+function boostInfo(text = BOOST_INFO) { $('buyBoostInfo').textContent = text; }
+initBoostShop(grantBoost, (shop) => {
+  const btn = $('buyBoost') as HTMLButtonElement;
+  $('buyBoostPrice').textContent = shop.price;
+  btn.hidden = false; $('buyBoostInfo').hidden = false;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    const err = await shop.buy();
+    btn.disabled = false;
+    if (err) boostInfo(err);
+  });
+});
 addEventListener('pagehide', storeBoost);
 const readNum = (k: string) => { try { return Number(localStorage.getItem(k)) || 0; } catch { return 0; } };
 const writeNum = (k: string, v: number) => { try { localStorage.setItem(k, String(v)); } catch { /* sin almacenamiento */ } };
@@ -960,6 +985,8 @@ void showVisits();
 let hosting = false;
 async function play() {
   unlock();
+  // La doble potencia solo vale sin conexión (en línea el servidor aún no puede comprobar compras)
+  if (savedBoost() > 0) { start(); toast('Doble potencia activa: partida en solitario'); return; }
   playBtn.disabled = true;
   const online = await connectQuick();
   playBtn.disabled = false;

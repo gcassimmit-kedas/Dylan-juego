@@ -10,7 +10,7 @@ Lo marcado como **(pendiente)** lo tiene que decidir o rellenar el propietario.
 | Nombre | Shooter 2027 |
 | Identificador (bundle / paquete) | `com.dylan.shooter2027` |
 | Categoría | Juegos > Acción (secundaria en Apple: Arcade) |
-| Precio | **(pendiente)** gratis o de pago; sin compras integradas ni anuncios |
+| Precio | Gratis, sin anuncios. Android: compra integrada "Doble potencia" (3 €); iOS: sin compras por ahora |
 | Idioma principal | Español (España) |
 | Política de privacidad | `https://dylanj.kedasrd.com/privacidad.html` (una vez subida la web nueva) |
 | URL de soporte (Apple la exige) | **(pendiente)** una página con un correo de contacto |
@@ -51,7 +51,10 @@ JUEGA CON AMIGOS
 Cada partida es un servidor público al que otros pueden unirse. Abre la lista, mira cuántos están jugando y únete a la batalla al momento, hasta 7 jugadores. Sin escribir nombres ni crear cuentas. Sin conexión, juegas solo.
 
 PENSADO PARA TODOS LOS DISPOSITIVOS
-Controles táctiles, teclado y ratón o mando. Funciona sin conexión en solitario. Sin anuncios, sin compras integradas y sin cuentas.
+Controles táctiles, teclado y ratón o mando. Funciona sin conexión en solitario. Sin anuncios y sin cuentas.
+
+DOBLE POTENCIA (opcional, Android)
+Doble de velocidad y de disparo durante 25 minutos de juego en partidas en solitario. Todo el juego se puede jugar sin comprarla.
 
 ## Capturas
 

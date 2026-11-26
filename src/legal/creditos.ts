@@ -5,6 +5,8 @@ import capacitor from '../../node_modules/@capacitor/core/LICENSE?raw';
 import oswald from '../../node_modules/@fontsource/oswald/LICENSE?raw';
 import inter from '../../node_modules/@fontsource/inter/LICENSE?raw';
 import ws from '../../node_modules/ws/LICENSE?raw';
+// Este paquete no trae fichero LICENSE: el texto se copió de su README (sección "Licence").
+import purchase from './licencias/cordova-plugin-purchase.txt?raw';
 
 const LIBS = [
   { name: 'three.js', use: 'Motor gráfico 3D (Brasas incluye la versión r128)', license: 'MIT', text: three },
@@ -13,6 +15,7 @@ const LIBS = [
   { name: 'Oswald', use: 'Tipografía de títulos y cifras', license: 'SIL Open Font License 1.1', text: oswald },
   { name: 'Inter', use: 'Tipografía de textos', license: 'SIL Open Font License 1.1', text: inter },
   { name: 'ws', use: 'Conexiones del servidor del modo en línea', license: 'MIT', text: ws },
+  { name: 'cordova-plugin-purchase', use: 'Compras con Google Play en la app de Android', license: 'MIT', text: purchase },
 ];
 
 const root = document.getElementById('libs')!;

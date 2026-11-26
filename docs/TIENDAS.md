@@ -87,24 +87,26 @@ Con conexión, **Jugar** crea un **servidor público** en el servidor de partida
 
 Plan gratuito: el servidor se duerme tras 15 minutos sin visitas y tarda alrededor de un minuto en despertar; el fichero de denuncias se pierde al reiniciarse (se guardan menos días, nunca más de 30), y **el contador de jugadores vuelve a cero en cada reinicio o publicación**. Para un servidor siempre despierto y denuncias persistentes, plan de pago con disco.
 
-## Compra "Doble potencia" (pendiente de las cuentas de pago)
+## Compra "Doble potencia" (Google Play)
 
-Producto consumible: **3 €**, x2 de velocidad y x2 de cadencia de disparo durante **25 minutos de juego** (el tiempo solo corre con la partida en marcha; no en pausa, en la tienda ni con la app cerrada).
+Producto **consumible** de Google Play `com.dylan.shooter2027.doble`, a **3 €**: x2 de velocidad y x2 de cadencia de disparo durante **25 minutos de juego** (el tiempo solo corre con la partida en marcha). Cada compra suma 25 minutos. Solo en partidas en solitario: con la potencia activa, Jugar empieza sin conexión.
 
 - [x] Regla en la simulación (`BOOST_SECONDS`, `BOOST_MUL` en `src/shooter/sim.ts`) con tests.
-- [x] Indicador "Doble potencia mm:ss" en la partida y tiempo restante guardado en el dispositivo (`shooter.potencia`).
-- [x] En línea no se aplica: el servidor manda y todavía no puede comprobar compras.
-- [ ] El titular adulto abre las cuentas: Apple Developer (acuerdo de apps de pago, banco e impuestos) y Google Play Console (perfil de pagos).
-- [ ] Crear el producto consumible en las dos tiendas, por ejemplo `com.dylan.shooter2027.doble`, a 3 €.
-- [ ] Botón de compra con el sistema de Apple y Google (plugin de compras para Capacitor, añadirlo a `creditos.html`) y comprobación del recibo en el servidor para activarlo también en línea.
-- [ ] **Antes de publicarlo:** actualizar `privacidad.html`, la ficha (hoy dice "sin compras integradas") y los formularios de privacidad. Si el público incluye menores, revisar las normas de compras para niños.
+- [x] Compra con Google Play Billing mediante `cordova-plugin-purchase` (`src/shooter/compras.ts`, acreditado en `creditos.html`). El botón solo aparece en la app de Android cuando Google confirma que el producto está a la venta; en la web e iOS no aparece. Cada compra se entrega una sola vez y se consume para poder repetirla.
+- [x] Indicador "Doble potencia mm:ss" en la partida; los minutos se guardan en el dispositivo (`shooter.potencia`).
+- [x] `privacidad.html` y `docs/FICHA.md` actualizadas.
+- [ ] El titular adulto abre la cuenta de Google Play Console con perfil de pagos (banco e impuestos).
+- [ ] Crear en Play Console > Monetizar > Productos > Productos de compra única el producto `com.dylan.shooter2027.doble` a 3 € y activarlo.
+- [ ] Subir la app a Pruebas internas, añadir una cuenta de "tester de licencias" y comprar de prueba en un móvil Android (no se cobra).
+- [ ] Opcional, más adelante: comprobar los pagos en el servidor (API de Google Play con una cuenta de servicio, guardada como secreto en Render, nunca en el repositorio) para que la potencia valga también en línea.
+- [ ] iOS: sin compras por ahora. Si se añaden, hace falta el producto en App Store Connect y "Restaurar compras".
 
 ## Formularios de las tiendas (respuestas según el estado actual)
 
 - **Apple, privacidad de la app:** los jugadores no escriben nada y los nombres son automáticos, así que la respuesta probable es "Datos no recopilados". La dirección IP se usa solo para mantener la conexión y no se guarda **(comprobar si Apple pide declararla)**. El contador de jugadores es un total anónimo sin identificador ni vínculo con nadie; según la definición de Apple no debería contar como recopilación, pero **conviene revisarlo al rellenar el formulario** (si se declara, sería "Analítica", no vinculada al usuario y sin rastreo).
-- **Google, seguridad de los datos:** no recopila datos personales ni contenido de usuarios; los datos de la partida se tratan de forma efímera y cifrados en tránsito (WSS). Las denuncias guardan 30 días el nombre automático del jugador denunciado, sin identificar a nadie **(comprobar si Google pide declararlo)**. El contador de jugadores solo suma un total anónimo; si se declara, "Analítica de la aplicación", no compartida, sin identificar al usuario.
-- **Clasificación por edades:** violencia de fantasía/dibujos contra robots, sin sangre, sin compras, sin publicidad. **Marcar "los usuarios pueden interactuar"** (juegan juntos en línea, aunque sin chat ni nombres escritos). Resultado probable: 9+ en Apple y PEGI 7 en Google, con el aviso de interacción en línea **(se confirma al rellenar el cuestionario)**.
-- **Anuncios:** no contiene anuncios. **Compras integradas:** no.
+- **Google, seguridad de los datos:** no recopila datos personales ni contenido de usuarios; los datos de la partida se tratan de forma efímera y cifrados en tránsito (WSS). Las denuncias guardan 30 días el nombre automático del jugador denunciado, sin identificar a nadie **(comprobar si Google pide declararlo)**. El contador de jugadores solo suma un total anónimo; si se declara, "Analítica de la aplicación", no compartida, sin identificar al usuario. La compra Doble potencia la procesa Google Play: el juego no recibe datos de pago y lo que guarda (minutos e identificador de la compra) no sale del dispositivo, así que en principio no se declara como "Historial de compras" **(comprobarlo al rellenar el formulario)**.
+- **Clasificación por edades:** violencia de fantasía/dibujos contra robots, sin sangre, sin publicidad, con una compra integrada opcional en Android. **Marcar "los usuarios pueden interactuar"** (juegan juntos en línea, aunque sin chat ni nombres escritos). Resultado probable: 9+ en Apple y PEGI 7 en Google, con el aviso de interacción en línea **(se confirma al rellenar el cuestionario)**.
+- **Anuncios:** no contiene anuncios. **Compras integradas:** sí en Android (Doble potencia, consumible, 3 €); en iOS no.
 
 ## Ficha de la tienda
 
