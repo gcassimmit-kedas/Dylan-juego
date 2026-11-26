@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addPlayer, removePlayer, autoAim, leash, BOSS_EVERY, SWARM_SIZE, shieldGuard, SNIPER_AIM, REPAIR_EVERY, REPAIR_AMOUNT, CHARACTERS, CHARACTER_ORDER, build, cannotBuild, woodReward, ARMOR_MAX, newWorld, step, spawnEnemy, waveSize, waveBonus, buy, cannotBuy, nextWave, useTool, selectWeapon, dronePos, type Input, type World } from './sim.ts';
+import { addPlayer, BOOST_SECONDS, BOOST_MUL, removePlayer, autoAim, leash, BOSS_EVERY, SWARM_SIZE, shieldGuard, SNIPER_AIM, REPAIR_EVERY, REPAIR_AMOUNT, CHARACTERS, CHARACTER_ORDER, build, cannotBuild, woodReward, ARMOR_MAX, newWorld, step, spawnEnemy, waveSize, waveBonus, buy, cannotBuy, nextWave, useTool, selectWeapon, dronePos, type Input, type World } from './sim.ts';
 
 const idle: Input = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, fire: false };
 const seq = (vals: number[]) => { let i = 0; return () => vals[i++ % vals.length]; };
@@ -889,4 +889,45 @@ test('2 jugadores: cada uno dispara con su propia entrada y lleva sus monedas', 
   assert.ok(buy(w, 'subfusil', 'p1'));
   assert.equal(b.coins, 0);
   assert.ok(cannotBuy(w, 'subfusil', 'p2'), 'el jugador 2 no puede pagar con monedas ajenas');
+});
+
+test('doble potencia: el doble de velocidad', () => {
+  const normal = arena(), rapido = arena();
+  rapido.player.boost = BOOST_SECONDS;
+  const x0 = normal.player.x;
+  run(normal, { ...idle, moveX: 1 }, 30);
+  run(rapido, { ...idle, moveX: 1 }, 30);
+  const dn = normal.player.x - x0, dr = rapido.player.x - x0;
+  assert.ok(Math.abs(dr / dn - BOOST_MUL) < 0.01, `normal ${dn}, con potencia ${dr}`);
+});
+
+test('doble potencia: el doble de disparos en el mismo tiempo', () => {
+  const disparos = (boost: number) => {
+    const w = arena(); w.player.boost = boost;
+    let n = 0;
+    for (let i = 0; i < 600; i++) { step(w, { ...idle, aimZ: -1, fire: true }, 1 / 60); n += w.events.filter((e) => e.kind === 'shoot').length; }
+    return n;
+  };
+  // A 60 fotogramas por segundo el disparo cae en el fotograma siguiente a la espera, así que la proporción real
+  // queda algo por debajo de 2 (la pistola: 17 fotogramas sin potencia, 9 con ella).
+  const sin = disparos(0), con = disparos(BOOST_SECONDS);
+  assert.ok(con / sin > 1.8 && con / sin <= 2.05, `sin ${sin}, con ${con}`);
+});
+
+test('doble potencia: dura 25 minutos de juego y solo corre con la partida en marcha', () => {
+  assert.equal(BOOST_SECONDS, 25 * 60);
+  const w = arena();
+  w.player.boost = 10;
+  run(w, idle, 60 * 4);
+  assert.ok(Math.abs(w.player.boost - 6) < 0.05, `quedan ${w.player.boost}`);
+  w.phase = 'shop';
+  run(w, idle, 60 * 5);
+  assert.ok(Math.abs(w.player.boost - 6) < 0.05, 'en la tienda no se gasta');
+  w.phase = 'fight';
+  run(w, idle, 60 * 7);
+  assert.equal(w.player.boost, 0);
+  const x0 = w.player.x;
+  run(w, { ...idle, moveX: 1 }, 30);
+  const normal = arena(); const n0 = normal.player.x; run(normal, { ...idle, moveX: 1 }, 30);
+  assert.ok(Math.abs((w.player.x - x0) - (normal.player.x - n0)) < 0.01, 'al acabarse vuelve a la velocidad normal');
 });

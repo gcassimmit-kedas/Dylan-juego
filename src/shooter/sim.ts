@@ -42,6 +42,8 @@ export interface Player {
   shield: number; moving: boolean; wood: number;
   /** En el menú de pausa mientras los demás siguen: los robots lo ignoran y no recibe daño. */
   away: boolean;
+  /** "Doble potencia" (compra): segundos de juego que le quedan con el doble de velocidad y de cadencia de disparo. */
+  boost: number;
 }
 export interface Bullet {
   id: number; kind: BulletKind; x: number; z: number; vx: number; vz: number; life: number; maxLife: number;
@@ -96,6 +98,10 @@ export interface World {
 
 export const PLAYER_R = 0.6;
 const PLAYER_SPEED = 9;
+/** Doble potencia: dura 25 minutos de juego (el tiempo solo corre con la partida en marcha, no en pausa ni en la tienda). */
+export const BOOST_SECONDS = 25 * 60;
+/** Multiplicador de velocidad y de cadencia de disparo mientras dura la doble potencia. */
+export const BOOST_MUL = 2;
 const ENEMY_BULLET_SPEED = 13;
 
 export interface WeaponStats {
@@ -226,7 +232,7 @@ export function addPlayer(w: World, id: string, name: string, character: Charact
     id, name, color, alive: true, character: isCharacter(character) ? character : 'sargento', coins: 0, score: 0, kills: 0, input: { ...IDLE },
     x, z, angle: Math.PI, hp: 5 + ch.hp, maxHp: 5 + ch.hp, cooldown: 0, invuln: w.players.length ? 2 : 0, rapid: 0,
     weapon: w.game === 'bloques' ? 'puno' : 'pistola', owned: [w.game === 'bloques' ? 'puno' : 'pistola'], tools: { torreta: 0, mina: 0, escudo: ch.startShield, barricada: 0, aereo: 0, emp: 0, senuelo: 0 }, wood: ch.startWood,
-    speedLvl: 0, armorLvl: 0, dmgLvl: 0, magnet: 0, regen: 0, regenT: 0, drones: 0, droneCd: 0, shield: 0, moving: false, away: false,
+    speedLvl: 0, armorLvl: 0, dmgLvl: 0, magnet: 0, regen: 0, regenT: 0, drones: 0, droneCd: 0, shield: 0, moving: false, away: false, boost: 0,
   };
   w.players.push(p);
   w.events.push({ kind: 'join', pid: id });
@@ -609,7 +615,7 @@ export function movePlayer(w: World, p: Player, inp: Input, dt: number) {
   const ml = Math.hypot(mx, mz);
   if (ml > 1) { mx /= ml; mz /= ml; }
   const slow = inp.fire ? WEAPONS[p.weapon].slow ?? 1 : 1; // la ametralladora pesa: frena mientras disparas
-  const speed = PLAYER_SPEED * (1 + p.speedLvl * 0.12) * slow * CHARACTERS[p.character].speed;
+  const speed = PLAYER_SPEED * (1 + p.speedLvl * 0.12) * slow * CHARACTERS[p.character].speed * (p.boost > 0 ? BOOST_MUL : 1);
   p.x = clamp(p.x + mx * speed * dt, -lim, lim);
   p.z = clamp(p.z + mz * speed * dt, -lim, lim);
   pushOut(p, PLAYER_R, w.obstacles);
@@ -635,13 +641,14 @@ export function step(w: World, input: Input | null, dt: number): void {
     const inp = p.input;
     movePlayer(w, p, inp, dt);
     p.cooldown -= dt; p.invuln -= dt; p.rapid -= dt; p.shield -= dt;
+    if (p.boost > 0) p.boost = Math.max(0, p.boost - dt);
     if (p.regen > 0 && p.hp < p.maxHp) {
       p.regenT += dt;
       if (p.regenT >= 15) { p.regenT = 0; p.hp++; w.events.push({ kind: 'regen', pid: p.id }); }
     } else p.regenT = 0;
     if (inp.fire && p.cooldown <= 0) {
       const st = WEAPONS[p.weapon];
-      p.cooldown = st.cooldown * (p.rapid > 0 ? 0.5 : 1);
+      p.cooldown = st.cooldown * (p.rapid > 0 ? 0.5 : 1) / (p.boost > 0 ? BOOST_MUL : 1);
       fire(w, p.id, p.x, p.z, p.angle, st, (1 + p.dmgLvl * 0.3) * CHARACTERS[p.character].dmg, p.rapid > 0);
       w.events.push({ kind: 'shoot', pid: p.id, weapon: p.weapon });
     }

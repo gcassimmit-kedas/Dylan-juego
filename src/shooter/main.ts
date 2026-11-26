@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {
   newWorld, step, buy, cannotBuy, owns, nextWave, useTool, selectWeapon, dronePos, build, cannotBuild, getPlayer, autoAim, leash,
   CHARACTERS, CHARACTER_ORDER, isCharacter, PLAYER_COLORS, type CharacterId,
-  SHOP, shopFor, WEAPONS, WEAPON_ORDER, TOOL_ORDER, BUILDS,
+  SHOP, shopFor, WEAPONS, WEAPON_ORDER, TOOL_ORDER, BUILDS, BOOST_SECONDS,
   type World, type Input, type Player, type Bullet, type Pickup, type EnemyType, type WeaponId, type ToolId, type ShopItem, type ShopKind, type BuildId, type BuildItem,
 } from './sim.ts';
 import { sfx, unlock, isMuted, setMuted } from './audio.ts';
@@ -580,6 +580,25 @@ addEventListener('gamepaddisconnected', () => {
 });
 
 // ---------- HUD ----------
+const rapidTxt = $('rapidTxt'), boostTxt = $('boostTxt');
+/**
+ * Doble potencia comprada: los segundos que quedan se guardan en el dispositivo y se aplican a tu soldado en las
+ * partidas sin conexión. En línea el servidor manda: hasta que pueda comprobar las compras, allí no se aplica.
+ */
+const BOOST_KEY = 'shooter.potencia';
+function savedBoost(): number {
+  try { const n = Number(localStorage.getItem(BOOST_KEY)); return Number.isFinite(n) ? Math.min(BOOST_SECONDS, Math.max(0, n)) : 0; } catch { return 0; }
+}
+/** Partida sin conexión a la que se aplicó la doble potencia guardada (solo de ella se guarda lo que queda). */
+let boostWorld: World | null = null;
+function storeBoost() {
+  if (!boostWorld) return;
+  const p = getPlayer(boostWorld, 'p1');
+  if (!p) return;
+  try { localStorage.setItem(BOOST_KEY, String(Math.ceil(p.boost))); } catch { /* sin almacenamiento */ }
+}
+setInterval(storeBoost, 5000);
+addEventListener('pagehide', storeBoost);
 const readNum = (k: string) => { try { return Number(localStorage.getItem(k)) || 0; } catch { return 0; } };
 const writeNum = (k: string, v: number) => { try { localStorage.setItem(k, String(v)); } catch { /* sin almacenamiento */ } };
 let best = readNum('shooter.best'), bestWave = readNum('shooter.bestWave');
@@ -589,7 +608,12 @@ let hudKey = '', prevCoins = 0;
 function hud() {
   const p = mode === 'local' ? getPlayer(world, gearPid) : me();
   if (!p) return;
-  rapidEl.hidden = p.rapid <= 0;
+  // Disparo rápido (recogido en el campo) y doble potencia (comprada) comparten el mismo indicador
+  rapidTxt.hidden = p.rapid <= 0;
+  const boost = p.boost > 0 ? Math.ceil(p.boost) : 0;
+  boostTxt.hidden = boost <= 0;
+  if (boost > 0) boostTxt.textContent = `Doble potencia ${Math.floor(boost / 60)}:${String(boost % 60).padStart(2, '0')}`;
+  rapidEl.hidden = p.rapid <= 0 && boost <= 0;
   if (mode !== 'solo') renderPlayers();
   const left = world.toSpawn + world.enemies.length;
   const key = [p.id, p.hp, p.maxHp, world.score, world.wave, left, p.coins, p.wood, p.weapon, p.owned.join(), ...TOOL_ORDER.map((t) => p.tools[t]), p.shield > 0,
@@ -818,6 +842,7 @@ function clearScene() {
 }
 function start(local = false) {
   unlock();
+  storeBoost();
   leaveMulti();
   clearScene();
   mode = local ? 'local' : 'solo'; myId = 'p1';
@@ -833,6 +858,8 @@ function start(local = false) {
   if (local) banner('2 jugadores', 'En este dispositivo', 'Cada uno con sus monedas, armas y madera');
   hudKey = ''; prevCoins = 0;
   run.kills = 0; run.coins = 0;
+  const p1 = getPlayer(world, 'p1');
+  if (p1) { p1.boost = savedBoost(); boostWorld = world; }
   snapCam = true;
   overlay.hidden = true; shopEl.hidden = true; gameoverEl.hidden = true;
   document.body.classList.add('playing');
@@ -1013,6 +1040,7 @@ $('quit').addEventListener('click', () => { setPaused(false); toTitle(); });
 
 document.addEventListener('visibilitychange', () => {
   last = performance.now();
+  if (document.hidden) storeBoost();
   if (mode === 'multi') {
     // Al salir de la app tu soldado se queda quieto; si estás solo en la partida, se detiene.
     if (document.hidden) { net.send({ t: 'in', i: [0, 0, 0, 0, 0] }); net.send({ t: 'pause', v: true }); }

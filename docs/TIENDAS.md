@@ -87,6 +87,18 @@ Con conexión, **Jugar** crea un **servidor público** en el servidor de partida
 
 Plan gratuito: el servidor se duerme tras 15 minutos sin visitas y tarda alrededor de un minuto en despertar; el fichero de denuncias se pierde al reiniciarse (se guardan menos días, nunca más de 30), y **el contador de jugadores vuelve a cero en cada reinicio o publicación**. Para un servidor siempre despierto y denuncias persistentes, plan de pago con disco.
 
+## Compra "Doble potencia" (pendiente de las cuentas de pago)
+
+Producto consumible: **3 €**, x2 de velocidad y x2 de cadencia de disparo durante **25 minutos de juego** (el tiempo solo corre con la partida en marcha; no en pausa, en la tienda ni con la app cerrada).
+
+- [x] Regla en la simulación (`BOOST_SECONDS`, `BOOST_MUL` en `src/shooter/sim.ts`) con tests.
+- [x] Indicador "Doble potencia mm:ss" en la partida y tiempo restante guardado en el dispositivo (`shooter.potencia`).
+- [x] En línea no se aplica: el servidor manda y todavía no puede comprobar compras.
+- [ ] El titular adulto abre las cuentas: Apple Developer (acuerdo de apps de pago, banco e impuestos) y Google Play Console (perfil de pagos).
+- [ ] Crear el producto consumible en las dos tiendas, por ejemplo `com.dylan.shooter2027.doble`, a 3 €.
+- [ ] Botón de compra con el sistema de Apple y Google (plugin de compras para Capacitor, añadirlo a `creditos.html`) y comprobación del recibo en el servidor para activarlo también en línea.
+- [ ] **Antes de publicarlo:** actualizar `privacidad.html`, la ficha (hoy dice "sin compras integradas") y los formularios de privacidad. Si el público incluye menores, revisar las normas de compras para niños.
+
 ## Formularios de las tiendas (respuestas según el estado actual)
 
 - **Apple, privacidad de la app:** los jugadores no escriben nada y los nombres son automáticos, así que la respuesta probable es "Datos no recopilados". La dirección IP se usa solo para mantener la conexión y no se guarda **(comprobar si Apple pide declararla)**. El contador de jugadores es un total anónimo sin identificador ni vínculo con nadie; según la definición de Apple no debería contar como recopilación, pero **conviene revisarlo al rellenar el formulario** (si se declara, sería "Analítica", no vinculada al usuario y sin rastreo).

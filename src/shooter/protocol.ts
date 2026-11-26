@@ -97,7 +97,7 @@ export interface Snapshot {
 export function encode(w: World, tick: number, extra: { ready: Set<string>; shopLeft: number; restartLeft: number; events: GameEvent[]; withObstacles: boolean }): Snapshot {
   const P: NetPlayer[] = w.players.map((p) => ({
     id: p.id, name: p.name, color: p.color, alive: p.alive, character: p.character, coins: p.coins, score: p.score, kills: p.kills, wood: p.wood,
-    x: r2(p.x), z: r2(p.z), angle: r2(p.angle), hp: p.hp, maxHp: p.maxHp, invuln: r1(p.invuln), rapid: r1(p.rapid),
+    x: r2(p.x), z: r2(p.z), angle: r2(p.angle), hp: p.hp, maxHp: p.maxHp, invuln: r1(p.invuln), rapid: r1(p.rapid), boost: Math.ceil(p.boost),
     weapon: p.weapon, owned: p.owned, tools: p.tools, speedLvl: p.speedLvl, armorLvl: p.armorLvl, dmgLvl: p.dmgLvl,
     magnet: p.magnet, regen: p.regen, drones: p.drones, shield: r1(p.shield), moving: p.moving, away: p.away, ready: extra.ready.has(p.id),
   }));

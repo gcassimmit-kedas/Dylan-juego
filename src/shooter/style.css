@@ -154,6 +154,9 @@ body.playing #rapid { visibility: visible; }
 #rapid { position: fixed; top: calc(env(safe-area-inset-top) + 92px); left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 6px;
   font-family: var(--display); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #241a00; background: var(--accent); padding: 3px 12px; pointer-events: none; }
 #rapid[hidden] { display: none; }
+#rapid [hidden] { display: none; }
+#boostTxt { font-variant-numeric: tabular-nums; }
+#rapidTxt:not([hidden]) + #boostTxt:not([hidden])::before { content: ''; display: inline-block; width: 1px; height: 0.9em; margin: 0 8px; background: rgba(36, 26, 0, 0.5); vertical-align: -1px; }
 
 #banner { position: fixed; top: 26%; left: 0; right: 0; text-align: center; pointer-events: none; opacity: 0; transform: scale(1.06); transition: opacity 0.3s, transform 0.3s; }
 #banner.show { opacity: 1; transform: scale(1); }
